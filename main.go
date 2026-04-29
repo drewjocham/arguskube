@@ -1,0 +1,122 @@
+package main
+
+import (
+	"embed"
+	"log"
+	"log/slog"
+
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/mac"
+
+	"github.com/djocham/kube-watcher/api/pkg"
+	"github.com/djocham/kube-watcher/internal/ai"
+	"github.com/djocham/kube-watcher/internal/anomaly"
+	"github.com/djocham/kube-watcher/internal/config"
+	ctxassembly "github.com/djocham/kube-watcher/internal/context"
+	"github.com/djocham/kube-watcher/internal/features"
+	"github.com/djocham/kube-watcher/internal/k8s"
+	applogger "github.com/djocham/kube-watcher/internal/logger"
+	"github.com/djocham/kube-watcher/internal/popeye"
+)
+
+//go:embed all:view/dist
+var assets embed.FS
+
+const (
+	appTitle  = "KubeWatcher — SRE Console"
+	appWidth  = 1440
+	appHeight = 800
+)
+
+func main() {
+	if err := run(); err != nil {
+		log.Fatalf("kubewatcher: %v", err)
+	}
+}
+
+func run() error {
+	cfg, err := config.New()
+	if err != nil {
+		return err
+	}
+
+	logger := applogger.New(cfg)
+
+	gate := features.NewGate(cfg)
+	logger.Info("feature tier",
+		slog.String("tier", string(cfg.Features.Tier)),
+	)
+
+	k8sClient, err := k8s.NewClient(cfg, logger)
+	if err != nil {
+		logger.Warn("k8s connection failed — app will start without cluster data",
+			slog.String("error", err.Error()),
+		)
+	}
+
+	var detector anomaly.Detector
+	if cfg.AI.AnomstackURL != "" {
+		detector = anomaly.NewAnomstackClient(cfg, logger)
+	}
+
+	assembler := ctxassembly.NewAssembler(cfg, gate, detector, logger)
+
+	var agent *ai.Agent
+	if cfg.AI.DeepSeekAPIKey != "" {
+		dsClient := ai.NewDeepSeekClient(cfg.AI.DeepSeekAPIKey, logger)
+		agent = ai.NewAgent(dsClient, logger)
+		logger.Info("AI agent initialized (DeepSeek)")
+	} else {
+		logger.Warn("AI agent disabled — set DEEPSEEK_API_KEY to enable")
+	}
+
+	popeyeRunner := popeye.NewRunner(
+		cfg.AI.PopeyeBinary,
+		cfg.Kubernetes.Config,
+		cfg.Kubernetes.Context,
+		cfg.Kubernetes.Namespace,
+		logger,
+	)
+
+	app := pkg.NewApp(pkg.AppConfig{
+		Logger:    logger,
+		Config:    cfg,
+		K8sClient: k8sClient,
+		Gate:      gate,
+		Assembler: assembler,
+		Detector:  detector,
+		Agent:     agent,
+		Popeye:    popeyeRunner,
+	})
+
+	return wails.Run(&options.App{
+		Title:     appTitle,
+		Width:     appWidth,
+		Height:    appHeight,
+		MinWidth:  1024,
+		MinHeight: 600,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		BackgroundColour: &options.RGBA{R: 26, G: 28, B: 30, A: 255}, // var(--bg)
+		OnStartup:        app.Startup,
+		OnShutdown:       app.Shutdown,
+		Bind: []interface{}{
+			app,
+		},
+		Mac: &mac.Options{
+			TitleBar: &mac.TitleBar{
+				TitlebarAppearsTransparent: true,
+				HideTitle:                  true,
+				HideTitleBar:               false,
+				FullSizeContent:            true,
+				UseToolbar:                 false,
+			},
+			WebviewIsTransparent: true,
+			WindowIsTranslucent:  false,
+			Appearance:           mac.NSAppearanceNameDarkAqua,
+		},
+	})
+}
