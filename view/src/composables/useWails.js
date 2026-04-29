@@ -331,3 +331,26 @@ export function useTerminal() {
 
   return { startTerminal, sendInput, resizeTerminal }
 }
+
+/**
+ * Composable for Anomaly Agent connectivity.
+ */
+export function useAnomaly() {
+  const anomalies = ref([])
+  const loading = ref(false)
+  const error = ref(null)
+
+  async function connectAgent(namespace = 'all') {
+    loading.value = true
+    error.value = null
+    try {
+      anomalies.value = await callGo('ConnectToAgent', namespace)
+    } catch (e) {
+      error.value = e.message || 'Failed to connect to agent'
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { anomalies, loading, error, connectAgent }
+}

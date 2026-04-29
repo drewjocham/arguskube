@@ -289,7 +289,7 @@ function eventTypeColor(type_) {
 }
 .ai-orb {
   width: 22px; height: 22px; border-radius: 50%;
-  background: conic-gradient(from 0deg, #4f8ef7, #a78bfa, #2dd4bf, #4f8ef7);
+  background: conic-gradient(from 0deg, var(--accent), var(--purple), var(--teal), var(--accent));
   animation: spin 4s linear infinite; flex-shrink: 0;
 }
 .ai-panel-title { font-size: 12.5px; font-weight: 500; color: var(--text); }

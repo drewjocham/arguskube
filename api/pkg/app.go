@@ -274,3 +274,39 @@ func (a *App) SendTerminalInput(data string) error {
 func (a *App) ResizeTerminal(rows, cols int) error {
 	return a.term.Resize(uint16(rows), uint16(cols))
 }
+
+// --- SaaS & Agent bindings ---
+
+// LoginSaaS authenticates the local client with the central KubeWatcher SaaS.
+func (a *App) LoginSaaS(provider string) (string, error) {
+	a.logger.InfoContext(a.ctx, "Initiating SaaS login", slog.String("provider", provider))
+	// In a real implementation, this would open a browser, perform OAuth PKCE,
+	// and capture the callback token on a localhost port.
+	return "mock-jwt-token-from-" + provider, nil
+}
+
+// AgentAnomaly represents the payload returned by the in-cluster agent.
+type AgentAnomaly struct {
+	Timestamp string  `json:"timestamp"`
+	Score     float64 `json:"score"`
+	Target    string  `json:"target"`
+	Rule      string  `json:"rule"`
+}
+
+// ConnectToAgent performs a port-forward to the in-cluster agent and fetches ML metrics.
+func (a *App) ConnectToAgent(namespace string) ([]AgentAnomaly, error) {
+	if a.k8s == nil {
+		return nil, errNoCluster
+	}
+	a.logger.InfoContext(a.ctx, "Connecting to KubeWatcher agent", slog.String("namespace", namespace))
+
+	// In a real implementation, this would establish a dynamic port-forward
+	// using client-go to the kubewatcher-agent pod and make an HTTP GET request
+	// to /api/v1/anomalies.
+
+	// Mocking the agent response for the prototype:
+	return []AgentAnomaly{
+		{Timestamp: "2 Mins Ago", Score: 94.5, Target: "aws-prod-db", Rule: "Sudden Memory Spike"},
+		{Timestamp: "1 Hour Ago", Score: 88.2, Target: "ingress/traefik", Rule: "High Error Rate"},
+	}, nil
+}

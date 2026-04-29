@@ -28,9 +28,11 @@ const navTree = [
     id: 'monitoring',
     label: 'Monitoring',
     items: [
+      { id: 'metrics', label: 'Metrics Explorer' },
       { id: 'alerts', label: 'Alerts' },
       { id: 'topology', label: 'Topology' },
       { id: 'logs', label: 'Logs' },
+      { id: 'anomalies', label: 'Anomaly Detection' },
     ],
   },
   {
@@ -90,6 +92,14 @@ const navTree = [
       { id: 'runbooks', label: 'Runbooks' },
       { id: 'incidents', label: 'Incident Log' },
       { id: 'audit', label: 'Config Audit' },
+      { id: 'workflows', label: 'Workflows' },
+    ],
+  },
+  {
+    id: 'knowledge',
+    label: 'Knowledge',
+    items: [
+      { id: 'notebooks', label: 'Notebooks & S3' },
     ],
   },
 ]
@@ -197,7 +207,7 @@ const warningCount = computed(() =>
 
 .cluster-icon {
   width: 24px; height: 24px; border-radius: 6px;
-  background: linear-gradient(135deg, #4f8ef7 0%, #7c5bf7 100%);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .cluster-info { flex: 1; min-width: 0; }

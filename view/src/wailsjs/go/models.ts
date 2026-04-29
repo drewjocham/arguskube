@@ -696,6 +696,29 @@ export namespace k8s {
 
 }
 
+export namespace pkg {
+	
+	export class AgentAnomaly {
+	    timestamp: string;
+	    score: number;
+	    target: string;
+	    rule: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentAnomaly(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = source["timestamp"];
+	        this.score = source["score"];
+	        this.target = source["target"];
+	        this.rule = source["rule"];
+	    }
+	}
+
+}
+
 export namespace popeye {
 	
 	export class Finding {
