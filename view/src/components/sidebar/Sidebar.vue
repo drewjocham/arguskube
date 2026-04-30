@@ -33,6 +33,7 @@ const navTree = [
       { id: 'topology', label: 'Topology' },
       { id: 'logs', label: 'Logs' },
       { id: 'anomalies', label: 'Anomaly Detection' },
+      { id: 'analysis', label: 'Analysis' },
     ],
   },
   {

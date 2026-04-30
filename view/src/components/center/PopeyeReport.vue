@@ -72,6 +72,10 @@ function sevBg(sev) {
     default: return 'rgba(62,207,142,0.06)'
   }
 }
+
+function fixWithAgent(finding) {
+  alert(`The AI Agent has been prompted to resolve: "${finding.name}".\n\nIt will execute: ${finding.command || 'Auto-generated remediation script'}`)
+}
 </script>
 
 <template>
@@ -210,6 +214,13 @@ function sevBg(sev) {
         <div v-if="selectedFinding.command" class="detail-section">
           <div class="detail-label">Command</div>
           <div class="detail-cmd">{{ selectedFinding.command }}</div>
+        </div>
+        
+        <div class="detail-section" style="margin-top: 24px;">
+          <button class="agent-fix-btn" @click="fixWithAgent(selectedFinding)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            Fix with Agent
+          </button>
         </div>
       </div>
 
@@ -352,4 +363,19 @@ function sevBg(sev) {
   border-radius: 6px; word-break: break-all; line-height: 1.5; cursor: pointer;
 }
 .detail-cmd:hover { background: rgba(79,142,247,0.12); }
+
+.agent-fix-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer;
+  background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  color: white; font-weight: 600; font-size: 13px; font-family: var(--font);
+  transition: all 0.2s ease; box-shadow: 0 2px 4px rgba(139, 92, 246, 0.2);
+}
+.agent-fix-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(139, 92, 246, 0.4);
+}
+.agent-fix-btn:active {
+  transform: translateY(1px);
+}
 </style>

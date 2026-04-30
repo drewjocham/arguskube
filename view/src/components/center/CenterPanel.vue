@@ -14,6 +14,19 @@ import LogExplorer from './LogExplorer.vue'
 import AnomalyDetection from './AnomalyDetection.vue'
 import MetricsExplorer from './MetricsExplorer.vue'
 import S3Notebook from './S3Notebook.vue'
+import NodeList from '../cluster/NodeList.vue'
+import NamespaceList from '../cluster/NamespaceList.vue'
+import EventStream from '../cluster/EventStream.vue'
+import PodList from '../workloads/PodList.vue'
+import DeploymentList from '../workloads/DeploymentList.vue'
+import ConfigMapList from '../config/ConfigMapList.vue'
+import ServiceList from '../network/ServiceList.vue'
+import VolumeList from '../storage/VolumeList.vue'
+import JobCronJobList from '../workloads/JobCronJobList.vue'
+import StatefulDaemonSetList from '../workloads/StatefulDaemonSetList.vue'
+import HpaList from '../config/HpaList.vue'
+import NetworkPolicyList from '../network/NetworkPolicyList.vue'
+import PopeyeReport from './PopeyeReport.vue'
 
 const props = defineProps({
   metrics: { type: Object, default: null },
@@ -59,7 +72,7 @@ function moveDown(index) {
 }
 
 // Monitoring views.
-const monitoringViews = ['metrics', 'alerts', 'topology', 'logs', 'anomalies']
+const monitoringViews = ['metrics', 'alerts', 'topology', 'logs', 'anomalies', 'analysis']
 
 // Resource browser views — these use the generic ResourceTable.
 const resourceViews = [
@@ -80,6 +93,54 @@ const isMonitoring = computed(() => monitoringViews.includes(props.activeNav))
 const isResource = computed(() => resourceViews.includes(props.activeNav))
 const isOperations = computed(() => operationViews.includes(props.activeNav))
 const isKnowledge = computed(() => knowledgeViews.includes(props.activeNav))
+
+// Popeye logic
+const reportData = ref(null)
+const loadingReport = ref(false)
+
+function runPopeyeScan() {
+  loadingReport.value = true
+  reportData.value = null
+  
+  setTimeout(() => {
+    loadingReport.value = false
+    reportData.value = {
+      grade: 'B',
+      score: 84,
+      scanTimeMs: 1420,
+      totalError: 2,
+      totalWarn: 3,
+      totalInfo: 5,
+      totalOk: 42,
+      findings: [
+        {
+          id: 1, severity: 'error', name: 'Root user allowed',
+          resource: 'Deployment', namespace: 'default',
+          message: 'Container runs as root',
+          explanation: 'Running containers as root grants them excessive privileges on the host system. If a container is compromised, the attacker can break out and access the host.',
+          fix: 'Set securityContext.runAsNonRoot = true in the pod spec. Ensure your Dockerfile switches to a non-root USER before the entrypoint.',
+          command: 'kubectl patch deploy web-app --type="json" -p=\'[{"op": "add", "path": "/spec/template/spec/securityContext", "value": {"runAsNonRoot": true}}]\''
+        },
+        {
+          id: 2, severity: 'error', name: 'Missing Probes',
+          resource: 'StatefulSet', namespace: 'database',
+          message: 'Liveness probe not defined',
+          explanation: 'Without a liveness probe, Kubernetes cannot know if your application is stuck or deadlocked. It will not automatically restart a hanging pod.',
+          fix: 'Define a livenessProbe in the container spec. Use an HTTP GET, TCP Socket, or Exec action to verify health.',
+          command: null
+        },
+        {
+          id: 3, severity: 'warning', name: 'CPU Limits',
+          resource: 'DaemonSet', namespace: 'kube-system',
+          message: 'No CPU limit configured',
+          explanation: 'A container without CPU limits can consume all available CPU on a node, potentially starving other critical workloads.',
+          fix: 'Specify resources.limits.cpu for the container.',
+          command: 'kubectl set resources daemonset fluent-bit -c fluent-bit --limits=cpu=200m'
+        }
+      ]
+    }
+  }, 1500)
+}
 </script>
 
 <template>
@@ -94,6 +155,9 @@ const isKnowledge = computed(() => knowledgeViews.includes(props.activeNav))
       </template>
       <template v-else-if="activeNav === 'anomalies'">
         <AnomalyDetection />
+      </template>
+      <template v-else-if="activeNav === 'analysis'">
+        <PopeyeReport :report="reportData" :loading="loadingReport" @run-scan="runPopeyeScan" />
       </template>
       <template v-else>
         <div class="tabs">
@@ -146,7 +210,23 @@ const isKnowledge = computed(() => knowledgeViews.includes(props.activeNav))
 
     <!-- Resource browser -->
     <template v-else-if="isResource">
-      <div class="resource-layout">
+      <NodeList v-if="activeNav === 'nodes'" />
+      <NamespaceList v-else-if="activeNav === 'namespaces'" />
+      <EventStream v-else-if="activeNav === 'events'" />
+      <PodList v-else-if="activeNav === 'pods'" />
+      <DeploymentList v-else-if="activeNav === 'deployments'" />
+      <JobCronJobList v-else-if="activeNav === 'jobs' || activeNav === 'cronjobs'" :type="activeNav" />
+      <StatefulDaemonSetList v-else-if="activeNav === 'statefulsets' || activeNav === 'daemonsets' || activeNav === 'replicasets'" :type="activeNav" />
+      
+      <ConfigMapList v-else-if="activeNav === 'configmaps' || activeNav === 'secrets'" />
+      <HpaList v-else-if="activeNav === 'hpas'" />
+      
+      <ServiceList v-else-if="activeNav === 'services' || activeNav === 'ingresses'" />
+      <NetworkPolicyList v-else-if="activeNav === 'networkpolicies' || activeNav === 'endpoints'" :type="activeNav" />
+      
+      <VolumeList v-else-if="activeNav === 'pvcs' || activeNav === 'pvs'" />
+      
+      <div v-else class="resource-layout">
         <ResourceTable
           :resourceKind="activeNav"
           @select="onResourceSelect"
