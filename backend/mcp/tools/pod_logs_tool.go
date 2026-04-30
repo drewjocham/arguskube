@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"kube-watcher/pkg/kube"
+	"github.com/djocham/kube-watcher/pkg/kube"
 )
 
 var (

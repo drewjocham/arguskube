@@ -1,7 +1,6 @@
 package main
 
 import (
-	"embed"
 	"log"
 	"log/slog"
 
@@ -133,7 +132,7 @@ func run() error {
 		MinWidth:  1024,
 		MinHeight: 600,
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets: view.FS,
 		},
 		BackgroundColour: &options.RGBA{R: 26, G: 28, B: 30, A: 255}, 
 		OnStartup:        app.Startup,
@@ -149,11 +148,12 @@ func run() error {
 				FullSizeContent:            true,
 				UseToolbar:                 false,
 			},
-			WebviewIsTransparent: true,
-			WindowIsTranslucent:  false,
 			Appearance:           mac.NSAppearanceNameDarkAqua,
-			URLHandlers: map[string]func(string){
-				"kubewatcher": app.HandleURL,
+			WebviewIsTransparent: true,
+			WindowIsTranslucent:  true,
+			About: &mac.AboutInfo{
+				Title:   "KubeWatcher",
+				Message: "© 2026 Argus Infrastructure",
 			},
 		},
 	})

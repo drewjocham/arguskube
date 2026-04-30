@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"kube-watcher/mcp/monitoring/history"
-	"kube-watcher/pkg/kube/watch"
+	"github.com/djocham/kube-watcher/mcp/monitoring/history"
+	"github.com/djocham/kube-watcher/pkg/kube/watch"
 )
 
 func TestEngine_ForAlert(t *testing.T) {

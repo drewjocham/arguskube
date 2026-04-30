@@ -1,7 +1,6 @@
 package main
 
 import (
-	"embed"
 	"log"
 
 	"github.com/wailsapp/wails/v2"
@@ -13,10 +12,8 @@ import (
 	"github.com/djocham/kube-watcher/internal/ai"
 	"github.com/djocham/kube-watcher/internal/config"
 	applogger "github.com/djocham/kube-watcher/internal/logger"
+	"github.com/djocham/kube-watcher/view"
 )
-
-//go:embed all:view/dist
-var assets embed.FS
 
 const (
 	appTitle  = "Argus Terminal"
@@ -64,7 +61,7 @@ func run() error {
 		Frameless:         true,  // Remove OS chrome completely
 		AlwaysOnTop:       false,
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets: view.FS,
 		},
 		BackgroundColour:  &options.RGBA{R: 0, G: 0, B: 0, A: 0}, // fully transparent backend
 		OnStartup:         app.Startup,

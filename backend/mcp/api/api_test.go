@@ -14,14 +14,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"kube-watcher/mcp/monitoring/history"
-	"kube-watcher/mcp/server"
-	"kube-watcher/pkg/kube"
+	"github.com/djocham/kube-watcher/mcp/monitoring/history"
+	"github.com/djocham/kube-watcher/mcp/server"
+	"github.com/djocham/kube-watcher/pkg/kube"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 
-	kwatch "kube-watcher/pkg/kube/watch"
+	kwatch "github.com/djocham/kube-watcher/pkg/kube/watch"
 )
 
 // --- stubs ---

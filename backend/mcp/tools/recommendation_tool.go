@@ -3,11 +3,11 @@ package tools
 import (
 	"context"
 	"fmt"
-	"kube-watcher/mcp/monitoring/recommendation"
+	"github.com/djocham/kube-watcher/mcp/monitoring/recommendation"
 	"time"
 
-	"kube-watcher/pkg/kube"
-	kwatch "kube-watcher/pkg/kube/watch"
+	"github.com/djocham/kube-watcher/pkg/kube"
+	kwatch "github.com/djocham/kube-watcher/pkg/kube/watch"
 )
 
 type RecommendationTool struct {

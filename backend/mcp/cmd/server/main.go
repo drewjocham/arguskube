@@ -14,14 +14,14 @@ import (
 	"syscall"
 	"time"
 
-	"kube-watcher/mcp/api"
-	"kube-watcher/mcp/monitoring/alerts"
-	"kube-watcher/mcp/monitoring/history"
-	"kube-watcher/mcp/server"
-	"kube-watcher/pkg/audit"
-	"kube-watcher/pkg/kube"
-	"kube-watcher/pkg/kube/watch"
-	"kube-watcher/pkg/logging"
+	"github.com/djocham/kube-watcher/mcp/api"
+	"github.com/djocham/kube-watcher/mcp/monitoring/alerts"
+	"github.com/djocham/kube-watcher/mcp/monitoring/history"
+	"github.com/djocham/kube-watcher/mcp/server"
+	"github.com/djocham/kube-watcher/pkg/audit"
+	"github.com/djocham/kube-watcher/pkg/kube"
+	"github.com/djocham/kube-watcher/pkg/kube/watch"
+	"github.com/djocham/kube-watcher/pkg/logging"
 )
 
 var (

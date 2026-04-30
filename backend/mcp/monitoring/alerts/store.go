@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"kube-watcher/pkg/kube/watch"
+	"github.com/djocham/kube-watcher/pkg/kube/watch"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/google/uuid"

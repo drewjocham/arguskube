@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"kube-watcher/mcp/monitoring/history"
-	"kube-watcher/mcp/monitoring/recommendation"
-	"kube-watcher/pkg/kube"
+	"github.com/djocham/kube-watcher/mcp/monitoring/history"
+	"github.com/djocham/kube-watcher/mcp/monitoring/recommendation"
+	"github.com/djocham/kube-watcher/pkg/kube"
 )
 
 // --- NodeStatusTool ---

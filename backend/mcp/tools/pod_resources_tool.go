@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"kube-watcher/pkg/kube"
+	"github.com/djocham/kube-watcher/pkg/kube"
 )
 
 type PodResourcesTool struct {

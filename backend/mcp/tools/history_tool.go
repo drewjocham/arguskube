@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"kube-watcher/mcp/monitoring/history"
-	"kube-watcher/pkg/kube"
+	"github.com/djocham/kube-watcher/mcp/monitoring/history"
+	"github.com/djocham/kube-watcher/pkg/kube"
 )
 
 type HistoryInsightsTool struct {

@@ -85,8 +85,8 @@ type S3Config struct {
 func New() (*OnlineDataConfig, error) {
 	cfg := &OnlineDataConfig{
 		Kubernetes: KubernetesConfig{
-			Context:   env("KUBEWATCHER_CONTEXT", "default"),
-			Config:    env("KUBEWATCHER_KUBECONFIG", homeDir()+"/.kube/k3s-config"),
+			Context:   env("KUBEWATCHER_CONTEXT", ""),
+			Config:    env("KUBEWATCHER_KUBECONFIG", ""),
 			Namespace: env("KUBEWATCHER_NAMESPACE", ""),
 			InCluster: env("KUBEWATCHER_IN_CLUSTER", "false") == "true",
 		},

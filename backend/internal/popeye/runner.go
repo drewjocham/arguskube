@@ -242,7 +242,7 @@ func explainFinding(resource, message string, sev SeverityLevel) string {
 	}
 }
 
-func suggestFix(resource, message, ns, name string) string {
+func suggestFix(_, message, _, _ string) string {
 	lower := strings.ToLower(message)
 
 	switch {

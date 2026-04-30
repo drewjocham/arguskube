@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"kube-watcher/mcp/monitoring/alerts"
-	"kube-watcher/mcp/monitoring/history"
-	"kube-watcher/mcp/monitoring/recommendation"
+	"github.com/djocham/kube-watcher/mcp/monitoring/alerts"
+	"github.com/djocham/kube-watcher/mcp/monitoring/history"
+	"github.com/djocham/kube-watcher/mcp/monitoring/recommendation"
 	"log/slog"
 	"sort"
 	"strings"
@@ -19,9 +19,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	"kube-watcher/mcp/tools"
-	"kube-watcher/pkg/kube"
-	kwatch "kube-watcher/pkg/kube/watch"
+	"github.com/djocham/kube-watcher/mcp/tools"
+	"github.com/djocham/kube-watcher/pkg/kube"
+	kwatch "github.com/djocham/kube-watcher/pkg/kube/watch"
 )
 
 var (
