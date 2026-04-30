@@ -14,11 +14,9 @@ let term = null
 let fitAddon = null
 let started = false
 
-// Dynamically import xterm when visible.
 async function initTerminal() {
   if (term || !termRef.value) return
 
-  // Import xterm.js dynamically.
   const { Terminal } = await import('xterm')
   const { FitAddon } = await import('xterm-addon-fit')
 
@@ -57,23 +55,19 @@ async function initTerminal() {
   term.loadAddon(fitAddon)
   term.open(termRef.value)
 
-  // Fit to container.
   await nextTick()
   fitAddon.fit()
 
-  // Send keystrokes to Go PTY.
   term.onData((data) => {
     sendInput(data)
   })
 
-  // Start the PTY backend.
   if (!started) {
     started = true
     await startTerminal(term.rows, term.cols)
   }
 }
 
-// Receive output from Go PTY.
 useWailsEvent('terminal:output', (data) => {
   if (term && data) {
     term.write(data)
@@ -103,7 +97,6 @@ watch(() => props.visible, async (visible) => {
 })
 
 onMounted(() => {
-  // Watch for container resizes.
   if (typeof ResizeObserver !== 'undefined') {
     resizeObserver.value = new ResizeObserver(() => {
       handleResize()
@@ -144,7 +137,6 @@ onUnmounted(() => {
   padding: 4px 8px;
 }
 
-/* Override xterm.js viewport padding */
 :deep(.xterm) {
   padding: 0;
 }

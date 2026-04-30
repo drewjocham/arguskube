@@ -1,5 +1,7 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+
+const workflowTitle = ref('Gets the top 3 HackerNews stories and send them')
 
 const steps = ref([
   { id: 1, type: 'trigger', name: 'Input', icon: '⚡' },
@@ -8,12 +10,39 @@ const steps = ref([
 ])
 
 const selectedStep = ref(null)
+const notification = ref(null)
+const isSaving = ref(false)
+
+// Undo / Redo history
+const history = ref([])
+const future = ref([])
+
+function snapshot() {
+  history.value.push(JSON.stringify(steps.value))
+  future.value = []
+  if (history.value.length > 50) history.value.shift()
+}
+
+function undo() {
+  if (history.value.length === 0) return
+  future.value.push(JSON.stringify(steps.value))
+  steps.value = JSON.parse(history.value.pop())
+  selectedStep.value = null
+}
+
+function redo() {
+  if (future.value.length === 0) return
+  history.value.push(JSON.stringify(steps.value))
+  steps.value = JSON.parse(future.value.pop())
+  selectedStep.value = null
+}
 
 function selectStep(step) {
   selectedStep.value = step
 }
 
 function addStep(index) {
+  snapshot()
   const newId = Math.max(...steps.value.map(s => s.id), 0) + 1
   steps.value.splice(index + 1, 0, {
     id: newId,
@@ -25,10 +54,25 @@ function addStep(index) {
 }
 
 function removeStep(id) {
+  snapshot()
   steps.value = steps.value.filter(s => s.id !== id)
   if (selectedStep.value?.id === id) {
     selectedStep.value = null
   }
+}
+
+function showNotification(msg, duration = 3000) {
+  notification.value = msg
+  setTimeout(() => notification.value = null, duration)
+}
+
+async function saveAndDeploy() {
+  isSaving.value = true
+  showNotification('Saving workflow…')
+  // Simulate save (replace with real backend call when available)
+  await new Promise(resolve => setTimeout(resolve, 1200))
+  isSaving.value = false
+  showNotification('Workflow saved and deployed successfully.')
 }
 </script>
 
@@ -38,13 +82,18 @@ function removeStep(id) {
       
       <!-- Top header for the canvas -->
       <div class="canvas-header">
-        <input type="text" class="workflow-title" value="Gets the top 3 HackerNews stories and send them" />
+        <input type="text" class="workflow-title" v-model="workflowTitle" />
         <div class="canvas-actions">
-          <button class="action-btn">Undo</button>
-          <button class="action-btn">Redo</button>
-          <button class="action-btn primary">Save & Deploy</button>
+          <button class="action-btn" :disabled="history.length === 0" @click="undo">Undo</button>
+          <button class="action-btn" :disabled="future.length === 0" @click="redo">Redo</button>
+          <button class="action-btn primary" :disabled="isSaving" @click="saveAndDeploy">
+            {{ isSaving ? 'Saving…' : 'Save & Deploy' }}
+          </button>
         </div>
       </div>
+
+      <!-- Notification -->
+      <div v-if="notification" class="wf-notification">{{ notification }}</div>
 
       <!-- Flow container -->
       <div class="flow-container">
@@ -110,8 +159,30 @@ function removeStep(id) {
           <textarea class="settings-textarea" rows="4" v-pre>{{ prev.result }}</textarea>
         </div>
       </div>
-      <div v-else class="panel-empty">
-        Select a node to configure
+      <div v-else class="panel-content">
+        <div class="form-group" style="margin-bottom: 24px;">
+          <label style="font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 12px; display: block;">Workflow Settings</label>
+          <div style="font-size: 12px; color: #8b8f96; margin-bottom: 16px;">Configure how and where this workflow executes.</div>
+          
+          <label>Execution Model</label>
+          <div class="execution-options">
+            <label class="exec-option">
+              <input type="radio" name="execModel" value="local" checked>
+              <div class="exec-card">
+                <div class="exec-title">Local Execution <span class="badge free">Free</span></div>
+                <div class="exec-desc">Runs directly from your desktop machine via local kubectl. Good for personal automation.</div>
+              </div>
+            </label>
+            
+            <label class="exec-option">
+              <input type="radio" name="execModel" value="remote">
+              <div class="exec-card">
+                <div class="exec-title">Remote Execution <span class="badge pro">Pro</span></div>
+                <div class="exec-desc">Packages workflow into a .zip and pushes to your S3 bucket. A remote runner safely executes it inside your cluster.</div>
+              </div>
+            </label>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -373,4 +444,28 @@ function removeStep(id) {
   resize: vertical;
   font-family: var(--mono);
 }
+
+.action-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.wf-notification {
+  padding: 8px 16px;
+  background: rgba(79,142,247,0.12);
+  border-bottom: 1px solid rgba(79,142,247,0.2);
+  font-size: 12px;
+  color: var(--accent2);
+  text-align: center;
+  animation: notif-in 0.2s ease-out;
+}
+@keyframes notif-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Execution model radio cards */
+.execution-options { display: flex; flex-direction: column; gap: 8px; }
+.exec-option { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.exec-option input[type="radio"] { margin-top: 4px; accent-color: var(--accent); }
+.exec-card { flex: 1; }
+.exec-title { font-size: 12px; font-weight: 500; color: var(--text); margin-bottom: 2px; }
+.exec-desc { font-size: 11px; color: var(--text3); line-height: 1.4; }
+.badge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.05em; vertical-align: middle; }
+.badge.free { background: rgba(62,207,142,0.15); color: #3ecf8e; }
+.badge.pro { background: rgba(167,139,250,0.15); color: #a78bfa; }
 </style>

@@ -1,16 +1,57 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useResources } from '../../composables/useWails'
 
-const volumes = ref([
-  { name: 'db-data-pvc', namespace: 'default', status: 'Bound', capacity: '50Gi', usedPct: 78, accessModes: 'RWO', storageClass: 'gp2', age: '145d' },
-  { name: 'redis-data-pvc', namespace: 'default', status: 'Bound', capacity: '10Gi', usedPct: 34, accessModes: 'RWO', storageClass: 'gp2', age: '42d' },
-  { name: 'shared-assets', namespace: 'public', status: 'Pending', capacity: '100Gi', usedPct: 0, accessModes: 'RWX', storageClass: 'efs-sc', age: '2h' },
-])
+const props = defineProps({
+  type: { type: String, default: 'pvcs' }
+})
 
-function getUsageColor(pct) {
-  if (pct > 85) return '#f05454' // Red if nearly full
-  if (pct > 70) return '#f5a623' // Orange if getting high
-  return '#3ecf8e' // Green otherwise
+const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
+
+const resourceKind = props.type || 'pvcs'
+
+const mockVolumes = [
+  { name: 'db-data-pvc', namespace: 'default', status: 'Bound', capacity: '50Gi', accessModes: 'RWO', storageClass: 'gp2', age: '145d' },
+  { name: 'redis-data-pvc', namespace: 'default', status: 'Bound', capacity: '10Gi', accessModes: 'RWO', storageClass: 'gp2', age: '42d' },
+  { name: 'shared-assets', namespace: 'public', status: 'Pending', capacity: '100Gi', accessModes: 'RWX', storageClass: 'efs-sc', age: '2h' },
+]
+
+const volumes = ref([])
+const volDetail = ref(null)
+const expandedVol = ref(null)
+
+onMounted(async () => {
+  await listResources(resourceKind, '')
+  if (result.value && result.value.items && result.value.items.length > 0) {
+    volumes.value = result.value.items.map(item => ({
+      name: item.name,
+      namespace: item.namespace,
+      status: item.status || 'Pending',
+      statusColor: item.statusColor,
+      capacity: item.fields?.capacity || '—',
+      accessModes: item.fields?.access_modes || '—',
+      storageClass: item.fields?.storage_class || '—',
+      age: item.age || '—'
+    }))
+  } else {
+    volumes.value = mockVolumes
+  }
+})
+
+async function toggleExpand(volName) {
+  if (expandedVol.value === volName) {
+    expandedVol.value = null
+    volDetail.value = null
+  } else {
+    expandedVol.value = volName
+    const vol = volumes.value.find(v => v.name === volName)
+    if (vol) {
+      await getResourceDetail(resourceKind, vol.namespace, volName)
+      if (detail.value) {
+        volDetail.value = detail.value
+      }
+    }
+  }
 }
 </script>
 
@@ -20,7 +61,7 @@ function getUsageColor(pct) {
       <div class="title">Persistent Volumes & Claims</div>
       <div class="subtitle">Storage resources available to your workloads</div>
     </div>
-
+    
     <div class="vol-list">
       <div class="vol-header-row">
         <div class="col-name">Name</div>
@@ -31,28 +72,62 @@ function getUsageColor(pct) {
         <div class="col-sc">Storage Class</div>
       </div>
 
-      <div v-for="v in volumes" :key="v.name" class="vol-row">
-        <div class="col-name">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #3ecf8e; margin-right: 8px;"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
-          {{ v.name }}
-        </div>
-        <div class="col-ns font-mono">{{ v.namespace }}</div>
-        <div class="col-status">
-          <span class="status-badge" :class="v.status.toLowerCase()">{{ v.status }}</span>
-        </div>
-        
-        <div class="col-cap">
-          <div class="cap-info">
-            <span class="font-mono">{{ v.capacity }}</span>
-            <span class="cap-used" v-if="v.status === 'Bound'">{{ v.usedPct }}% used</span>
+      <div v-for="v in volumes" :key="v.name" class="vol-row-container">
+        <div class="vol-row" @click="toggleExpand(v.name)">
+          <div class="col-name">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #3ecf8e; margin-right: 8px;"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+            {{ v.name }}
           </div>
-          <div class="cap-bar-wrapper" v-if="v.status === 'Bound'">
-            <div class="cap-bar-fill" :style="{ width: v.usedPct + '%', background: getUsageColor(v.usedPct) }"></div>
+          <div class="col-ns font-mono">{{ v.namespace }}</div>
+          <div class="col-status">
+            <span class="status-badge" :class="v.status.toLowerCase()">{{ v.status }}</span>
+          </div>
+          
+          <div class="col-cap font-mono">{{ v.capacity }}</div>
+          
+          <div class="col-modes font-mono">{{ v.accessModes }}</div>
+          <div class="col-sc font-mono" style="display:flex; justify-content:space-between; align-items:center;">
+            {{ v.storageClass }}
+            <svg class="chevron" :class="{ open: expandedVol === v.name }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
           </div>
         </div>
-        
-        <div class="col-modes font-mono">{{ v.accessModes }}</div>
-        <div class="col-sc font-mono">{{ v.storageClass }}</div>
+
+        <!-- Expanded Volume Details -->
+        <div class="vol-expanded" v-if="expandedVol === v.name">
+          <div v-if="detailLoading" style="color:#8b8f96; font-size:13px; padding:12px;">Loading…</div>
+          <div v-else-if="volDetail" class="expanded-grid">
+            <div class="expanded-card">
+              <h4 class="card-title">Properties</h4>
+              <div class="props-grid">
+                <div class="prop-row" v-for="prop in volDetail.properties" :key="prop.key">
+                  <span class="prop-label">{{ prop.key }}</span>
+                  <span class="prop-value font-mono">{{ prop.value }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="expanded-card" v-if="volDetail.labels && Object.keys(volDetail.labels).length">
+              <h4 class="card-title">Labels</h4>
+              <div class="labels-grid">
+                <span class="label-chip" v-for="(val, k) in volDetail.labels" :key="k">{{ k }}={{ val }}</span>
+              </div>
+            </div>
+
+            <div class="expanded-card" v-if="volDetail.events && volDetail.events.length">
+              <h4 class="card-title">Recent Events</h4>
+              <div class="events-mini">
+                <div class="event-mini-row" v-for="(ev, i) in volDetail.events" :key="i" :class="ev.type?.toLowerCase()">
+                  <span class="ev-type">{{ ev.type }}</span>
+                  <span class="ev-reason font-mono">{{ ev.reason }}</span>
+                  <span class="ev-msg">{{ ev.message }}</span>
+                  <span class="ev-age font-mono">{{ ev.age }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -99,36 +174,56 @@ function getUsageColor(pct) {
 .status-badge.bound { background: rgba(62, 207, 142, 0.15); color: #3ecf8e; }
 .status-badge.pending { background: rgba(245, 166, 35, 0.15); color: #f5a623; }
 
-.col-cap { display: flex; flex-direction: column; gap: 8px; justify-content: center; }
-.cap-info { display: flex; justify-content: space-between; align-items: center; }
-.cap-used { font-size: 10px; color: #8b8f96; text-transform: uppercase; font-weight: 600; }
 
-/* Glass of water effect */
-.cap-bar-wrapper { 
-  width: 100%; 
-  height: 14px; 
-  background: rgba(255, 255, 255, 0.02); 
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px; 
-  overflow: hidden; 
-  box-shadow: inset 0 2px 6px rgba(0,0,0,0.4);
-  position: relative;
-  backdrop-filter: blur(2px);
+.vol-row-container {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.vol-row-container:last-child { border-bottom: none; }
+
+.chevron { transition: transform 0.2s ease; color: #6b7078; }
+.chevron.open { transform: rotate(180deg); }
+
+/* Expanded Area */
+.vol-expanded {
+  padding: 16px;
+  background: #141517;
+  border-top: 1px dashed rgba(255,255,255,0.08);
+}
+.expanded-grid {
+  display: flex;
+  gap: 24px;
+}
+.expanded-card {
+  background: #1e2023;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  padding: 16px;
+  flex: 1;
+}
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0 0 16px 0;
 }
 
-.cap-bar-fill { 
-  height: 100%; 
-  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1); 
-  box-shadow: inset 0 4px 6px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.2);
-  position: relative;
-  border-right: 1px solid rgba(255,255,255,0.4);
-}
+/* Properties */
+.props-grid { display: flex; flex-direction: column; gap: 4px; }
+.prop-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+.prop-label { color: #8b8f96; }
+.prop-value { color: #e8eaec; max-width: 60%; text-align: right; word-break: break-all; }
 
-/* Subtle liquid highlight */
-.cap-bar-fill::after {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: linear-gradient(to bottom, rgba(255,255,255,0.3) 0%, transparent 50%, rgba(0,0,0,0.1) 100%);
-}
+/* Labels */
+.labels-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.label-chip { background: rgba(55, 148, 255, 0.1); color: #3794ff; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: 'SF Mono', Consolas, monospace; }
+
+/* Mini Events */
+.events-mini { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+.event-mini-row { display: grid; grid-template-columns: 60px 120px 1fr 50px; gap: 8px; font-size: 11px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); align-items: center; }
+.event-mini-row.warning { color: #f5a623; }
+.event-mini-row.normal { color: #b0b4ba; }
+.ev-type { font-weight: 600; }
+.ev-reason { color: #a78bfa; }
+.ev-msg { color: #8b8f96; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev-age { color: #6b7078; text-align: right; }
 </style>

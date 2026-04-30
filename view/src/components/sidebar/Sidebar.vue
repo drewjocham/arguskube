@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, inject } from 'vue'
+import { ref, computed, inject, onMounted, onUnmounted } from 'vue'
+import { useContexts } from '../../composables/useWails'
 
 const props = defineProps({
   clusterInfo: { type: Object, default: null },
@@ -7,9 +8,37 @@ const props = defineProps({
   activeNav: { type: String, default: 'alerts' },
 })
 
-const emit = defineEmits(['update:activeNav'])
+const emit = defineEmits(['update:activeNav', 'context-switched'])
 
 const isAllowed = inject('isAllowed')
+
+// Context switching.
+const { contexts, loading: ctxLoading, switching, listContexts, switchContext } = useContexts()
+const ctxDropdownOpen = ref(false)
+
+onMounted(() => {
+  listContexts()
+})
+
+async function onSwitchContext(name) {
+  await switchContext(name)
+  ctxDropdownOpen.value = false
+  emit('context-switched', name)
+}
+
+function toggleCtxDropdown() {
+  ctxDropdownOpen.value = !ctxDropdownOpen.value
+  if (ctxDropdownOpen.value) listContexts()
+}
+
+// Close dropdown on outside click.
+function onDocClick(e) {
+  if (ctxDropdownOpen.value && !e.target.closest('.cluster-area')) {
+    ctxDropdownOpen.value = false
+  }
+}
+onMounted(() => document.addEventListener('click', onDocClick))
+onUnmounted(() => document.removeEventListener('click', onDocClick))
 
 // Track which sections are collapsed.
 const collapsed = ref({})
@@ -31,6 +60,7 @@ const navTree = [
       { id: 'metrics', label: 'Metrics Explorer' },
       { id: 'alerts', label: 'Alerts' },
       { id: 'topology', label: 'Topology' },
+      { id: 'vulnerabilities', label: 'Vulnerabilities' },
       { id: 'logs', label: 'Logs' },
       { id: 'anomalies', label: 'Anomaly Detection' },
       { id: 'analysis', label: 'Analysis' },
@@ -94,6 +124,7 @@ const navTree = [
       { id: 'incidents', label: 'Incident Log' },
       { id: 'audit', label: 'Config Audit' },
       { id: 'workflows', label: 'Workflows' },
+      { id: 'arguscd', label: 'ArgusCD' },
     ],
   },
   {
@@ -101,6 +132,13 @@ const navTree = [
     label: 'Knowledge',
     items: [
       { id: 'notebooks', label: 'Notebooks & S3' },
+    ],
+  },
+  {
+    id: 'admin',
+    label: 'Admin',
+    items: [
+      { id: 'setup', label: 'Setup & Tools' },
     ],
   },
 ]
@@ -117,7 +155,7 @@ const warningCount = computed(() =>
   <div class="sidebar">
     <!-- Cluster selector -->
     <div class="cluster-area">
-      <div class="cluster-selector">
+      <div class="cluster-selector" @click.stop="toggleCtxDropdown" :class="{ open: ctxDropdownOpen }">
         <div class="cluster-icon">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <circle cx="7" cy="7" r="5" stroke="white" stroke-width="1.5"/>
@@ -128,9 +166,31 @@ const warningCount = computed(() =>
           <div class="cluster-name">{{ clusterInfo?.name || '—' }}</div>
           <div class="cluster-sub">{{ clusterInfo?.nodeCount || 0 }} nodes · {{ clusterInfo?.k8sVersion || '—' }}</div>
         </div>
-        <svg class="chevron-down" width="10" height="10" viewBox="0 0 10 10">
+        <svg class="chevron-down" :class="{ flipped: ctxDropdownOpen }" width="10" height="10" viewBox="0 0 10 10">
           <path d="M3 4l2 2.5L7 4" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round"/>
         </svg>
+      </div>
+
+      <!-- Context dropdown -->
+      <div v-if="ctxDropdownOpen" class="ctx-dropdown">
+        <div class="ctx-dropdown-header">Kubernetes Contexts</div>
+        <div v-if="ctxLoading" class="ctx-loading">Loading…</div>
+        <div v-else class="ctx-list">
+          <div
+            v-for="ctx in contexts"
+            :key="ctx.name"
+            class="ctx-item"
+            :class="{ active: ctx.active, switching: switching }"
+            @click.stop="onSwitchContext(ctx.name)"
+          >
+            <div class="ctx-dot" :class="{ active: ctx.active }"></div>
+            <div class="ctx-details">
+              <div class="ctx-name">{{ ctx.name }}</div>
+              <div class="ctx-cluster">{{ ctx.cluster }}</div>
+            </div>
+            <div v-if="ctx.active" class="ctx-badge">active</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -165,7 +225,7 @@ const warningCount = computed(() =>
     <div class="ai-context-card">
       <div class="ai-context-header">
         <div class="ai-dot"></div>
-        AI Context
+        Argus Context
       </div>
       <div class="ai-context-body">
         {{ alerts.length }} active alerts · 12h window
@@ -214,7 +274,72 @@ const warningCount = computed(() =>
 .cluster-info { flex: 1; min-width: 0; }
 .cluster-name { font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cluster-sub { font-size: 10px; color: var(--text3); margin-top: 1px; }
-.chevron-down { color: var(--text3); flex-shrink: 0; }
+.chevron-down { color: var(--text3); flex-shrink: 0; transition: transform 0.2s ease; }
+.chevron-down.flipped { transform: rotate(180deg); }
+
+.cluster-selector.open { border-color: var(--accent); background: var(--bg4); }
+
+/* Context dropdown */
+.cluster-area { position: relative; }
+
+.ctx-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 10px;
+  right: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: var(--r2);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  z-index: 100;
+  overflow: hidden;
+  animation: ctx-slide 0.15s ease-out;
+}
+@keyframes ctx-slide { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+.ctx-dropdown-header {
+  padding: 8px 12px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text3);
+  border-bottom: 1px solid var(--border);
+}
+.ctx-loading { padding: 12px; font-size: 11px; color: var(--text3); }
+
+.ctx-list { max-height: 200px; overflow-y: auto; }
+
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.ctx-item:hover { background: var(--bg4); }
+.ctx-item.active { background: rgba(79,142,247,0.08); }
+.ctx-item.switching { opacity: 0.5; pointer-events: none; }
+
+.ctx-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+.ctx-dot.active { background: var(--accent); }
+
+.ctx-details { flex: 1; min-width: 0; }
+.ctx-name { font-size: 12px; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctx-cluster { font-size: 10px; color: var(--text3); margin-top: 1px; }
+
+.ctx-badge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  background: rgba(79,142,247,0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
 
 /* Scrollable nav */
 .nav-scroll {

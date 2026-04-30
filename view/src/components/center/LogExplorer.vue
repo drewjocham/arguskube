@@ -1,21 +1,102 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useLogs } from '../../composables/useWails'
 
-const fakeLogs = ref([
-  { time: '2026-04-29 09:12:42.786', message: '172.70.111.27 - - [29/Apr/2026:07:12:42 +0000] "POST /select/logsql/field_names HTTP/2.0" 200 774 "-" "-" 4048 "logging-logs-ingress" 4ms' },
-  { time: '2026-04-29 09:12:41.956', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/stream_field_values HTTP/2.0" 200 42 "-" "-" 4047 "logging-logs-ingress" 6ms' },
-  { time: '2026-04-29 09:12:41.955', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/stream_field_values HTTP/2.0" 200 72 "-" "-" 4046 "logging-logs-ingress" 6ms' },
-  { time: '2026-04-29 09:12:41.942', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/hits HTTP/2.0" 200 281 "-" "-" 4045 "logging-logs-ingress" 2ms' },
-  { time: '2026-04-29 09:12:41.724', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/stream_field_names HTTP/2.0" 200 149 "-" "-" 4043 "logging-logs-ingress" 8ms' },
-  { time: '2026-04-29 09:12:41.721', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/query HTTP/2.0" 200 3038 "-" "-" 4044 "logging-logs-ingress" 2ms' },
-  { time: '2026-04-29 09:12:41.403', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/field_names HTTP/2.0" 200 626 "-" "-" 4042 "logging-logs-ingress" 2ms' },
-])
+const { entries: backendLogs, histogram: backendHistogram, fields: backendFields, total, loading: logLoading, queryTime: backendQueryTime, error: logError, queryLogs } = useLogs()
 
-const histogramData = [
+// Fallback mock logs for dev mode.
+const mockLogs = [
+  { time: '2026-04-29 09:12:42.786', message: '172.70.111.27 - - [29/Apr/2026:07:12:42 +0000] "POST /select/logsql/field_names HTTP/2.0" 200 774 "-" "-" 4048 "logging-logs-ingress" 4ms', pod: 'traefik-abc12', namespace: 'traefik', container: 'traefik', node: 'node-1' },
+  { time: '2026-04-29 09:12:41.956', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/stream_field_values HTTP/2.0" 200 42 "-" "-" 4047 "logging-logs-ingress" 6ms', pod: 'traefik-abc12', namespace: 'traefik', container: 'traefik', node: 'node-1' },
+  { time: '2026-04-29 09:12:41.955', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/stream_field_values HTTP/2.0" 200 72 "-" "-" 4046 "logging-logs-ingress" 6ms', pod: 'traefik-abc12', namespace: 'traefik', container: 'traefik', node: 'node-1' },
+  { time: '2026-04-29 09:12:41.942', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/hits HTTP/2.0" 200 281 "-" "-" 4045 "logging-logs-ingress" 2ms', pod: 'traefik-def34', namespace: 'traefik', container: 'traefik', node: 'node-2' },
+  { time: '2026-04-29 09:12:41.724', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/stream_field_names HTTP/2.0" 200 149 "-" "-" 4043 "logging-logs-ingress" 8ms', pod: 'traefik-def34', namespace: 'traefik', container: 'traefik', node: 'node-2' },
+  { time: '2026-04-29 09:12:41.721', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/query HTTP/2.0" 200 3038 "-" "-" 4044 "logging-logs-ingress" 2ms', pod: 'traefik-def34', namespace: 'traefik', container: 'traefik', node: 'node-2' },
+  { time: '2026-04-29 09:12:41.403', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/field_names HTTP/2.0" 200 626 "-" "-" 4042 "logging-logs-ingress" 2ms', pod: 'traefik-abc12', namespace: 'traefik', container: 'traefik', node: 'node-1' },
+]
+
+const mockHistogram = [
   0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 2, 0, 0, 0, 0,
   1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 14, 12
 ]
+
+// Computed: use backend data if available, else mock.
+const allLogs = computed(() => backendLogs.value.length > 0 ? backendLogs.value : mockLogs)
+const histogramData = computed(() => backendHistogram.value.length > 0 ? backendHistogram.value : mockHistogram)
+
+// Query and filter state.
+const query = ref('*')
+const limit = ref(50)
+const activeTab = ref('group')
+const expandedRow = ref(null)
+const namespaceFilter = ref('')
+
+const filters = ref([])
+
+// Stream field sidebar — dynamically built from backend fields + log data.
+const fieldSections = computed(() => {
+  const logs = allLogs.value
+  const nsMap = {}
+  const podMap = {}
+  const containerMap = {}
+
+  for (const l of logs) {
+    if (l.namespace) nsMap[l.namespace] = (nsMap[l.namespace] || 0) + 1
+    if (l.pod) podMap[l.pod] = (podMap[l.pod] || 0) + 1
+    if (l.container) containerMap[l.container] = (containerMap[l.container] || 0) + 1
+  }
+
+  return {
+    'kubernetes.pod_namespace': {
+      open: true,
+      items: Object.entries(nsMap).map(([k, v]) => ({ label: `${k} (${v})`, checked: false })),
+    },
+    'kubernetes.pod_name': {
+      open: false,
+      items: Object.entries(podMap).map(([k, v]) => ({ label: `${k} (${v})`, checked: false })),
+    },
+    'kubernetes.container_name': {
+      open: false,
+      items: Object.entries(containerMap).map(([k, v]) => ({ label: `${k} (${v})`, checked: false })),
+    },
+  }
+})
+
+// Filter actions.
+function removeFilter(index) {
+  filters.value.splice(index, 1)
+}
+
+function clearFilters() {
+  filters.value = []
+}
+
+function copyFilters() {
+  const text = filters.value.map(f => `{${f.field}="${f.value}"}`).join(' ')
+  navigator.clipboard.writeText(text)
+}
+
+// Execute query.
+const executing = computed(() => logLoading.value)
+const queryTime = computed(() => backendQueryTime.value)
+
+async function executeQuery() {
+  await queryLogs(query.value, namespaceFilter.value, limit.value)
+}
+
+// Log row expand.
+function toggleLogRow(index) {
+  expandedRow.value = expandedRow.value === index ? null : index
+}
+
+// Filtered logs view.
+const fakeLogs = computed(() => allLogs.value.slice(0, limit.value))
+
+// Initial load.
+onMounted(() => {
+  queryLogs('*', '', limit.value)
+})
 </script>
 
 <template>
@@ -29,33 +110,16 @@ const histogramData = [
         </div>
       </div>
 
-      <div class="field-group">
-        <div class="field-header">
-          <div class="field-icon">-</div>
-          kubernetes.container_name <span class="count">(49)</span>
-          <span class="field-badge">1</span>
+      <div v-for="(section, key) in fieldSections" :key="key" class="field-group">
+        <div class="field-header" @click="toggleFieldSection(key)">
+          <div class="field-icon">{{ section.open ? '-' : '+' }}</div>
+          {{ key }} <span class="count">(49)</span>
+          <span v-if="section.items.some(i => i.checked)" class="field-badge">{{ section.items.filter(i => i.checked).length }}</span>
         </div>
-        <div class="field-items">
-          <label class="field-checkbox"><input type="checkbox" /> traefik-forward-auth (32)</label>
-          <label class="field-checkbox"><input type="checkbox" checked /> traefik (26)</label>
-        </div>
-      </div>
-
-      <div class="field-group">
-        <div class="field-header">
-          <div class="field-icon">+</div>
-          kubernetes.pod_name <span class="count">(49)</span>
-        </div>
-      </div>
-
-      <div class="field-group">
-        <div class="field-header">
-          <div class="field-icon">-</div>
-          kubernetes.pod_namespace <span class="count">(49)</span>
-          <span class="field-badge">All</span>
-        </div>
-        <div class="field-items">
-          <label class="field-checkbox"><input type="checkbox" checked /> traefik (26)</label>
+        <div v-if="section.open && section.items.length" class="field-items">
+          <label v-for="(item, i) in section.items" :key="i" class="field-checkbox">
+            <input type="checkbox" v-model="item.checked" /> {{ item.label }}
+          </label>
         </div>
       </div>
     </div>
@@ -67,30 +131,32 @@ const histogramData = [
       <div class="query-area">
         <div class="query-row">
           <div class="query-input-wrap">
-            <span class="input-label">Query (2ms)</span>
-            <input type="text" class="query-input" value="*" />
+            <span class="input-label">Query ({{ queryTime }}ms)</span>
+            <input type="text" class="query-input" v-model="query" @keydown.enter="executeQuery" />
           </div>
           <div class="limit-input-wrap">
             <span class="input-label">Limit</span>
-            <input type="number" class="limit-input" value="50" />
+            <input type="number" class="limit-input" v-model.number="limit" />
           </div>
         </div>
 
         <div class="action-row">
           <div class="action-left">
-            <button class="action-btn"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 3h8M4 6h4M5 9h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Filters</button>
-            <button class="action-btn">Clear filters</button>
-            <button class="action-btn">Copy filters</button>
+            <button class="action-btn" @click="filters.length ? clearFilters() : null">
+              <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 3h8M4 6h4M5 9h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Filters ({{ filters.length }})
+            </button>
+            <button class="action-btn" @click="clearFilters">Clear filters</button>
+            <button class="action-btn" @click="copyFilters">Copy filters</button>
           </div>
           <div class="action-right">
-            <button class="action-btn">History</button>
-            <button class="action-btn primary">▶ Execute</button>
+            <button class="action-btn primary" :class="{ executing }" @click="executeQuery">{{ executing ? '⏳ Running…' : '▶ Execute' }}</button>
           </div>
         </div>
 
-        <div class="active-filters">
-          <div class="filter-tag">{kubernetes.pod_namespace="traefik"} <span class="x">×</span></div>
-          <div class="filter-tag">{kubernetes.container_name="traefik"} <span class="x">×</span></div>
+        <div class="active-filters" v-if="filters.length">
+          <div v-for="(f, i) in filters" :key="i" class="filter-tag">
+            {{ '{' + f.field + '="' + f.value + '"}' }} <span class="x" @click="removeFilter(i)">×</span>
+          </div>
         </div>
       </div>
 
@@ -128,27 +194,42 @@ const histogramData = [
       <div class="log-table-area">
         <div class="table-toolbar">
           <div class="toolbar-tabs">
-            <div class="toolbar-tab active">Group</div>
-            <div class="toolbar-tab">Table</div>
-            <div class="toolbar-tab">JSON</div>
+            <div class="toolbar-tab" :class="{ active: activeTab === 'group' }" @click="activeTab = 'group'">Group</div>
+            <div class="toolbar-tab" :class="{ active: activeTab === 'table' }" @click="activeTab = 'table'">Table</div>
+            <div class="toolbar-tab" :class="{ active: activeTab === 'json' }" @click="activeTab = 'json'">JSON</div>
           </div>
           <div class="toolbar-stats">
-            Total logs returned: <b>49</b>
+            Total logs returned: <b>{{ fakeLogs.length }}</b>
           </div>
         </div>
-        
-        <div class="group-header">
+
+        <div v-if="activeTab === 'group'" class="group-header">
           <b>1. Group by "_stream"</b>
-          <span class="group-tag">kubernetes.container_name="traefik"</span>
-          <span class="group-tag">kubernetes.pod_namespace="traefik"</span>
+          <span v-for="f in filters" :key="f.field" class="group-tag">{{ f.field }}="{{ f.value }}"</span>
+          <span v-if="!filters.length" class="group-tag">all streams</span>
         </div>
 
         <div class="log-list">
-          <div v-for="(log, i) in fakeLogs" :key="i" class="log-row">
-            <div class="log-expander">›</div>
-            <div class="log-time">{{ log.time }}</div>
-            <div class="log-message">{{ log.message }}</div>
-          </div>
+          <!-- Group / Table view -->
+          <template v-if="activeTab !== 'json'">
+            <div v-for="(log, i) in fakeLogs" :key="i">
+              <div class="log-row" @click="toggleLogRow(i)">
+                <div class="log-expander" :class="{ expanded: expandedRow === i }">›</div>
+                <div class="log-time">{{ log.time }}</div>
+                <div class="log-message">{{ log.message }}</div>
+              </div>
+              <div v-if="expandedRow === i" class="log-expanded">
+                <div class="expanded-field"><span class="ef-key">_time</span><span class="ef-val">{{ log.time }}</span></div>
+                <div class="expanded-field"><span class="ef-key">_msg</span><span class="ef-val">{{ log.message }}</span></div>
+                <div class="expanded-field"><span class="ef-key">kubernetes.container_name</span><span class="ef-val">traefik</span></div>
+                <div class="expanded-field"><span class="ef-key">kubernetes.pod_namespace</span><span class="ef-val">traefik</span></div>
+              </div>
+            </div>
+          </template>
+          <!-- JSON view -->
+          <template v-else>
+            <pre class="json-view">{{ JSON.stringify(fakeLogs, null, 2) }}</pre>
+          </template>
         </div>
       </div>
     </div>
@@ -423,7 +504,9 @@ const histogramData = [
   color: var(--text3);
   cursor: pointer;
   user-select: none;
+  transition: transform 0.15s;
 }
+.log-expander.expanded { transform: rotate(90deg); color: var(--accent); }
 .log-time {
   width: 170px;
   color: var(--text3);
@@ -434,4 +517,34 @@ const histogramData = [
   color: var(--text2);
   word-break: break-all;
 }
+.log-row { cursor: pointer; }
+
+/* Expanded log row */
+.log-expanded {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px 8px 36px;
+}
+.expanded-field {
+  display: flex;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 11px;
+  font-family: var(--mono);
+}
+.ef-key { color: var(--accent2); min-width: 200px; flex-shrink: 0; }
+.ef-val { color: var(--text2); word-break: break-all; }
+
+/* JSON view */
+.json-view {
+  padding: 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+/* Execute button states */
+.action-btn.executing { opacity: 0.7; pointer-events: none; }
 </style>

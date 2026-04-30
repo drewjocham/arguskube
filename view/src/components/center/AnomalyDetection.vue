@@ -10,7 +10,6 @@ onMounted(() => {
   connectAgent('all')
 })
 
-// --- Dashboard State ---
 const sensitivitySlider = ref(30)
 const baselineWindow = ref(7)
 const metricType = ref('cpu')

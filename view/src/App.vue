@@ -1,26 +1,28 @@
 <script setup>
 import { ref, provide } from 'vue'
-import { useClusterInfo, useMetrics, useAlerts, useDiagnostics, useFeatures } from './composables/useWails'
+import { useAppMode, useClusterInfo, useMetrics, useAlerts, useDiagnostics, useFeatures } from './composables/useWails'
 import { useWailsEvent, Events } from './composables/useEvents'
 import Titlebar from './components/titlebar/Titlebar.vue'
 import Sidebar from './components/sidebar/Sidebar.vue'
 import CenterPanel from './components/center/CenterPanel.vue'
 import DiagnosticsPanel from './components/diagnostics/DiagnosticsPanel.vue'
 import TerminalView from './components/terminal/TerminalView.vue'
+import ProDesktopApp from './components/desktop/ProDesktopApp.vue'
 
-const { info: clusterInfo } = useClusterInfo()
-const { metrics } = useMetrics()
-const { alerts } = useAlerts()
+const { info: clusterInfo, refresh: refreshClusterInfo } = useClusterInfo()
+const { metrics, refresh: refreshMetrics } = useMetrics()
+const { alerts, refresh: refreshAlerts } = useAlerts()
 const { bundle, loading: diagLoading, error: diagError, diagnose } = useDiagnostics()
 const { tier, isAllowed } = useFeatures()
+const { mode } = useAppMode()
 
 const logLines = ref([])
 const selectedAlert = ref(null)
 const activeNav = ref('alerts')
 const terminalOpen = ref(false)
 const terminalHeight = ref(220)
+const popOutOpen = ref(false)
 
-// Real-time event listeners from Go backend.
 useWailsEvent(Events.ALERT_UPDATE, (data) => {
   if (data) alerts.value = data
 })
@@ -43,6 +45,12 @@ function onAlertSelect(alert) {
   if (isAllowed('ai_diagnostics')) {
     diagnose(alert.id)
   }
+}
+
+function onContextSwitched() {
+  refreshClusterInfo()
+  refreshMetrics()
+  refreshAlerts()
 }
 
 function toggleTerminal() {
@@ -80,54 +88,63 @@ provide('isAllowed', isAllowed)
 </script>
 
 <template>
-  <Titlebar :clusterInfo="clusterInfo" @toggle-terminal="toggleTerminal" :terminalOpen="terminalOpen" />
-  <div class="main">
-    <Sidebar
-      :clusterInfo="clusterInfo"
-      :alerts="alerts"
-      :activeNav="activeNav"
-      @update:activeNav="activeNav = $event"
-    />
-    <div class="center-area">
-      <div class="center-content">
-        <CenterPanel
-          :metrics="metrics"
-          :alerts="alerts"
-          :selectedAlert="selectedAlert"
-          :logLines="logLines"
-          :activeNav="activeNav"
-          @select-alert="onAlertSelect"
-        />
-        <DiagnosticsPanel
-          :selectedAlert="selectedAlert"
-          :bundle="bundle"
-          :loading="diagLoading"
-          :error="diagError"
-          @diagnose="onAlertSelect"
-        />
-      </div>
+  <template v-if="mode === 'terminal'">
+    <ProDesktopApp standalone @close="window.close()" />
+  </template>
 
-      <!-- Terminal panel -->
-      <template v-if="terminalOpen">
-        <div class="terminal-divider" @mousedown="onDragStart">
-          <div class="divider-handle"></div>
+  <template v-else>
+    <Titlebar :clusterInfo="clusterInfo" @toggle-terminal="toggleTerminal" @pop-out="popOutOpen = true" :terminalOpen="terminalOpen" />
+    <div class="main">
+      <Sidebar
+        :clusterInfo="clusterInfo"
+        :alerts="alerts"
+        :activeNav="activeNav"
+        @update:activeNav="activeNav = $event"
+        @context-switched="onContextSwitched"
+      />
+      <div class="center-area">
+        <div class="center-content">
+          <CenterPanel
+            :metrics="metrics"
+            :alerts="alerts"
+            :selectedAlert="selectedAlert"
+            :logLines="logLines"
+            :activeNav="activeNav"
+            @select-alert="onAlertSelect"
+          />
+          <DiagnosticsPanel
+            :selectedAlert="selectedAlert"
+            :bundle="bundle"
+            :loading="diagLoading"
+            :error="diagError"
+            @diagnose="onAlertSelect"
+          />
         </div>
-        <div class="terminal-panel" :style="{ height: terminalHeight + 'px' }">
-          <div class="terminal-header">
-            <div class="terminal-tabs">
-              <div class="terminal-tab active">Terminal</div>
-            </div>
-            <button class="terminal-close" @click="toggleTerminal">
-              <svg width="10" height="10" viewBox="0 0 10 10">
-                <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-              </svg>
-            </button>
+
+        <!-- Terminal panel -->
+        <template v-if="terminalOpen">
+          <div class="terminal-divider" @mousedown="onDragStart">
+            <div class="divider-handle"></div>
           </div>
-          <TerminalView :visible="terminalOpen" />
-        </div>
-      </template>
+          <div class="terminal-panel" :style="{ height: terminalHeight + 'px' }">
+            <div class="terminal-header">
+              <div class="terminal-tabs">
+                <div class="terminal-tab active">Terminal</div>
+              </div>
+              <button class="terminal-close" @click="toggleTerminal">
+                <svg width="10" height="10" viewBox="0 0 10 10">
+                  <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <TerminalView :visible="terminalOpen" />
+          </div>
+        </template>
+      </div>
     </div>
-  </div>
+    
+    <ProDesktopApp v-if="popOutOpen" @close="popOutOpen = false" />
+  </template>
 </template>
 
 <style scoped>

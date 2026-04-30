@@ -1,9 +1,24 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { QueryTimeSeriesMetrics } from '../../wailsjs/go/pkg/App'
 
 const timeRange = ref('Last 1 hour')
+const isLive = ref(false)
+let liveInterval = null
 
-// Mock chart points
+function toggleLive() {
+  isLive.value = !isLive.value
+  if (isLive.value) {
+    refreshAll(true)
+    liveInterval = setInterval(() => {
+      refreshAll(true)
+    }, 1500)
+  } else {
+    if (liveInterval) clearInterval(liveInterval)
+  }
+}
+
+// Helper for generating fallback mock points if API fails
 const generateWave = (points, amp, freq, offset) => {
   const res = []
   for (let i = 0; i < points; i++) {
@@ -34,33 +49,73 @@ const panels = ref([
     id: 1, type: 'area', title: 'CPU Utilization', val: '42%',
     query: 'sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)',
     color: 'var(--accent)', bg: 'rgba(79, 142, 247, 0.15)',
-    data: generateWave(100, 20, 0.1, 0), editing: false, span: 1
+    data: [], editing: false, span: 1, loading: true
   },
   {
     id: 2, type: 'area', title: 'Memory Usage', val: '8.4 GB',
     query: 'sum(container_memory_working_set_bytes) by (pod)',
     color: 'var(--purple)', bg: 'rgba(167, 139, 250, 0.15)',
-    data: generateWave(100, 10, 0.05, 2), editing: false, span: 1
+    data: [], editing: false, span: 1, loading: true
   },
   {
     id: 3, type: 'network', title: 'Network I/O',
     query: 'rate(container_network_receive_bytes_total[5m])',
-    rxData: generateWave(100, 30, 0.2, 1), txData: generateWave(100, 15, 0.2, 1.5),
-    editing: false, span: 2
+    rxData: [], txData: [],
+    editing: false, span: 2, loading: true
   },
   {
     id: 4, type: 'stat', title: 'Disk IOPS',
     query: 'rate(container_fs_reads_total[5m])',
     reads: '4,281', writes: '1,092',
-    editing: false, span: 1
+    editing: false, span: 1, loading: false
   },
   {
     id: 5, type: 'gauge', title: 'Active Pods',
     query: 'count(kube_pod_info)',
     val: '124', limit: '200',
-    editing: false, span: 1
+    editing: false, span: 1, loading: false
   }
 ])
+
+async function refreshPanelData(p, isBackground = false) {
+  if (!isBackground) p.loading = true
+  try {
+    if (p.type === 'area' || p.type === 'line' || p.type === 'bar') {
+      const data = await QueryTimeSeriesMetrics(p.query, timeRange.value)
+      p.data = data && data.length ? data : generateWave(100, 20, 0.1, 0)
+    } else if (p.type === 'network') {
+      const rx = await QueryTimeSeriesMetrics(`sum(${p.query})`, timeRange.value)
+      const tx = await QueryTimeSeriesMetrics(`sum(rate(container_network_transmit_bytes_total[5m]))`, timeRange.value)
+      p.rxData = rx && rx.length ? rx : generateWave(100, 30, 0.2, 1)
+      p.txData = tx && tx.length ? tx : generateWave(100, 15, 0.2, 1.5)
+    }
+  } catch (err) {
+    console.error(`Failed to fetch metrics for ${p.title}:`, err)
+    if (p.type === 'area' || p.type === 'line' || p.type === 'bar') p.data = generateWave(100, 20, 0.1, 0)
+    if (p.type === 'network') {
+      p.rxData = generateWave(100, 30, 0.2, 1)
+      p.txData = generateWave(100, 15, 0.2, 1.5)
+    }
+  } finally {
+    if (!isBackground) p.loading = false
+  }
+}
+
+async function refreshAll(isBackground = false) {
+  await Promise.all(panels.value.map(p => refreshPanelData(p, isBackground)))
+}
+
+onMounted(() => {
+  refreshAll()
+})
+
+onUnmounted(() => {
+  if (liveInterval) clearInterval(liveInterval)
+})
+
+watch(timeRange, () => {
+  refreshAll()
+})
 
 function addPanel() {
   panels.value.push({
@@ -73,6 +128,7 @@ function addPanel() {
 
 function savePanel(p) {
   p.editing = false
+  refreshPanelData(p)
 }
 
 const expandedPanel = ref(null)
@@ -100,6 +156,12 @@ function toggleExpand(p) {
         Cluster Overview
       </div>
       <div class="db-controls">
+        <button class="db-btn outline live-btn" :class="{ 'is-live': isLive }" @click="toggleLive">
+          <span v-if="isLive" class="live-dot pulse"></span>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          {{ isLive ? 'Live Stream' : 'Live' }}
+        </button>
+        <div class="db-divider"></div>
         <button class="db-btn outline" @click="addPanel">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>
@@ -160,6 +222,17 @@ function toggleExpand(p) {
             <input type="text" v-model="p.title" class="edit-input" />
           </div>
           <div class="edit-group">
+            <label>Graph Type</label>
+            <select v-model="p.type" class="edit-input">
+              <option value="area">Area Chart</option>
+              <option value="line">Line Chart</option>
+              <option value="bar">Bar Chart</option>
+              <option value="network">Network Dual-Axis</option>
+              <option value="stat">Stat Metric</option>
+              <option value="gauge">Gauge</option>
+            </select>
+          </div>
+          <div class="edit-group">
             <label>PromQL Query A</label>
             <textarea v-model="p.query" class="edit-input font-mono" rows="3"></textarea>
           </div>
@@ -172,14 +245,43 @@ function toggleExpand(p) {
         <div class="panel-body" v-else>
           
           <template v-if="p.type === 'area'">
-            <svg viewBox="0 0 400 100" preserveAspectRatio="none" class="panel-svg">
-              <path :d="pointsToArea(p.data, 400, 100)" :fill="p.bg" />
-              <path :d="pointsToPath(p.data, 400, 100)" fill="none" :stroke="p.color" stroke-width="1.5" />
+            <div v-if="p.loading" class="loading-overlay">
+              <div class="loader"></div>
+            </div>
+            <svg v-else viewBox="0 0 400 100" preserveAspectRatio="none" class="panel-svg">
+              <path :d="pointsToArea(p.data, 400, 100)" :fill="p.bg || 'rgba(79, 142, 247, 0.15)'" />
+              <path :d="pointsToPath(p.data, 400, 100)" fill="none" :stroke="p.color || 'var(--accent)'" stroke-width="1.5" />
+            </svg>
+          </template>
+
+          <template v-else-if="p.type === 'line'">
+            <div v-if="p.loading" class="loading-overlay">
+              <div class="loader"></div>
+            </div>
+            <svg v-else viewBox="0 0 400 100" preserveAspectRatio="none" class="panel-svg">
+              <path :d="pointsToPath(p.data, 400, 100)" fill="none" :stroke="p.color || 'var(--teal)'" stroke-width="2" />
+            </svg>
+          </template>
+
+          <template v-else-if="p.type === 'bar'">
+            <div v-if="p.loading" class="loading-overlay">
+              <div class="loader"></div>
+            </div>
+            <svg v-else viewBox="0 0 400 100" preserveAspectRatio="none" class="panel-svg">
+              <rect v-for="(val, i) in p.data" :key="i" 
+                    :x="i * (400 / p.data.length)" 
+                    :y="100 - (val / 100 * 100)" 
+                    :width="(400 / p.data.length) - 1" 
+                    :height="(val / 100 * 100)" 
+                    :fill="p.color || 'var(--purple)'" />
             </svg>
           </template>
 
           <template v-else-if="p.type === 'network'">
-            <svg viewBox="0 0 800 150" preserveAspectRatio="none" class="panel-svg">
+            <div v-if="p.loading" class="loading-overlay">
+              <div class="loader"></div>
+            </div>
+            <svg v-else viewBox="0 0 800 150" preserveAspectRatio="none" class="panel-svg">
               <line x1="0" y1="30" x2="800" y2="30" stroke="var(--border)" stroke-width="1" stroke-dasharray="4" />
               <line x1="0" y1="75" x2="800" y2="75" stroke="var(--border)" stroke-width="1" stroke-dasharray="4" />
               <line x1="0" y1="120" x2="800" y2="120" stroke="var(--border)" stroke-width="1" stroke-dasharray="4" />
@@ -469,5 +571,57 @@ function toggleExpand(p) {
   width: 100%;
   font-size: 11px;
   color: var(--text3);
+}
+
+/* Loading state */
+.loading-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(24, 27, 31, 0.7);
+  z-index: 5;
+}
+.loader {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(79, 142, 247, 0.2);
+  border-bottom-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.db-divider {
+  width: 1px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+.live-btn {
+  color: var(--text2);
+}
+.live-btn.is-live {
+  background: rgba(45, 212, 191, 0.15);
+  border-color: rgba(45, 212, 191, 0.3);
+  color: var(--teal);
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--teal);
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 4px;
+}
+.pulse {
+  animation: pulse-dot 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 </style>

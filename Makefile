@@ -2,11 +2,11 @@
 
 # Development — hot-reload both Go and Vue
 dev:
-	wails dev
+	cd backend && wails dev
 
 # Production build
 build:
-	wails build
+	cd backend && wails build
 
 # Install all dependencies
 deps: frontend-deps

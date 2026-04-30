@@ -6,39 +6,31 @@ import StarterKit from '@tiptap/starter-kit'
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
 import { common, createLowlight } from 'lowlight'
 import CodeBlockComponent from './CodeBlockComponent.vue'
+import { useNotebooks } from '../../composables/useWails'
 
-const activeFile = ref('getting_started.md')
+const { files, loading, saving, synced, error, listFiles, getFile, saveFile, deleteFile, createFolder, testConnection, addFileToTree, moveFile } = useNotebooks()
+
+const activeFile = ref(null)
+const activeFilePath = ref(null)
 const s3ConfigOpen = ref(false)
+const testResult = ref(null)
+const testLoading = ref(false)
 
 const lowlight = createLowlight(common)
 
-// S3 connection state
+// S3 connection state (display-only — actual config is in Go config.go)
 const s3Config = ref({
-  bucket: 'kubewatcher-docs',
-  endpoint: 's3.us-east-1.amazonaws.com',
-  accessKey: 'AKIA...',
-  secretKey: '••••••••••••••••'
+  bucket: '',
+  endpoint: '',
+  accessKey: '',
+  secretKey: ''
 })
 
-// Mock files tree
-const files = ref([
-  { id: '1', name: 'Incidents', type: 'folder', open: true, children: [
-    { id: 'f1', name: '2024-03-01_db_outage.md', type: 'file' },
-    { id: 'f2', name: 'post_mortems.md', type: 'file' }
-  ]},
-  { id: '2', name: 'Runbooks', type: 'folder', open: false, children: [
-    { id: 'f3', name: 'redis_oom.md', type: 'file' }
-  ]},
-  { id: 'f4', name: 'getting_started.md', type: 'file' },
-  { id: 'f5', name: 'architecture.md', type: 'file' }
-])
+// Track open/closed state for folders in the tree
+const folderState = ref({})
 
-// Mock file contents
-const fileContents = ref({
-  'getting_started.md': `# KubeWatcher Knowledge Base\n\nWelcome to your connected S3 notebook.\n\nThis works exactly like **Obsidian** or **Notion**. All files you create here are backed by the configured S3 bucket. You can use this space to store incident post-mortems, custom runbook documentation, and team notes.\n\n## Quick Start\n1. Type \`\`\` and press enter to create a beautiful code block.\n2. Create new folders or markdown files using the sidebar.\n3. Everything auto-saves!`,
-  'architecture.md': `# Architecture\n\nOur SaaS runs in a hybrid model.\n\n- **Local Desktop:** Stores config locally\n- **Agent Pod:** Edge ML inference\n`,
-  '2024-03-01_db_outage.md': `# DB Outage Post-Mortem\n\nThe primary replica went out of memory...`
-})
+// Auto-save debounce timer
+let saveTimer = null
 
 const editor = useEditor({
   extensions: [
@@ -51,42 +43,78 @@ const editor = useEditor({
   ],
   content: '',
   onUpdate: ({ editor }) => {
-    // In a real app we might export to Markdown, but saving HTML is fine for Notion-like UI
-    fileContents.value[activeFile.value] = editor.getHTML()
+    if (!activeFilePath.value) return
+    // Debounce auto-save: wait 800ms after last keystroke
+    if (saveTimer) clearTimeout(saveTimer)
+    synced.value = false
+    saveTimer = setTimeout(() => {
+      saveFile(activeFilePath.value, editor.getHTML())
+    }, 800)
   }
 })
 
-watch(activeFile, (newFile) => {
-  if (editor.value) {
-    const content = fileContents.value[newFile] || ''
-    // If it looks like raw markdown (starts with #), compile it first
-    if (content.startsWith('#') || content.includes('```')) {
-      editor.value.commands.setContent(marked.parse(content))
+// Load file content when selection changes
+watch(activeFilePath, async (newPath) => {
+  if (!newPath || !editor.value) return
+  try {
+    const content = await getFile(newPath)
+    if (content) {
+      // If raw markdown, parse it to HTML for TipTap
+      if (content.startsWith('#') || content.startsWith('- ') || content.includes('```')) {
+        editor.value.commands.setContent(marked.parse(content))
+      } else {
+        editor.value.commands.setContent(content)
+      }
     } else {
-      editor.value.commands.setContent(content)
+      editor.value.commands.setContent('')
     }
+  } catch (e) {
+    // New file — initialize with heading
+    const title = newPath.split('/').pop().replace('.md', '')
+    const initial = `# ${title}\n\n`
+    editor.value.commands.setContent(marked.parse(initial))
+    saveFile(newPath, initial)
   }
 })
 
-onMounted(() => {
-  if (editor.value) {
-    const content = fileContents.value[activeFile.value] || ''
-    editor.value.commands.setContent(marked.parse(content))
+onMounted(async () => {
+  await listFiles()
+  // Auto-select first file if available
+  const first = findFirstFile(files.value)
+  if (first) {
+    selectFile(first.name, first.path)
   }
 })
 
 onBeforeUnmount(() => {
-  if (editor.value) {
-    editor.value.destroy()
-  }
+  if (editor.value) editor.value.destroy()
+  if (saveTimer) clearTimeout(saveTimer)
 })
 
-function selectFile(filename) {
-  if (!fileContents.value[filename]) {
-    fileContents.value[filename] = '# ' + filename.replace('.md', '') + '\n\n'
+function findFirstFile(entries) {
+  for (const entry of entries) {
+    if (entry.type === 'file') return entry
+    if (entry.children?.length) {
+      const found = findFirstFile(entry.children)
+      if (found) return found
+    }
   }
-  activeFile.value = filename
+  return null
+}
+
+function selectFile(name, path) {
+  activeFile.value = name
+  activeFilePath.value = path
   s3ConfigOpen.value = false
+}
+
+function toggleFolder(id) {
+  folderState.value[id] = !folderState.value[id]
+}
+
+function isFolderOpen(id) {
+  // Default to open
+  return folderState.value[id] !== false
 }
 
 function openS3Config() {
@@ -95,6 +123,94 @@ function openS3Config() {
 
 function saveS3Config() {
   s3ConfigOpen.value = false
+}
+
+async function handleTestConnection() {
+  testLoading.value = true
+  testResult.value = null
+  const result = await testConnection()
+  testResult.value = result
+  testLoading.value = false
+}
+
+async function handleCreateFile() {
+  const name = prompt('File name (e.g. my-notes.md):')
+  if (!name) return
+  const path = name.endsWith('.md') ? name : name + '.md'
+  const displayName = path.split('/').pop()
+  const initial = `# ${displayName.replace('.md', '')}\n\n`
+  await saveFile(path, initial)
+  addFileToTree(path, displayName)
+  selectFile(displayName, path)
+}
+
+async function handleCreateFolder() {
+  const name = prompt('Folder name:')
+  if (!name) return
+  await createFolder(name)
+}
+
+async function handleDeleteFile() {
+  if (!activeFilePath.value) return
+  if (!confirm(`Delete ${activeFile.value}?`)) return
+  await deleteFile(activeFilePath.value)
+  activeFile.value = null
+  activeFilePath.value = null
+  if (editor.value) editor.value.commands.setContent('')
+}
+
+// --- Drag-and-drop ---
+const dragOverFolder = ref(null)
+
+function onDragStart(e, item) {
+  e.dataTransfer.setData('text/plain', item.path)
+  e.dataTransfer.effectAllowed = 'move'
+}
+
+function onDragOverFolder(e, folder) {
+  e.preventDefault()
+  e.dataTransfer.dropEffect = 'move'
+  dragOverFolder.value = folder.id
+}
+
+function onDragLeaveFolder() {
+  dragOverFolder.value = null
+}
+
+async function onDropOnFolder(e, folder) {
+  e.preventDefault()
+  dragOverFolder.value = null
+  const sourcePath = e.dataTransfer.getData('text/plain')
+  if (!sourcePath) return
+  // Don't drop onto itself or into the folder it's already in.
+  const fileName = sourcePath.split('/').pop()
+  const newPath = folder.path + '/' + fileName
+  if (sourcePath === newPath) return
+  await moveFile(sourcePath, newPath)
+  // If active file was moved, update the active path.
+  if (activeFilePath.value === sourcePath) {
+    activeFilePath.value = newPath
+    activeFile.value = fileName
+  }
+  // Refresh tree.
+  await listFiles()
+}
+
+async function onDropOnRoot(e) {
+  e.preventDefault()
+  dragOverFolder.value = null
+  const sourcePath = e.dataTransfer.getData('text/plain')
+  if (!sourcePath) return
+  const fileName = sourcePath.split('/').pop()
+  // Already at root level.
+  if (!sourcePath.includes('/')) return
+  const newPath = fileName
+  await moveFile(sourcePath, newPath)
+  if (activeFilePath.value === sourcePath) {
+    activeFilePath.value = newPath
+    activeFile.value = fileName
+  }
+  await listFiles()
 }
 </script>
 
@@ -105,41 +221,65 @@ function saveS3Config() {
       <div class="nb-header">
         <div class="nb-vault">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-          {{ s3Config.bucket }}
+          Notebooks
         </div>
         <div class="nb-actions">
-          <button class="nb-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg></button>
-          <button class="nb-icon-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="12" y1="11" x2="12" y2="17"></line><line x1="9" y1="14" x2="15" y2="14"></line></svg></button>
+          <button class="nb-icon-btn" title="New file" @click="handleCreateFile">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+          </button>
+          <button class="nb-icon-btn" title="New folder" @click="handleCreateFolder">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="12" y1="11" x2="12" y2="17"></line><line x1="9" y1="14" x2="15" y2="14"></line></svg>
+          </button>
         </div>
       </div>
 
-      <div class="nb-filetree">
-        <div v-for="item in files" :key="item.id">
-          
-          <div v-if="item.type === 'folder'" class="nb-folder">
-            <div class="nb-folder-name" @click="item.open = !item.open">
-              <svg :class="{ open: item.open }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      <!-- Loading state -->
+      <div v-if="loading" class="nb-loading">Loading notebooks...</div>
+
+      <!-- Empty state -->
+      <div v-else-if="files.length === 0" class="nb-empty">
+        <p>No notebooks yet.</p>
+        <p>Create a file or configure S3.</p>
+      </div>
+
+      <!-- File tree -->
+      <div v-else class="nb-filetree"
+           @dragover.prevent
+           @drop="onDropOnRoot">
+        <template v-for="item in files" :key="item.id">
+
+          <div v-if="item.type === 'folder'" class="nb-folder"
+               :class="{ 'drag-over': dragOverFolder === item.id }"
+               @dragover="onDragOverFolder($event, item)"
+               @dragleave="onDragLeaveFolder"
+               @drop.stop="onDropOnFolder($event, item)">
+            <div class="nb-folder-name" @click="toggleFolder(item.id)">
+              <svg :class="{ open: isFolderOpen(item.id) }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
               {{ item.name }}
             </div>
-            <div v-if="item.open" class="nb-folder-children">
-              <div v-for="child in item.children" :key="child.id" 
-                   class="nb-file" 
-                   :class="{ active: activeFile === child.name && !s3ConfigOpen }"
-                   @click="selectFile(child.name)">
+            <div v-if="isFolderOpen(item.id) && item.children" class="nb-folder-children">
+              <div v-for="child in item.children" :key="child.id"
+                   class="nb-file"
+                   :class="{ active: activeFilePath === child.path && !s3ConfigOpen }"
+                   draggable="true"
+                   @dragstart="onDragStart($event, child)"
+                   @click="selectFile(child.name, child.path)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
                 {{ child.name }}
               </div>
             </div>
           </div>
 
-          <div v-else class="nb-file" 
-               :class="{ active: activeFile === item.name && !s3ConfigOpen }"
-               @click="selectFile(item.name)">
+          <div v-else class="nb-file"
+               :class="{ active: activeFilePath === item.path && !s3ConfigOpen }"
+               draggable="true"
+               @dragstart="onDragStart($event, item)"
+               @click="selectFile(item.name, item.path)">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
             {{ item.name }}
           </div>
 
-        </div>
+        </template>
       </div>
 
       <div class="nb-settings-btn" @click="openS3Config" :class="{ active: s3ConfigOpen }">
@@ -150,30 +290,30 @@ function saveS3Config() {
 
     <!-- Main Content Area -->
     <div class="nb-main">
-      
+
       <!-- S3 Config View -->
       <div v-if="s3ConfigOpen" class="nb-config-view">
         <div class="config-container">
           <div class="config-header">
             <h2>S3 Vault Configuration</h2>
-            <p>Connect your KubeWatcher notebook to an S3 bucket for persistent markdown storage. This bucket will be used to store exported incident logs and team knowledge.</p>
+            <p>Connect your KubeWatcher notebook to an S3 bucket for persistent markdown storage. Configure S3 credentials in your environment variables (S3_BUCKET, S3_REGION, S3_ACCESS_KEY, S3_SECRET_KEY).</p>
           </div>
-          
+
           <div class="config-form">
             <div class="form-group">
               <label>S3 Bucket Name</label>
-              <input type="text" v-model="s3Config.bucket" class="form-input" />
+              <input type="text" v-model="s3Config.bucket" class="form-input" placeholder="my-kubewatcher-docs" />
             </div>
-            
+
             <div class="form-group">
               <label>Endpoint URL (Optional for AWS)</label>
-              <input type="text" v-model="s3Config.endpoint" class="form-input" />
+              <input type="text" v-model="s3Config.endpoint" class="form-input" placeholder="s3.us-east-1.amazonaws.com" />
             </div>
 
             <div class="form-row">
               <div class="form-group" style="flex:1;">
                 <label>Access Key</label>
-                <input type="text" v-model="s3Config.accessKey" class="form-input" />
+                <input type="text" v-model="s3Config.accessKey" class="form-input" placeholder="AKIA..." />
               </div>
               <div class="form-group" style="flex:1;">
                 <label>Secret Key</label>
@@ -181,30 +321,45 @@ function saveS3Config() {
               </div>
             </div>
 
+            <div v-if="testResult" class="test-result" :class="testResult.ok ? 'test-ok' : 'test-fail'">
+              {{ testResult.ok ? 'Connection successful' : testResult.error }}
+            </div>
+
             <div class="form-actions">
-              <button class="btn btn-test">Test Connection</button>
+              <button class="btn btn-test" @click="handleTestConnection" :disabled="testLoading">
+                {{ testLoading ? 'Testing...' : 'Test Connection' }}
+              </button>
               <button class="btn btn-primary" @click="saveS3Config">Save & Sync</button>
             </div>
           </div>
         </div>
       </div>
 
+      <!-- No file selected -->
+      <div v-else-if="!activeFilePath" class="nb-empty-editor">
+        <p>Select a notebook or create a new one</p>
+      </div>
+
       <!-- Markdown Editor View -->
       <div v-else class="nb-editor-view">
         <div class="editor-header">
           <div class="file-path">
-            {{ activeFile }}
+            {{ activeFilePath }}
           </div>
-          <div class="editor-status" style="display: flex; gap: 16px;">
+          <div class="editor-status">
             <div style="display: flex; align-items: center; gap: 6px;">
-              <span class="status-dot"></span> Synced to S3
+              <span class="status-dot" :class="{ saving: saving, unsynced: !synced }"></span>
+              {{ saving ? 'Saving...' : synced ? 'Synced' : 'Unsaved' }}
             </div>
+            <button class="nb-delete-btn" @click="handleDeleteFile" title="Delete file">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
           </div>
         </div>
-        
+
         <editor-content :editor="editor" class="tiptap-editor-wrapper" />
       </div>
-      
+
     </div>
   </div>
 </template>
@@ -278,6 +433,22 @@ function saveS3Config() {
 .nb-folder-name svg.open { transform: rotate(90deg); }
 .nb-folder-children { padding-left: 12px; }
 
+/* Drag-and-drop feedback */
+.nb-folder.drag-over {
+  background: rgba(79, 142, 247, 0.08);
+  border-radius: 4px;
+}
+.nb-folder.drag-over > .nb-folder-name {
+  color: #4f8ef7;
+}
+.nb-file[draggable="true"] {
+  cursor: grab;
+}
+.nb-file[draggable="true"]:active {
+  cursor: grabbing;
+  opacity: 0.5;
+}
+
 .nb-settings-btn {
   padding: 12px 16px;
   font-size: 13px;
@@ -335,10 +506,33 @@ function saveS3Config() {
 
 .form-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px; }
 .btn { padding: 8px 16px; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-test { background: transparent; color: #ccc; border: 1px solid #444; }
-.btn-test:hover { background: #333; }
+.btn-test:hover:not(:disabled) { background: #333; }
 .btn-primary { background: #0e639c; color: white; }
 .btn-primary:hover { background: #1177bb; }
+
+.test-result { padding: 8px 12px; border-radius: 4px; font-size: 12px; margin-top: 4px; }
+.test-ok { background: rgba(62,207,142,0.1); color: #3ecf8e; border: 1px solid rgba(62,207,142,0.2); }
+.test-fail { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
+
+/* Loading / empty states */
+.nb-loading, .nb-empty {
+  padding: 24px 16px;
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+}
+.nb-empty p { margin-bottom: 4px; }
+
+.nb-empty-editor {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+  font-size: 14px;
+}
 
 /* Editor View */
 .nb-editor-view {
@@ -353,8 +547,16 @@ function saveS3Config() {
   align-items: center;
 }
 .file-path { font-size: 14px; font-weight: 500; color: #999; }
-.editor-status { font-size: 12px; color: #666; display: flex; align-items: center; gap: 6px; }
-.status-dot { width: 6px; height: 6px; border-radius: 50%; background: #3ecf8e; }
+.editor-status { font-size: 12px; color: #666; display: flex; align-items: center; gap: 16px; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: #3ecf8e; transition: background 0.2s; }
+.status-dot.saving { background: #f59e0b; }
+.status-dot.unsynced { background: #666; }
+
+.nb-delete-btn {
+  background: transparent; border: none; color: #666; cursor: pointer;
+  padding: 4px; border-radius: 4px; display: flex; align-items: center;
+}
+.nb-delete-btn:hover { background: rgba(239,68,68,0.15); color: #ef4444; }
 
 /* TipTap Editor Styles */
 .tiptap-editor-wrapper {
