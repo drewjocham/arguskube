@@ -17,15 +17,13 @@ import (
 	"github.com/djocham/kube-watcher/internal/features"
 	"github.com/djocham/kube-watcher/internal/incidents"
 	"github.com/djocham/kube-watcher/internal/k8s"
-	"github.com/djocham/kube-watcher/internal/setup"
 	applogger "github.com/djocham/kube-watcher/internal/logger"
 	"github.com/djocham/kube-watcher/internal/notebooks"
 	"github.com/djocham/kube-watcher/internal/popeye"
 	"github.com/djocham/kube-watcher/internal/runbooks"
+	"github.com/djocham/kube-watcher/internal/setup"
+	"github.com/djocham/kube-watcher/view"
 )
-
-//go:embed all:view/dist
-var assets embed.FS
 
 const (
 	appTitle  = "KubeWatcher — SRE Console"

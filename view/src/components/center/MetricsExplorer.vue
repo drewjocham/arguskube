@@ -1,6 +1,8 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue'
-import { QueryTimeSeriesMetrics } from '../../wailsjs/go/pkg/App'
+import { useTimeSeriesMetrics } from '../../composables/useWails'
+
+const { queryMetrics } = useTimeSeriesMetrics()
 
 const timeRange = ref('Last 1 hour')
 const isLive = ref(false)
@@ -81,11 +83,11 @@ async function refreshPanelData(p, isBackground = false) {
   if (!isBackground) p.loading = true
   try {
     if (p.type === 'area' || p.type === 'line' || p.type === 'bar') {
-      const data = await QueryTimeSeriesMetrics(p.query, timeRange.value)
+      const data = await queryMetrics(p.query, timeRange.value)
       p.data = data && data.length ? data : generateWave(100, 20, 0.1, 0)
     } else if (p.type === 'network') {
-      const rx = await QueryTimeSeriesMetrics(`sum(${p.query})`, timeRange.value)
-      const tx = await QueryTimeSeriesMetrics(`sum(rate(container_network_transmit_bytes_total[5m]))`, timeRange.value)
+      const rx = await queryMetrics(`sum(${p.query})`, timeRange.value)
+      const tx = await queryMetrics(`sum(rate(container_network_transmit_bytes_total[5m]))`, timeRange.value)
       p.rxData = rx && rx.length ? rx : generateWave(100, 30, 0.2, 1)
       p.txData = tx && tx.length ? tx : generateWave(100, 15, 0.2, 1.5)
     }

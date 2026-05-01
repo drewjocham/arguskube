@@ -160,7 +160,16 @@ export function useMetrics(intervalMs = 5000) {
     if (timer) clearInterval(timer)
   })
 
-  return { metrics, loading, refresh: fetch }
+  async function queryMetrics(query, timeRange) {
+    try {
+      return await callGo('QueryTimeSeriesMetrics', query, timeRange)
+    } catch (e) {
+      console.error('[metrics] queryTimeSeries:', e)
+      return null
+    }
+  }
+
+  return { metrics, loading, refresh: fetch, queryMetrics }
 }
 
 /**
