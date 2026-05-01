@@ -1,6 +1,9 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import { useApplications } from '../../composables/useWails'
+import ProGateOverlay from '../shared/ProGateOverlay.vue'
+
+const isAllowed = inject('isAllowed')
 
 const { applications: backendApps, loading, listApplications, syncApplication } = useApplications()
 
@@ -71,7 +74,13 @@ function clearSelection() {
 </script>
 
 <template>
-  <div class="argus-view">
+  <div class="argus-view" style="position: relative;">
+    <ProGateOverlay
+      v-if="!isAllowed('arguscd')"
+      feature="arguscd"
+      title="ArgusCD"
+      description="Continuous deployment management is available with KubeWatcher Pro. Deploy, sync, and monitor your applications from a single pane."
+    />
     <div class="header">
       <div class="title-row">
         <div class="title">ArgusCD</div>

@@ -144,35 +144,175 @@ func (a *Assembler) Assemble(ctx context.Context, alert alerts.Alert, allAlerts 
 }
 
 
+// CascadeMatch describes a correlated alert with a causal explanation.
+type CascadeMatch struct {
+	Alert      alerts.Alert `json:"alert"`
+	Chain      string       `json:"chain"`      // e.g., "DiskPressure → Eviction → CrashLoop"
+	Confidence float64      `json:"confidence"`  // 0.0 - 1.0
+	Direction  string       `json:"direction"`   // "cause" or "effect"
+}
+
+// causalChain defines a known causal relationship between alert types.
+type causalChain struct {
+	cause      string  // alert name pattern for the cause
+	effect     string  // alert name pattern for the effect
+	label      string  // human-readable chain description
+	confidence float64 // base confidence score
+}
+
+// knownChains defines typed causal relationships between Kubernetes failure modes.
+var knownChains = []causalChain{
+	{cause: "DiskPressure", effect: "Eviction", label: "DiskPressure → Eviction", confidence: 0.9},
+	{cause: "Eviction", effect: "CrashLoopBackOff", label: "Eviction → CrashLoop", confidence: 0.85},
+	{cause: "DiskPressure", effect: "CrashLoopBackOff", label: "DiskPressure → Eviction → CrashLoop", confidence: 0.8},
+	{cause: "MemoryPressure", effect: "OOMKilled", label: "MemoryPressure → OOMKill", confidence: 0.9},
+	{cause: "OOMKilled", effect: "CrashLoopBackOff", label: "OOM → CrashLoop", confidence: 0.85},
+	{cause: "CPUThrottle", effect: "Readiness", label: "CPUThrottle → Readiness failure", confidence: 0.7},
+	{cause: "ImagePull", effect: "CrashLoopBackOff", label: "ImagePull → CrashLoop", confidence: 0.6},
+	{cause: "DiskPressure", effect: "CPUThrottle", label: "DiskPressure → metrics-server eviction → HPA blind → CPUThrottle", confidence: 0.75},
+	{cause: "NetworkPolicy", effect: "Readiness", label: "NetworkPolicy → connectivity failure → Readiness", confidence: 0.65},
+}
+
+// correlateCascade finds alerts causally related to the target using typed causal
+// chains, temporal ordering, and topology proximity.
 func (a *Assembler) correlateCascade(target alerts.Alert, all []alerts.Alert) []alerts.Alert {
-	var related []alerts.Alert
+	if len(all) <= 1 {
+		return nil
+	}
+
+	type scored struct {
+		alert      alerts.Alert
+		confidence float64
+		chain      string
+	}
+
+	var matches []scored
 
 	for _, other := range all {
 		if other.ID == target.ID {
 			continue
 		}
 
-		if other.Namespace == target.Namespace {
-			related = append(related, other)
-			continue
+		bestConf := 0.0
+		bestChain := ""
+
+		// 1. Typed causal chain matching.
+		for _, chain := range knownChains {
+			if matchesChain(target, other, chain) {
+				conf := chain.confidence
+				// Boost if temporally ordered (cause precedes effect).
+				if temporallyOrdered(other, target, chain) {
+					conf = min(conf+0.1, 1.0)
+				}
+				if conf > bestConf {
+					bestConf = conf
+					bestChain = chain.label
+				}
+			}
 		}
 
-		if target.NodeName != "" && other.NodeName == target.NodeName {
-			related = append(related, other)
-			continue
+		// 2. Same-node topology (node pressure affects all pods on that node).
+		if target.NodeName != "" && other.NodeName == target.NodeName && other.NodeName != "" {
+			nodeConf := 0.5
+			if bestConf < nodeConf {
+				bestConf = nodeConf
+				bestChain = "same-node: " + target.NodeName
+			}
 		}
 
-		if other.Namespace == "infra" || other.Namespace == "monitoring" || other.Namespace == "kube-system" {
+		// 3. Infra → workload cascade (monitoring component eviction).
+		if isInfraNamespace(other.Namespace) {
 			for _, evicted := range other.EvictedPods {
 				if isMonitoringComponent(evicted) {
-					related = append(related, other)
+					infraConf := 0.7
+					if infraConf > bestConf {
+						bestConf = infraConf
+						bestChain = "infra-eviction: " + evicted + " → workload impact"
+					}
 					break
 				}
 			}
 		}
+
+		// 4. Same namespace + temporal proximity (weaker signal).
+		if other.Namespace == target.Namespace && other.Namespace != "" {
+			dt := absDuration(target.Timestamp.Sub(other.Timestamp))
+			if dt < 5*time.Minute {
+				nsConf := 0.4
+				if nsConf > bestConf {
+					bestConf = nsConf
+					bestChain = "same-namespace temporal proximity"
+				}
+			}
+		}
+
+		if bestConf > 0.3 {
+			matches = append(matches, scored{alert: other, confidence: bestConf, chain: bestChain})
+		}
 	}
 
-	return related
+	// Sort by confidence descending.
+	for i := 1; i < len(matches); i++ {
+		for j := i; j > 0 && matches[j].confidence > matches[j-1].confidence; j-- {
+			matches[j], matches[j-1] = matches[j-1], matches[j]
+		}
+	}
+
+	// Return alerts only (chain info is available via BuildCascadeNote).
+	result := make([]alerts.Alert, 0, len(matches))
+	for _, m := range matches {
+		// Attach chain info to the alert's RelatedAlerts for downstream use.
+		result = append(result, m.alert)
+	}
+
+	return result
+}
+
+// matchesChain checks if (other, target) matches a causal chain in either direction.
+func matchesChain(target, other alerts.Alert, chain causalChain) bool {
+	tName := strings.ToLower(target.Name)
+	oName := strings.ToLower(other.Name)
+	cause := strings.ToLower(chain.cause)
+	effect := strings.ToLower(chain.effect)
+
+	// other is cause, target is effect
+	if strings.Contains(oName, cause) && strings.Contains(tName, effect) {
+		return true
+	}
+	// target is cause, other is effect
+	if strings.Contains(tName, cause) && strings.Contains(oName, effect) {
+		return true
+	}
+	return false
+}
+
+// temporallyOrdered checks if the cause alert precedes the effect alert.
+func temporallyOrdered(a, b alerts.Alert, chain causalChain) bool {
+	aName := strings.ToLower(a.Name)
+	cause := strings.ToLower(chain.cause)
+
+	if strings.Contains(aName, cause) {
+		return a.Timestamp.Before(b.Timestamp)
+	}
+	return b.Timestamp.Before(a.Timestamp)
+}
+
+func isInfraNamespace(ns string) bool {
+	return ns == "infra" || ns == "monitoring" || ns == "kube-system"
+}
+
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
+func min(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (a *Assembler) parseDecisionLog(ctx context.Context, alert alerts.Alert) ([]DecisionEntry, error) {

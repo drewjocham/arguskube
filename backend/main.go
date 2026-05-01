@@ -1,10 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"log/slog"
-	"os"
-	"path/filepath"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -19,6 +18,7 @@ import (
 	"github.com/argues/kube-watcher/internal/features"
 	"github.com/argues/kube-watcher/internal/incidents"
 	"github.com/argues/kube-watcher/internal/k8s"
+	"github.com/argues/kube-watcher/internal/sqlitedb"
 	applogger "github.com/argues/kube-watcher/internal/logger"
 	"github.com/argues/kube-watcher/internal/notebooks"
 	"github.com/argues/kube-watcher/internal/popeye"
@@ -105,10 +105,15 @@ func run() error {
 		)
 	}
 
-	incidentStore := incidents.NewStore("", logger)
+	// Open shared SQLite database for local persistence.
+	db, err := sqlitedb.Open("", logger)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
 
-	home, _ := os.UserHomeDir()
-	workflowStore, err := workflows.New(filepath.Join(home, ".kube-watcher"), logger)
+	incidentStore := incidents.NewStore(db.DB, logger)
+
+	workflowStore, err := workflows.New(db.DB, logger)
 	if err != nil {
 		logger.Warn("workflow store initialization failed", slog.String("error", err.Error()))
 	}

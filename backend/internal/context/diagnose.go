@@ -276,14 +276,44 @@ func diagnoseGeneric(b *Bundle, d *alerts.Diagnosis) {
 // --- Cascade reasoning ---
 
 func buildCascadeNote(target alerts.Alert, cascade []alerts.Alert) string {
+	if len(cascade) == 0 {
+		return ""
+	}
+
 	var parts []string
 	for _, ca := range cascade {
-		parts = append(parts, ca.Name)
+		// Try to identify the causal chain direction.
+		relation := ca.Name
+		if ca.Timestamp.Before(target.Timestamp) {
+			relation = ca.Name + " (preceded this alert)"
+		} else {
+			relation = ca.Name + " (followed this alert)"
+		}
+		parts = append(parts, relation)
 	}
-	return fmt.Sprintf(
-		"This alert may be related to: %s. Review the cascade before acting on this alert individually.",
-		strings.Join(parts, ", "),
+
+	note := fmt.Sprintf(
+		"Cascade detected — %d correlated alert(s): %s. ",
+		len(cascade),
+		strings.Join(parts, "; "),
 	)
+
+	// Add actionable advice.
+	if len(cascade) > 0 {
+		// Find the earliest alert in the cascade — likely the root cause.
+		earliest := cascade[0]
+		for _, ca := range cascade[1:] {
+			if ca.Timestamp.Before(earliest.Timestamp) {
+				earliest = ca
+			}
+		}
+		if earliest.Timestamp.Before(target.Timestamp) {
+			note += fmt.Sprintf("Root cause candidate: %s (fired %s before this alert). Investigate that first.",
+				earliest.Name, target.Timestamp.Sub(earliest.Timestamp).Truncate(time.Second))
+		}
+	}
+
+	return note
 }
 
 // --- Alert type detection ---

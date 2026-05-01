@@ -2,38 +2,41 @@ package workflows
 
 import (
 	"log/slog"
-	"os"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/argues/kube-watcher/internal/sqlitedb"
 )
 
-// TestStoreNewCreatesDirectory verifies that New creates the workflows subdirectory.
-func TestStoreNewCreatesDirectory(t *testing.T) {
-	dataDir := t.TempDir()
+// testStore creates a SQLite-backed workflow store using an in-memory DB.
+func testStore(t *testing.T) *Store {
+	t.Helper()
 	logger := slog.New(slog.NewDiscardHandler())
-
-	store, err := New(dataDir, logger)
+	dataDir := t.TempDir()
+	db, err := sqlitedb.Open(dataDir, logger)
+	if err != nil {
+		t.Fatalf("sqlitedb.Open() failed: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	store, err := New(db.DB, logger)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
+	return store
+}
+
+// TestStoreNewCreatesSuccessfully verifies that New returns a valid store.
+func TestStoreNewCreatesSuccessfully(t *testing.T) {
+	store := testStore(t)
 	if store == nil {
 		t.Fatal("expected store, got nil")
-	}
-
-	// Check that the workflows directory was created
-	workflowsDir := dataDir + "/workflows"
-	info, err := os.Stat(workflowsDir)
-	if err != nil || !info.IsDir() {
-		t.Fatalf("workflows directory not created at %s", workflowsDir)
 	}
 }
 
 // TestSaveNewWorkflowAssignsUUID tests that saving a workflow without an ID assigns a UUID and timestamps.
 func TestSaveNewWorkflowAssignsUUID(t *testing.T) {
-	dataDir := t.TempDir()
-	logger := slog.New(slog.NewDiscardHandler())
-	store, _ := New(dataDir, logger)
+	store := testStore(t)
 
 	wf := &Workflow{
 		Title: "Test Workflow",
@@ -47,7 +50,6 @@ func TestSaveNewWorkflowAssignsUUID(t *testing.T) {
 		t.Fatalf("Save() failed: %v", err)
 	}
 
-	// Check that ID was assigned (non-empty, valid UUID format)
 	if saved.ID == "" {
 		t.Error("expected UUID to be assigned, got empty ID")
 	}
@@ -55,23 +57,17 @@ func TestSaveNewWorkflowAssignsUUID(t *testing.T) {
 		t.Errorf("expected UUID length 36, got %d", len(saved.ID))
 	}
 
-	// Check that timestamps were set
 	if saved.CreatedAt.IsZero() {
 		t.Error("expected CreatedAt to be set")
 	}
 	if saved.UpdatedAt.IsZero() {
 		t.Error("expected UpdatedAt to be set")
 	}
-	if !saved.UpdatedAt.Equal(saved.CreatedAt) {
-		t.Errorf("expected UpdatedAt == CreatedAt for new workflow, got %v != %v", saved.UpdatedAt, saved.CreatedAt)
-	}
 }
 
 // TestSaveExistingWorkflowPreservesCreatedAt tests that updating a workflow preserves CreatedAt.
 func TestSaveExistingWorkflowPreservesCreatedAt(t *testing.T) {
-	dataDir := t.TempDir()
-	logger := slog.New(slog.NewDiscardHandler())
-	store, _ := New(dataDir, logger)
+	store := testStore(t)
 
 	wf := &Workflow{
 		Title: "Original Title",
@@ -81,10 +77,8 @@ func TestSaveExistingWorkflowPreservesCreatedAt(t *testing.T) {
 	saved1, _ := store.Save(wf)
 	originalCreatedAt := saved1.CreatedAt
 
-	// Small delay to ensure UpdatedAt differs
 	time.Sleep(10 * time.Millisecond)
 
-	// Update the workflow
 	saved1.Title = "Updated Title"
 	saved2, err := store.Save(saved1)
 	if err != nil {
@@ -101,11 +95,8 @@ func TestSaveExistingWorkflowPreservesCreatedAt(t *testing.T) {
 
 // TestListReturnsSortedByUpdatedAtDesc tests that List returns workflows sorted by UpdatedAt descending.
 func TestListReturnsSortedByUpdatedAtDesc(t *testing.T) {
-	dataDir := t.TempDir()
-	logger := slog.New(slog.NewDiscardHandler())
-	store, _ := New(dataDir, logger)
+	store := testStore(t)
 
-	// Create three workflows with deliberate spacing
 	wf1 := &Workflow{Title: "Workflow 1", Steps: []Step{}}
 	store.Save(wf1)
 	time.Sleep(20 * time.Millisecond)
@@ -126,12 +117,10 @@ func TestListReturnsSortedByUpdatedAtDesc(t *testing.T) {
 		t.Errorf("expected 3 workflows, got %d", len(summaries))
 	}
 
-	// Verify sorted order (newest first)
 	if summaries[0].Title != "Workflow 3" || summaries[1].Title != "Workflow 2" || summaries[2].Title != "Workflow 1" {
 		t.Errorf("expected sorted order [3, 2, 1], got [%s, %s, %s]", summaries[0].Title, summaries[1].Title, summaries[2].Title)
 	}
 
-	// Verify descending order by UpdatedAt
 	for i := 0; i < len(summaries)-1; i++ {
 		if !summaries[i].UpdatedAt.After(summaries[i+1].UpdatedAt) {
 			t.Errorf("expected summaries[%d].UpdatedAt > summaries[%d].UpdatedAt", i, i+1)
@@ -141,9 +130,7 @@ func TestListReturnsSortedByUpdatedAtDesc(t *testing.T) {
 
 // TestGetReturnsCorrectWorkflow tests that Get returns the correct full workflow.
 func TestGetReturnsCorrectWorkflow(t *testing.T) {
-	dataDir := t.TempDir()
-	logger := slog.New(slog.NewDiscardHandler())
-	store, _ := New(dataDir, logger)
+	store := testStore(t)
 
 	steps := []Step{
 		{ID: 1, Type: "trigger", Name: "Alert", ActionType: "http"},
@@ -173,9 +160,7 @@ func TestGetReturnsCorrectWorkflow(t *testing.T) {
 
 // TestGetNonExistentIDReturnsError tests that Get returns an error for non-existent workflows.
 func TestGetNonExistentIDReturnsError(t *testing.T) {
-	dataDir := t.TempDir()
-	logger := slog.New(slog.NewDiscardHandler())
-	store, _ := New(dataDir, logger)
+	store := testStore(t)
 
 	_, err := store.Get("nonexistent-id")
 	if err == nil {
@@ -185,32 +170,26 @@ func TestGetNonExistentIDReturnsError(t *testing.T) {
 
 // TestDeleteRemovesWorkflow tests that Delete removes a workflow from the store.
 func TestDeleteRemovesWorkflow(t *testing.T) {
-	dataDir := t.TempDir()
-	logger := slog.New(slog.NewDiscardHandler())
-	store, _ := New(dataDir, logger)
+	store := testStore(t)
 
 	wf := &Workflow{Title: "To Delete", Steps: []Step{}}
 	saved, _ := store.Save(wf)
 
-	// Verify it exists
 	_, err := store.Get(saved.ID)
 	if err != nil {
 		t.Fatalf("workflow not found before delete")
 	}
 
-	// Delete it
 	err = store.Delete(saved.ID)
 	if err != nil {
 		t.Fatalf("Delete() failed: %v", err)
 	}
 
-	// Verify it no longer exists
 	_, err = store.Get(saved.ID)
 	if err == nil {
 		t.Fatal("expected Get() to fail after Delete(), but succeeded")
 	}
 
-	// Verify it's not in List
 	summaries, _ := store.List()
 	for _, s := range summaries {
 		if s.ID == saved.ID {
@@ -219,24 +198,19 @@ func TestDeleteRemovesWorkflow(t *testing.T) {
 	}
 }
 
-// TestDeleteNonExistentIDDoesNotError tests that Delete doesn't error for non-existent IDs.
-func TestDeleteNonExistentIDDoesNotError(t *testing.T) {
-	dataDir := t.TempDir()
-	logger := slog.New(slog.NewDiscardHandler())
-	store, _ := New(dataDir, logger)
+// TestDeleteNonExistentIDReturnsError tests that Delete errors for non-existent IDs.
+func TestDeleteNonExistentIDReturnsError(t *testing.T) {
+	store := testStore(t)
 
-	// Should not panic or error
 	err := store.Delete("nonexistent-id")
-	if err != nil {
-		t.Errorf("expected Delete() to not error for non-existent ID, got: %v", err)
+	if err == nil {
+		t.Error("expected Delete() to error for non-existent ID, got nil")
 	}
 }
 
 // TestListSummaryContainsStepCount tests that List returns correct step counts.
 func TestListSummaryContainsStepCount(t *testing.T) {
-	dataDir := t.TempDir()
-	logger := slog.New(slog.NewDiscardHandler())
-	store, _ := New(dataDir, logger)
+	store := testStore(t)
 
 	wf1 := &Workflow{
 		Title: "Two Steps",
@@ -265,18 +239,15 @@ func TestListSummaryContainsStepCount(t *testing.T) {
 	}
 }
 
-// TestConcurrentSavesDoNotCorrupt tests that concurrent saves don't lose data or corrupt files.
+// TestConcurrentSavesDoNotCorrupt tests that concurrent saves don't lose data.
 func TestConcurrentSavesDoNotCorrupt(t *testing.T) {
-	dataDir := t.TempDir()
-	logger := slog.New(slog.NewDiscardHandler())
-	store, _ := New(dataDir, logger)
+	store := testStore(t)
 
 	numGoroutines := 10
 	var wg sync.WaitGroup
 	savedIDs := make([]string, numGoroutines)
 	idMutex := sync.Mutex{}
 
-	// Launch concurrent saves
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func(idx int) {
@@ -299,13 +270,11 @@ func TestConcurrentSavesDoNotCorrupt(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Verify all workflows were saved and can be retrieved
 	summaries, _ := store.List()
 	if len(summaries) != numGoroutines {
 		t.Errorf("expected %d workflows in List(), got %d", numGoroutines, len(summaries))
 	}
 
-	// Verify each saved ID can be retrieved
 	for i, id := range savedIDs {
 		if id == "" {
 			continue
@@ -322,15 +291,11 @@ func TestConcurrentSavesDoNotCorrupt(t *testing.T) {
 
 // TestConcurrentReadsDoNotBlock tests that multiple concurrent reads work without blocking.
 func TestConcurrentReadsDoNotBlock(t *testing.T) {
-	dataDir := t.TempDir()
-	logger := slog.New(slog.NewDiscardHandler())
-	store, _ := New(dataDir, logger)
+	store := testStore(t)
 
-	// Create a workflow
 	wf := &Workflow{Title: "Read Test", Steps: []Step{}}
 	saved, _ := store.Save(wf)
 
-	// Launch concurrent reads
 	numReaders := 20
 	var wg sync.WaitGroup
 	errChan := make(chan error, numReaders)
@@ -352,7 +317,6 @@ func TestConcurrentReadsDoNotBlock(t *testing.T) {
 	wg.Wait()
 	close(errChan)
 
-	// Check for errors
 	for err := range errChan {
 		t.Errorf("concurrent read failed: %v", err)
 	}

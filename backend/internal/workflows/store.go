@@ -2,13 +2,10 @@
 package workflows
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
-	"sort"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,66 +39,76 @@ type WorkflowSummary struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// Store persists workflows as individual JSON files in a directory.
+// Store persists workflows to SQLite via a shared database handle.
 type Store struct {
-	dir    string
-	mu     sync.RWMutex
+	db     *sql.DB
 	logger *slog.Logger
 }
 
-// New creates a workflow store backed by the given directory.
-func New(dataDir string, logger *slog.Logger) (*Store, error) {
-	dir := filepath.Join(dataDir, "workflows")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("workflows: create dir: %w", err)
-	}
-	return &Store{dir: dir, logger: logger}, nil
+// New creates a workflow store backed by the given sql.DB.
+// The workflows table must already exist (created by sqlitedb.Open migrations).
+func New(db *sql.DB, logger *slog.Logger) (*Store, error) {
+	return &Store{db: db, logger: logger}, nil
 }
 
 // List returns summaries of all workflows, sorted by last update (newest first).
 func (s *Store) List() ([]WorkflowSummary, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	entries, err := os.ReadDir(s.dir)
+	rows, err := s.db.Query(`
+		SELECT id, title, steps, created_at, updated_at
+		FROM workflows ORDER BY updated_at DESC`)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("workflows: list: %w", err)
 	}
+	defer rows.Close()
 
 	var out []WorkflowSummary
-	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
+	for rows.Next() {
+		var id, title, stepsJSON, createdAt, updatedAt string
+		if err := rows.Scan(&id, &title, &stepsJSON, &createdAt, &updatedAt); err != nil {
+			s.logger.Warn("workflows: scan row failed", slog.String("error", err.Error()))
 			continue
 		}
-		wf, err := s.readFile(e.Name())
-		if err != nil {
-			s.logger.Warn("workflows: skipping corrupt file", slog.String("file", e.Name()), slog.String("error", err.Error()))
-			continue
-		}
+		var steps []Step
+		_ = json.Unmarshal([]byte(stepsJSON), &steps)
+
+		ca, _ := time.Parse(time.RFC3339Nano, createdAt)
+		ua, _ := time.Parse(time.RFC3339Nano, updatedAt)
+
 		out = append(out, WorkflowSummary{
-			ID:        wf.ID,
-			Title:     wf.Title,
-			StepCount: len(wf.Steps),
-			CreatedAt: wf.CreatedAt,
-			UpdatedAt: wf.UpdatedAt,
+			ID:        id,
+			Title:     title,
+			StepCount: len(steps),
+			CreatedAt: ca,
+			UpdatedAt: ua,
 		})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	return out, nil
 }
 
 // Get returns a full workflow by ID.
 func (s *Store) Get(id string) (*Workflow, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.readFile(id + ".json")
+	row := s.db.QueryRow(`
+		SELECT id, title, steps, created_at, updated_at
+		FROM workflows WHERE id = ?`, id)
+
+	var wf Workflow
+	var stepsJSON, createdAt, updatedAt string
+	err := row.Scan(&wf.ID, &wf.Title, &stepsJSON, &createdAt, &updatedAt)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("workflow %q not found", id)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("workflows: get %q: %w", id, err)
+	}
+
+	_ = json.Unmarshal([]byte(stepsJSON), &wf.Steps)
+	wf.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+	wf.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+	return &wf, nil
 }
 
 // Save creates or updates a workflow. If wf.ID is empty, a new ID is assigned.
 func (s *Store) Save(wf *Workflow) (*Workflow, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	now := time.Now()
 	if wf.ID == "" {
 		wf.ID = uuid.NewString()
@@ -109,44 +116,40 @@ func (s *Store) Save(wf *Workflow) (*Workflow, error) {
 	}
 	wf.UpdatedAt = now
 
-	data, err := json.MarshalIndent(wf, "", "  ")
+	stepsJSON, err := json.Marshal(wf.Steps)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("workflows: marshal steps: %w", err)
 	}
 
-	// Atomic write: temp file + rename to prevent corruption on partial writes.
-	path := filepath.Join(s.dir, wf.ID+".json")
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return nil, fmt.Errorf("workflows: write temp: %w", err)
+	_, err = s.db.Exec(`
+		INSERT INTO workflows (id, title, steps, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			title = excluded.title,
+			steps = excluded.steps,
+			updated_at = excluded.updated_at`,
+		wf.ID, wf.Title, string(stepsJSON),
+		wf.CreatedAt.Format(time.RFC3339Nano),
+		wf.UpdatedAt.Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("workflows: save: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		return nil, fmt.Errorf("workflows: rename: %w", err)
-	}
+
 	s.logger.Info("workflow saved", slog.String("id", wf.ID), slog.String("title", wf.Title))
 	return wf, nil
 }
 
 // Delete removes a workflow by ID.
 func (s *Store) Delete(id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	path := filepath.Join(s.dir, id+".json")
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return err
+	res, err := s.db.Exec("DELETE FROM workflows WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("workflows: delete %q: %w", id, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("workflow %q not found", id)
 	}
 	s.logger.Info("workflow deleted", slog.String("id", id))
 	return nil
-}
-
-func (s *Store) readFile(name string) (*Workflow, error) {
-	data, err := os.ReadFile(filepath.Join(s.dir, name))
-	if err != nil {
-		return nil, err
-	}
-	var wf Workflow
-	if err := json.Unmarshal(data, &wf); err != nil {
-		return nil, err
-	}
-	return &wf, nil
 }

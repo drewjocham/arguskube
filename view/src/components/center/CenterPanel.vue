@@ -29,6 +29,7 @@ import StatefulDaemonSetList from '../workloads/StatefulDaemonSetList.vue'
 import HpaList from '../config/HpaList.vue'
 import NetworkPolicyList from '../network/NetworkPolicyList.vue'
 import ArgusScanReport from './ArgusScanReport.vue'
+import FinOpsView from './FinOpsView.vue'
 import SetupPanel from '../setup/SetupPanel.vue'
 import { useArgusScan } from '../../composables/useWails'
 
@@ -78,7 +79,7 @@ function moveDown(index) {
 }
 
 // Monitoring views.
-const monitoringViews = ['metrics', 'alerts', 'topology', 'logs', 'anomalies', 'analysis', 'vulnerabilities']
+const monitoringViews = ['metrics', 'alerts', 'topology', 'logs', 'anomalies', 'analysis', 'vulnerabilities', 'finops']
 
 // Resource browser views — these use the generic ResourceTable.
 const resourceViews = [
@@ -131,6 +132,9 @@ async function runArgusScan() {
       </template>
       <template v-else-if="activeNav === 'analysis'">
         <ArgusScanReport :report="reportData" :loading="loadingReport" :error="argusScanError" @run-scan="runArgusScan" />
+      </template>
+      <template v-else-if="activeNav === 'finops'">
+        <FinOpsView />
       </template>
       <template v-else>
         <div class="tabs">

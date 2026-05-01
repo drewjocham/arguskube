@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -39,6 +40,7 @@ type Hub struct {
 	unregister chan *AgentConnection
 	logger     *slog.Logger
 	mu         sync.RWMutex
+	tlsCfg     *tls.Config // When set, hub requires mTLS for agent connections.
 }
 
 // NewHub creates a new WebSocket Hub.
@@ -49,6 +51,18 @@ func NewHub(logger *slog.Logger) *Hub {
 		unregister: make(chan *AgentConnection),
 		logger:     logger,
 	}
+}
+
+// WithTLS configures mTLS for the hub. The tls.Config should be created via
+// tlsconfig.ServerTLSConfig() with the CA cert and server cert/key.
+func (h *Hub) WithTLS(cfg *tls.Config) *Hub {
+	h.tlsCfg = cfg
+	return h
+}
+
+// TLSConfig returns the hub's TLS config, or nil if mTLS is not configured.
+func (h *Hub) TLSConfig() *tls.Config {
+	return h.tlsCfg
 }
 
 // Run starts the hub's main event loop.
@@ -75,11 +89,31 @@ func (h *Hub) Run(ctx context.Context) {
 }
 
 // HandleTunnel upgrades the HTTP connection and handles agent communication.
+// When mTLS is configured, the agent's certificate CN must match the agent_id.
 func (h *Hub) HandleTunnel(w http.ResponseWriter, r *http.Request) {
 	agentID := r.URL.Query().Get("agent_id")
 	namespace := r.URL.Query().Get("namespace")
 	if agentID == "" {
 		http.Error(w, "Missing agent_id", http.StatusBadRequest)
+		return
+	}
+
+	// Validate mTLS client certificate if TLS is configured.
+	if h.tlsCfg != nil && r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+		clientCN := r.TLS.PeerCertificates[0].Subject.CommonName
+		if clientCN != agentID {
+			h.logger.Warn("mTLS agent ID mismatch",
+				slog.String("cert_cn", clientCN),
+				slog.String("claimed_id", agentID),
+			)
+			http.Error(w, "Certificate CN does not match agent_id", http.StatusForbidden)
+			return
+		}
+		h.logger.Debug("mTLS agent verified", slog.String("agent_id", agentID))
+	} else if h.tlsCfg != nil {
+		// mTLS configured but no client cert presented — reject.
+		h.logger.Warn("Agent connection rejected: no client certificate", slog.String("agent_id", agentID))
+		http.Error(w, "Client certificate required", http.StatusUnauthorized)
 		return
 	}
 
@@ -98,7 +132,7 @@ func (h *Hub) HandleTunnel(w http.ResponseWriter, r *http.Request) {
 
 	h.register <- client
 
-	// Start read/write pumps
+	// Start read/write pumps.
 	go h.writePump(client)
 	go h.readPump(client)
 }

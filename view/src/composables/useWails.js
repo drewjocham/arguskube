@@ -1173,6 +1173,31 @@ export function useVPARecommendations() {
 }
 
 /**
+ * Composable for FinOps cost estimation based on pod resource requests.
+ */
+export function useCostEstimate() {
+  const report = ref(null)
+  const loading = ref(false)
+  const error = ref(null)
+
+  async function fetchCosts() {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await callGo('EstimateCosts')
+      report.value = result || null
+    } catch (e) {
+      error.value = e?.message || String(e)
+      report.value = null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { report, loading, error, fetchCosts }
+}
+
+/**
  * Composable for node-level system service logs (kubelet, containerd, kube-proxy).
  * Uses the kubelet proxy API to fetch real journal entries from cluster nodes.
  */

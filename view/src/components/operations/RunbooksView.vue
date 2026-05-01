@@ -2,8 +2,11 @@
 import { ref, watch, onMounted, onBeforeUnmount, inject } from 'vue'
 import { marked } from 'marked'
 import { useRunbooks } from '../../composables/useWails'
+import ProGateOverlay from '../shared/ProGateOverlay.vue'
 
 const isAllowed = inject('isAllowed')
+const canAutomate = isAllowed('runbook_automation')
+const canCustomize = isAllowed('custom_runbooks')
 const { runbooks, loading, saving, listRunbooks, getRunbook, saveRunbook, deleteRunbook, createRunbook } = useRunbooks()
 
 const selectedRunbook = ref(null)
@@ -107,7 +110,7 @@ function renderedMarkdown(content) {
           <div class="view-title">Runbooks</div>
           <div class="view-sub">Response playbooks for incidents</div>
         </div>
-        <button class="rb-create-btn" @click="showCreateDialog = true" title="New runbook">
+        <button class="rb-create-btn" @click="canCustomize ? showCreateDialog = true : null" :title="canCustomize ? 'New runbook' : 'Upgrade to Pro for custom runbooks'" :class="{ 'pro-disabled': !canCustomize }">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
@@ -364,4 +367,6 @@ function renderedMarkdown(content) {
 /* Empty states */
 .empty-state { text-align: center; padding: 32px; color: var(--text3); font-size: 13px; }
 .empty-editor { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text3); font-size: 14px; }
+.rb-create-btn.pro-disabled { opacity: 0.4; cursor: not-allowed; }
+.rb-create-btn.pro-disabled:hover { background: transparent; }
 </style>

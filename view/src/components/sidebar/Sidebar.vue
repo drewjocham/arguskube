@@ -64,6 +64,7 @@ const navTree = [
       { id: 'logs', label: 'Logs' },
       { id: 'anomalies', label: 'Anomaly Detection' },
       { id: 'analysis', label: 'Analysis' },
+      { id: 'finops', label: 'Cost Explorer' },
     ],
   },
   {

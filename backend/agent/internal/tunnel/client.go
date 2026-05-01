@@ -2,9 +2,11 @@ package tunnel
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"time"
 
@@ -20,6 +22,7 @@ type Client struct {
 	logger    *slog.Logger
 	conn      *websocket.Conn
 	send      chan []byte
+	tlsCfg    *tls.Config // nil = no mTLS (insecure, dev only)
 }
 
 // NewClient creates a new Tunnel client.
@@ -31,6 +34,13 @@ func NewClient(serverURL, agentID, namespace string, logger *slog.Logger) *Clien
 		logger:    logger,
 		send:      make(chan []byte, 256),
 	}
+}
+
+// WithTLS configures mTLS for the tunnel connection. The tls.Config should be
+// created via tlsconfig.AgentTLSConfig() with the CA cert and agent cert/key.
+func (c *Client) WithTLS(cfg *tls.Config) *Client {
+	c.tlsCfg = cfg
+	return c
 }
 
 // Start connects to the SaaS backend and maintains the connection.
@@ -81,7 +91,16 @@ func (c *Client) Start(ctx context.Context) error {
 }
 
 func (c *Client) connectAndRun(ctx context.Context, u string) error {
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, u, nil)
+	dialer := *websocket.DefaultDialer
+	if c.tlsCfg != nil {
+		dialer.TLSClientConfig = c.tlsCfg
+		dialer.HandshakeTimeout = 15 * time.Second
+	}
+
+	headers := http.Header{}
+	headers.Set("X-Agent-ID", c.agentID)
+
+	conn, _, err := dialer.DialContext(ctx, u, headers)
 	if err != nil {
 		return err
 	}
