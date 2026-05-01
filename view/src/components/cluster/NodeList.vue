@@ -28,14 +28,16 @@ const expandedNode = ref(null)
 const logSearch = ref('')
 const isStreamingLogs = ref(true)
 
-onMounted(async () => {
+async function fetchNodes() {
   await listResources('nodes', '')
   if (result.value && result.value.items && result.value.items.length > 0) {
     nodes.value = result.value.items.map(mapNode)
   } else {
     nodes.value = mockNodes
   }
-})
+}
+
+onMounted(fetchNodes)
 
 function mapNode(item) {
   return {
@@ -93,8 +95,14 @@ const nodeLogs = ref([
 <template>
   <div class="nodes-view">
     <div class="header">
-      <div class="title">Cluster Nodes</div>
-      <div class="subtitle">Physical and virtual machines hosting your workloads</div>
+      <div class="header-text">
+        <div class="title">Cluster Nodes</div>
+        <div class="subtitle">Physical and virtual machines hosting your workloads</div>
+      </div>
+      <button class="refresh-btn" @click="fetchNodes" :disabled="loading">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+        Refresh
+      </button>
     </div>
 
     <div class="nodes-grid" :class="{ 'has-expanded': expandedNode !== null }">
@@ -219,8 +227,16 @@ const nodeLogs = ref([
   overflow-y: auto;
   height: 100%;
 }
-.header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
-.header .subtitle { font-size: 13px; color: #8b8f96; }
+.header { display: flex; justify-content: space-between; align-items: flex-start; }
+.header-text .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
+.header-text .subtitle { font-size: 13px; color: #8b8f96; }
+.refresh-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #8b8f96;
+  padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all 0.2s;
+}
+.refresh-btn:hover { color: #fff; border-color: rgba(255,255,255,0.2); }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .nodes-grid {
   display: grid;

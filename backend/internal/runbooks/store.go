@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djocham/kube-watcher/internal/notebooks"
+	"github.com/argues/kube-watcher/internal/notebooks"
 )
 
 // Runbook represents a runbook with metadata and content.

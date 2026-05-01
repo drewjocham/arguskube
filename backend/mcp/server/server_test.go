@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/djocham/kube-watcher/mcp/monitoring/history"
-	"github.com/djocham/kube-watcher/pkg/kube"
-	kwatch "github.com/djocham/kube-watcher/pkg/kube/watch"
+	"github.com/argues/kube-watcher/mcp/monitoring/history"
+	"github.com/argues/kube-watcher/pkg/kube"
+	kwatch "github.com/argues/kube-watcher/pkg/kube/watch"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"

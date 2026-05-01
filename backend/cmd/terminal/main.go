@@ -8,11 +8,11 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
-	"github.com/djocham/kube-watcher/api/pkg"
-	"github.com/djocham/kube-watcher/internal/ai"
-	"github.com/djocham/kube-watcher/internal/config"
-	applogger "github.com/djocham/kube-watcher/internal/logger"
-	"github.com/djocham/kube-watcher/view"
+	"github.com/argues/kube-watcher/api/pkg"
+	"github.com/argues/kube-watcher/internal/ai"
+	"github.com/argues/kube-watcher/internal/config"
+	applogger "github.com/argues/kube-watcher/internal/logger"
+	"github.com/argues/kube-watcher/view"
 )
 
 const (

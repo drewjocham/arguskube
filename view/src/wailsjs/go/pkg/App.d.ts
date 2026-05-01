@@ -12,7 +12,7 @@ import {k8s} from '../models';
 import {features} from '../models';
 import {config} from '../models';
 import {notebooks} from '../models';
-import {pkg} from '../models';
+import {vulnscan} from '../models';
 import {popeye} from '../models';
 import {http} from '../models';
 
@@ -29,6 +29,8 @@ export function CreateRunbook(arg1:string,arg2:string):Promise<runbooks.Runbook>
 export function DeleteIncident(arg1:string):Promise<void>;
 
 export function DeleteNotebook(arg1:string):Promise<void>;
+
+export function DeletePod(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteRunbook(arg1:string):Promise<void>;
 
@@ -72,6 +74,8 @@ export function GetTier():Promise<config.Tier>;
 
 export function GetTopology(arg1:string):Promise<k8s.TopologyResult>;
 
+export function HandleURL(arg1:string):Promise<void>;
+
 export function InstallPopeye():Promise<setup.SetupResult>;
 
 export function ListAllNamespaces():Promise<Array<string>>;
@@ -88,7 +92,7 @@ export function ListResources(arg1:string,arg2:string):Promise<k8s.ResourceListR
 
 export function ListRunbooks():Promise<Array<runbooks.Runbook>>;
 
-export function ListVulnerabilities():Promise<Array<pkg.ScannedImage>>;
+export function ListVulnerabilities():Promise<Array<vulnscan.ScannedImage>>;
 
 export function LoginSaaS(arg1:string):Promise<string>;
 
@@ -107,6 +111,8 @@ export function RunPopeye():Promise<popeye.Report>;
 export function SaveNotebook(arg1:string,arg2:string):Promise<void>;
 
 export function SaveRunbook(arg1:string,arg2:string):Promise<void>;
+
+export function ScanAllImages(arg1:string):Promise<Array<vulnscan.ScannedImage>>;
 
 export function ScanImage(arg1:string,arg2:string):Promise<string>;
 

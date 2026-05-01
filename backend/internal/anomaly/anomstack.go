@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/djocham/kube-watcher/internal/apperrors"
-	"github.com/djocham/kube-watcher/internal/config"
+	"github.com/argues/kube-watcher/internal/apperrors"
+	"github.com/argues/kube-watcher/internal/config"
 )
 
 // Detector is the interface for anomaly detection backends.

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/djocham/kube-watcher/pkg/kube"
+	"github.com/argues/kube-watcher/pkg/kube"
 )
 
 type NodeStatusTool struct {

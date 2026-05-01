@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djocham/kube-watcher/pkg/kube"
+	"github.com/argues/kube-watcher/pkg/kube"
 )
 
 var ErrFailedToGetClusterEvents = errors.New("failed to get cluster events")

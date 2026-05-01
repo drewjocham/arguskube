@@ -7,8 +7,8 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"github.com/djocham/kube-watcher/internal/ai"
-	"github.com/djocham/kube-watcher/internal/alerts"
+	"github.com/argues/kube-watcher/internal/ai"
+	"github.com/argues/kube-watcher/internal/alerts"
 )
 
 const (

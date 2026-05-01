@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/djocham/kube-watcher/internal/alerts"
+	"github.com/argues/kube-watcher/internal/alerts"
 )
 
 // GenerateDiagnosis produces a root cause hypothesis, confidence score, cascade

@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useResources } from '../../composables/useWails'
 
-const { result, loading, listResources } = useResources()
+const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
 
 const mockNamespaces = [
   { name: 'default', status: 'Active', labels: '3 labels', age: '145d' },
@@ -15,7 +15,7 @@ const mockNamespaces = [
 const namespaces = ref([])
 const expandedNs = ref(null)
 
-onMounted(async () => {
+async function fetchNamespaces() {
   await listResources('namespaces', '')
   if (result.value && result.value.items && result.value.items.length > 0) {
     namespaces.value = result.value.items.map(item => ({
@@ -24,7 +24,6 @@ onMounted(async () => {
       labels: item.fields?.labels || '—',
       age: item.age || '—',
       statusColor: item.statusColor,
-      // Keep some fields for expanded detail.
       pods: '—', cpuLimits: '—', memLimits: '—',
       ingress: [], egress: [], defaultDeny: false
     }))
@@ -34,13 +33,22 @@ onMounted(async () => {
       ingress: [], egress: [], defaultDeny: false
     }))
   }
-})
+}
 
-function toggleExpand(nsName) {
+const nsDetail = ref(null)
+
+onMounted(fetchNamespaces)
+
+async function toggleExpand(nsName) {
   if (expandedNs.value === nsName) {
     expandedNs.value = null
+    nsDetail.value = null
   } else {
     expandedNs.value = nsName
+    await getResourceDetail('namespaces', '', nsName)
+    if (detail.value) {
+      nsDetail.value = detail.value
+    }
   }
 }
 </script>
@@ -48,8 +56,14 @@ function toggleExpand(nsName) {
 <template>
   <div class="ns-view">
     <div class="header">
-      <div class="title">Namespaces</div>
-      <div class="subtitle">Logical partitions of your cluster resources</div>
+      <div class="header-text">
+        <div class="title">Namespaces</div>
+        <div class="subtitle">Logical partitions of your cluster resources</div>
+      </div>
+      <button class="refresh-btn" @click="fetchNamespaces" :disabled="loading">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+        Refresh
+      </button>
     </div>
 
     <div class="ns-list">
@@ -126,10 +140,19 @@ function toggleExpand(nsName) {
               </div>
             </div>
 
-            <!-- Resource Quotas Details -->
+            <!-- Namespace Detail & Resource Quotas -->
             <div class="expanded-card">
-              <h4 class="card-title">Resource Quotas & Limits</h4>
-              <div class="quota-grid">
+              <h4 class="card-title">Namespace Details</h4>
+              <div v-if="nsDetail && nsDetail.properties" class="detail-grid">
+                <div class="detail-item" v-for="prop in nsDetail.properties" :key="prop.key">
+                  <div class="q-label">{{ prop.key }}</div>
+                  <div class="q-val font-mono">{{ prop.value }}</div>
+                </div>
+              </div>
+              <div v-else-if="detailLoading" class="detail-grid">
+                <div class="detail-item"><div class="q-label">Loading details...</div></div>
+              </div>
+              <div v-else class="quota-grid">
                 <div class="quota-item">
                   <div class="q-label">CPU Requests Limit</div>
                   <div class="q-val font-mono">{{ ns.cpuLimits === 'none' ? 'No Limit' : ns.cpuLimits + ' Cores' }}</div>
@@ -165,8 +188,20 @@ function toggleExpand(nsName) {
   overflow-y: auto;
   height: 100%;
 }
-.header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
-.header .subtitle { font-size: 13px; color: #8b8f96; }
+.header { display: flex; justify-content: space-between; align-items: flex-start; }
+.header-text .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
+.header-text .subtitle { font-size: 13px; color: #8b8f96; }
+.refresh-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #8b8f96;
+  padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all 0.2s;
+}
+.refresh-btn:hover { color: #fff; border-color: rgba(255,255,255,0.2); }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.detail-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+.detail-item { display: flex; flex-direction: column; gap: 4px; }
 
 .ns-list {
   background: #1e2023;

@@ -945,6 +945,7 @@ export namespace k8s {
 	    data: Record<string, string>;
 	    conditions: ResourceCondition[];
 	    events: ResourceEvent[];
+	    extra?: Record<string, any>;
 	
 	    static createFrom(source: any = {}) {
 	        return new ResourceDetailResult(source);
@@ -962,6 +963,7 @@ export namespace k8s {
 	        this.data = source["data"];
 	        this.conditions = this.convertValues(source["conditions"], ResourceCondition);
 	        this.events = this.convertValues(source["events"], ResourceEvent);
+	        this.extra = source["extra"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1238,95 +1240,6 @@ export namespace notebooks {
 	        this.type = source["type"];
 	        this.children = this.convertValues(source["children"], FileEntry);
 	        this.modified = this.convertValues(source["modified"], null);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-
-}
-
-export namespace pkg {
-	
-	export class AIOptimization {
-	    issue: string;
-	    fix: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new AIOptimization(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.issue = source["issue"];
-	        this.fix = source["fix"];
-	    }
-	}
-	export class Vulnerability {
-	    id: string;
-	    pkg: string;
-	    severity: string;
-	    desc: string;
-	    fix: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new Vulnerability(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.pkg = source["pkg"];
-	        this.severity = source["severity"];
-	        this.desc = source["desc"];
-	        this.fix = source["fix"];
-	    }
-	}
-	export class ScannedImage {
-	    id: string;
-	    name: string;
-	    namespace: string;
-	    lastScan: string;
-	    critical: number;
-	    high: number;
-	    medium: number;
-	    low: number;
-	    status: string;
-	    cves: Vulnerability[];
-	    aiOpt: AIOptimization;
-	
-	    static createFrom(source: any = {}) {
-	        return new ScannedImage(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.name = source["name"];
-	        this.namespace = source["namespace"];
-	        this.lastScan = source["lastScan"];
-	        this.critical = source["critical"];
-	        this.high = source["high"];
-	        this.medium = source["medium"];
-	        this.low = source["low"];
-	        this.status = source["status"];
-	        this.cves = this.convertValues(source["cves"], Vulnerability);
-	        this.aiOpt = this.convertValues(source["aiOpt"], AIOptimization);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1718,6 +1631,95 @@ export namespace url {
 	        this.RawFragment = source["RawFragment"];
 	        this.ForceQuery = source["ForceQuery"];
 	        this.OmitHost = source["OmitHost"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace vulnscan {
+	
+	export class AIOptimization {
+	    issue: string;
+	    fix: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AIOptimization(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.issue = source["issue"];
+	        this.fix = source["fix"];
+	    }
+	}
+	export class Vulnerability {
+	    id: string;
+	    pkg: string;
+	    severity: string;
+	    desc: string;
+	    fix: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Vulnerability(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.pkg = source["pkg"];
+	        this.severity = source["severity"];
+	        this.desc = source["desc"];
+	        this.fix = source["fix"];
+	    }
+	}
+	export class ScannedImage {
+	    id: string;
+	    name: string;
+	    namespace: string;
+	    lastScan: string;
+	    critical: number;
+	    high: number;
+	    medium: number;
+	    low: number;
+	    status: string;
+	    cves: Vulnerability[];
+	    aiOpt: AIOptimization;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScannedImage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.namespace = source["namespace"];
+	        this.lastScan = source["lastScan"];
+	        this.critical = source["critical"];
+	        this.high = source["high"];
+	        this.medium = source["medium"];
+	        this.low = source["low"];
+	        this.status = source["status"];
+	        this.cves = this.convertValues(source["cves"], Vulnerability);
+	        this.aiOpt = this.convertValues(source["aiOpt"], AIOptimization);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

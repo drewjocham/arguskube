@@ -1,4 +1,4 @@
-module github.com/djocham/kube-watcher
+module github.com/argues/kube-watcher
 
 go 1.25.0
 

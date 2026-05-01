@@ -9,20 +9,21 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 
-	"github.com/djocham/kube-watcher/api/pkg"
-	"github.com/djocham/kube-watcher/internal/ai"
-	"github.com/djocham/kube-watcher/internal/anomaly"
-	"github.com/djocham/kube-watcher/internal/config"
-	ctxassembly "github.com/djocham/kube-watcher/internal/context"
-	"github.com/djocham/kube-watcher/internal/features"
-	"github.com/djocham/kube-watcher/internal/incidents"
-	"github.com/djocham/kube-watcher/internal/k8s"
-	applogger "github.com/djocham/kube-watcher/internal/logger"
-	"github.com/djocham/kube-watcher/internal/notebooks"
-	"github.com/djocham/kube-watcher/internal/popeye"
-	"github.com/djocham/kube-watcher/internal/runbooks"
-	"github.com/djocham/kube-watcher/internal/setup"
-	"github.com/djocham/kube-watcher/view"
+	"github.com/argues/kube-watcher/api/pkg"
+	"github.com/argues/kube-watcher/internal/ai"
+	"github.com/argues/kube-watcher/internal/anomaly"
+	"github.com/argues/kube-watcher/internal/config"
+	ctxassembly "github.com/argues/kube-watcher/internal/context"
+	"github.com/argues/kube-watcher/internal/features"
+	"github.com/argues/kube-watcher/internal/incidents"
+	"github.com/argues/kube-watcher/internal/k8s"
+	applogger "github.com/argues/kube-watcher/internal/logger"
+	"github.com/argues/kube-watcher/internal/notebooks"
+	"github.com/argues/kube-watcher/internal/popeye"
+	"github.com/argues/kube-watcher/internal/runbooks"
+	"github.com/argues/kube-watcher/internal/setup"
+	"github.com/argues/kube-watcher/internal/vulnscan"
+	"github.com/argues/kube-watcher/view"
 )
 
 const (
@@ -81,6 +82,11 @@ func run() error {
 		logger,
 	)
 
+	var scanner *vulnscan.Scanner
+	if k8sClient != nil {
+		scanner = vulnscan.New(k8sClient.GetClientset(), logger)
+	}
+
 	notebooksStore, err := notebooks.New(cfg, logger)
 	if err != nil {
 		logger.Warn("notebooks store initialization failed",
@@ -114,6 +120,7 @@ func run() error {
 		Detector:  detector,
 		Agent:     agent,
 		Popeye:    popeyeRunner,
+		Scanner:   scanner,
 		Notebooks: notebooksStore,
 		Runbooks:  runbooksStore,
 		Incidents: incidentStore,

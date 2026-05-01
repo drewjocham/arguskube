@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djocham/kube-watcher/pkg/kube"
+	"github.com/argues/kube-watcher/pkg/kube"
 )
 
 type ClusterAnalysisTool struct {

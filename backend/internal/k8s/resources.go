@@ -82,8 +82,9 @@ type ResourceDetailResult struct {
 	Annotations map[string]string   `json:"annotations"`
 	Properties  []KeyValue          `json:"properties"`
 	Data        map[string]string   `json:"data"` // ConfigMaps/Secrets
-	Conditions  []ResourceCondition `json:"conditions"`
-	Events      []ResourceEvent     `json:"events"`
+	Conditions  []ResourceCondition        `json:"conditions"`
+	Events      []ResourceEvent            `json:"events"`
+	Extra       map[string]interface{}     `json:"extra,omitempty"`
 }
 
 // --- Dispatcher ---
@@ -92,7 +93,9 @@ type ResourceDetailResult struct {
 // Pass "" for namespace to list across all namespaces.
 func (c *Client) ListResources(ctx context.Context, kind, namespace string) (*ResourceListResult, error) {
 	ns := namespace
-	if ns == "" {
+	if ns == "_all" {
+		ns = "" // empty string = all namespaces in k8s API
+	} else if ns == "" {
 		ns = c.cfg.Kubernetes.Namespace
 	}
 
@@ -1159,6 +1162,68 @@ func (c *Client) getPodDetail(ctx context.Context, ns, name string) (*ResourceDe
 		props = append(props, KeyValue{Key: "Container: " + c.Name, Value: c.Image})
 	}
 
+	// Container statuses — structured for the frontend.
+	containers := make([]KeyValue, 0)
+	for _, cs := range p.Status.ContainerStatuses {
+		state := "Unknown"
+		detail := ""
+		if cs.State.Running != nil {
+			state = "Running"
+			detail = fmt.Sprintf("Started %s", fmtAge(cs.State.Running.StartedAt.Time))
+		} else if cs.State.Waiting != nil {
+			state = "Waiting"
+			detail = cs.State.Waiting.Reason
+		} else if cs.State.Terminated != nil {
+			state = "Terminated"
+			detail = cs.State.Terminated.Reason
+		}
+		containers = append(containers, KeyValue{
+			Key:   cs.Name,
+			Value: fmt.Sprintf("%s|%s|%t|%d|%s", state, cs.Image, cs.Ready, cs.RestartCount, detail),
+		})
+	}
+	for _, cs := range p.Status.InitContainerStatuses {
+		state := "Unknown"
+		detail := ""
+		if cs.State.Running != nil {
+			state = "Running"
+		} else if cs.State.Waiting != nil {
+			state = "Waiting"
+			detail = cs.State.Waiting.Reason
+		} else if cs.State.Terminated != nil {
+			state = "Terminated"
+			detail = cs.State.Terminated.Reason
+			if cs.State.Terminated.ExitCode == 0 {
+				state = "Completed"
+			}
+		}
+		containers = append(containers, KeyValue{
+			Key:   "(init) " + cs.Name,
+			Value: fmt.Sprintf("%s|%s|%t|%d|%s", state, cs.Image, cs.Ready, cs.RestartCount, detail),
+		})
+	}
+
+	// Add volumes summary.
+	for _, v := range p.Spec.Volumes {
+		src := "Unknown"
+		if v.ConfigMap != nil {
+			src = "ConfigMap/" + v.ConfigMap.Name
+		} else if v.Secret != nil {
+			src = "Secret/" + v.Secret.SecretName
+		} else if v.PersistentVolumeClaim != nil {
+			src = "PVC/" + v.PersistentVolumeClaim.ClaimName
+		} else if v.EmptyDir != nil {
+			src = "EmptyDir"
+		} else if v.HostPath != nil {
+			src = "HostPath: " + v.HostPath.Path
+		} else if v.Projected != nil {
+			src = "Projected"
+		} else if v.DownwardAPI != nil {
+			src = "DownwardAPI"
+		}
+		props = append(props, KeyValue{Key: "Volume: " + v.Name, Value: src})
+	}
+
 	conditions := make([]ResourceCondition, 0)
 	for _, cond := range p.Status.Conditions {
 		conditions = append(conditions, ResourceCondition{
@@ -1172,7 +1237,7 @@ func (c *Client) getPodDetail(ctx context.Context, ns, name string) (*ResourceDe
 
 	events := c.getResourceEvents(ctx, ns, "Pod", name)
 
-	return &ResourceDetailResult{
+	result := &ResourceDetailResult{
 		Kind:        "Pod",
 		Name:        p.Name,
 		Namespace:   p.Namespace,
@@ -1182,7 +1247,16 @@ func (c *Client) getPodDetail(ctx context.Context, ns, name string) (*ResourceDe
 		Properties:  props,
 		Conditions:  conditions,
 		Events:      events,
-	}, nil
+	}
+
+	// Stash container statuses in Extra field.
+	if len(containers) > 0 {
+		result.Extra = map[string]interface{}{
+			"containers": containers,
+		}
+	}
+
+	return result, nil
 }
 
 func (c *Client) getDeploymentDetail(ctx context.Context, ns, name string) (*ResourceDetailResult, error) {

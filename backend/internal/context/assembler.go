@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/djocham/kube-watcher/internal/alerts"
-	"github.com/djocham/kube-watcher/internal/anomaly"
-	"github.com/djocham/kube-watcher/internal/apperrors"
-	"github.com/djocham/kube-watcher/internal/config"
-	"github.com/djocham/kube-watcher/internal/features"
+	"github.com/argues/kube-watcher/internal/alerts"
+	"github.com/argues/kube-watcher/internal/anomaly"
+	"github.com/argues/kube-watcher/internal/apperrors"
+	"github.com/argues/kube-watcher/internal/config"
+	"github.com/argues/kube-watcher/internal/features"
 )
 
 // Assembler builds the bounded context bundle that feeds the AI diagnostics panel.

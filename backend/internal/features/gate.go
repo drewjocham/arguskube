@@ -3,7 +3,7 @@ package features
 import (
 	"errors"
 
-	"github.com/djocham/kube-watcher/internal/config"
+	"github.com/argues/kube-watcher/internal/config"
 )
 
 // ErrProRequired is returned when a pro-only feature is accessed on the free tier.

@@ -30,6 +30,10 @@ export function DeleteNotebook(arg1) {
   return window['go']['pkg']['App']['DeleteNotebook'](arg1);
 }
 
+export function DeletePod(arg1, arg2) {
+  return window['go']['pkg']['App']['DeletePod'](arg1, arg2);
+}
+
 export function DeleteRunbook(arg1) {
   return window['go']['pkg']['App']['DeleteRunbook'](arg1);
 }
@@ -114,6 +118,10 @@ export function GetTopology(arg1) {
   return window['go']['pkg']['App']['GetTopology'](arg1);
 }
 
+export function HandleURL(arg1) {
+  return window['go']['pkg']['App']['HandleURL'](arg1);
+}
+
 export function InstallPopeye() {
   return window['go']['pkg']['App']['InstallPopeye']();
 }
@@ -184,6 +192,10 @@ export function SaveNotebook(arg1, arg2) {
 
 export function SaveRunbook(arg1, arg2) {
   return window['go']['pkg']['App']['SaveRunbook'](arg1, arg2);
+}
+
+export function ScanAllImages(arg1) {
+  return window['go']['pkg']['App']['ScanAllImages'](arg1);
 }
 
 export function ScanImage(arg1, arg2) {

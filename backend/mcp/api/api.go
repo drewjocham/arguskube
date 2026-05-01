@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/djocham/kube-watcher/mcp/server"
+	"github.com/argues/kube-watcher/mcp/server"
 )
 
 const (

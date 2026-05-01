@@ -7,7 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
-	"github.com/djocham/kube-watcher/pkg/kube"
+	"github.com/argues/kube-watcher/pkg/kube"
 )
 
 type WatcherConfigTool struct {

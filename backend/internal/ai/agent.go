@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/djocham/kube-watcher/internal/alerts"
+	"github.com/argues/kube-watcher/internal/alerts"
 )
 
 // AgentEvent is a tracked observation the agent logs for pattern recognition.

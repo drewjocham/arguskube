@@ -56,6 +56,15 @@ This document provides instructions for agentic coding agents operating in the A
 - Use context (`context.Context`) for cancellation, timeouts, and state management in long-running operations and HTTP servers.
 - Use synchronization primitives like `errgroup` (e.g., `golang.org/x/sync/errgroup`) to manage multiple concurrent tasks such as the HTTP server, metrics server, and background consumers/publishers (as seen in `cmd/main.go`).
 
+## Very Builds
+- Avoid running `go build` and `go test` commands directly. Instead, always use the provided `Makefile`.
+- Ensure the `Makefile` is always up-to-date with the latest build, lint, and test commands.
+- After a change run the `make` command, and verify that the build or test was successful and that there are no errors or warnings. If there are errors or warnings, fix them and run the `make` command again.
+
+## Very Commits
+- Ensure the `Makefile` is always up-to-date with the latest build, lint, and test commands.
+- After a change run the `make` command, and verify that the build or test was successful and that there are no errors or warnings. If there are errors or warnings, fix them and run the `make` command again.
+
 ### Logging and Observability
 - Use `log/slog` for structured logging with context-aware fields. Avoid plain `log` or `fmt.Print`.
 - Provide meaningful and standardized log keys (e.g., `logKeyName`, `logKeyPort`, `logKeyErr`).

@@ -7,20 +7,21 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"github.com/djocham/kube-watcher/internal/agentconn"
-	"github.com/djocham/kube-watcher/internal/ai"
-	"github.com/djocham/kube-watcher/internal/alerts"
-	"github.com/djocham/kube-watcher/internal/anomaly"
-	"github.com/djocham/kube-watcher/internal/config"
-	ctxassembly "github.com/djocham/kube-watcher/internal/context"
-	"github.com/djocham/kube-watcher/internal/features"
-	"github.com/djocham/kube-watcher/internal/incidents"
-	"github.com/djocham/kube-watcher/internal/k8s"
-	"github.com/djocham/kube-watcher/internal/notebooks"
-	"github.com/djocham/kube-watcher/internal/popeye"
-	"github.com/djocham/kube-watcher/internal/runbooks"
-	"github.com/djocham/kube-watcher/internal/setup"
-	"github.com/djocham/kube-watcher/internal/terminal"
+	"github.com/argues/kube-watcher/internal/agentconn"
+	"github.com/argues/kube-watcher/internal/ai"
+	"github.com/argues/kube-watcher/internal/alerts"
+	"github.com/argues/kube-watcher/internal/anomaly"
+	"github.com/argues/kube-watcher/internal/config"
+	ctxassembly "github.com/argues/kube-watcher/internal/context"
+	"github.com/argues/kube-watcher/internal/features"
+	"github.com/argues/kube-watcher/internal/incidents"
+	"github.com/argues/kube-watcher/internal/k8s"
+	"github.com/argues/kube-watcher/internal/notebooks"
+	"github.com/argues/kube-watcher/internal/popeye"
+	"github.com/argues/kube-watcher/internal/runbooks"
+	"github.com/argues/kube-watcher/internal/setup"
+	"github.com/argues/kube-watcher/internal/terminal"
+	"github.com/argues/kube-watcher/internal/vulnscan"
 )
 
 // AppConfig holds all dependencies for the application. Flat, explicit.
@@ -33,6 +34,7 @@ type AppConfig struct {
 	Detector  anomaly.Detector
 	Agent     *ai.Agent
 	Popeye    *popeye.Runner
+	Scanner   *vulnscan.Scanner
 	Notebooks *notebooks.Store
 	Runbooks  *runbooks.Store
 	Setup     *setup.Manager
@@ -51,6 +53,7 @@ type App struct {
 	detector  anomaly.Detector
 	agent     *ai.Agent
 	popeye    *popeye.Runner
+	scanner   *vulnscan.Scanner
 	notebooks *notebooks.Store
 	runbooks  *runbooks.Store
 	agentConn *agentconn.Connector
@@ -84,6 +87,7 @@ func NewApp(ac AppConfig) *App {
 		detector:  ac.Detector,
 		agent:     ac.Agent,
 		popeye:    ac.Popeye,
+		scanner:   ac.Scanner,
 		notebooks: ac.Notebooks,
 		runbooks:  ac.Runbooks,
 		term:      terminal.New(ac.Logger),
@@ -131,21 +135,40 @@ func (a *App) GetClusterInfo() (*k8s.ClusterInfo, error) {
 	return a.k8s.GetClusterInfo(a.ctx)
 }
 
-// ListContexts returns all available kubeconfig contexts.
+// ListContexts returns all available kubeconfig contexts. Works even when no
+// cluster is connected — it reads the kubeconfig file directly.
 func (a *App) ListContexts() ([]k8s.ContextInfo, error) {
-	if a.k8s == nil {
-		return nil, errNoCluster
+	if a.k8s != nil {
+		return a.k8s.ListContexts()
 	}
-	return a.k8s.ListContexts()
+	// No client yet — read kubeconfig directly so the user can pick a context.
+	kubeconfigPath := ""
+	if a.cfg != nil {
+		kubeconfigPath = a.cfg.Kubernetes.Config
+	}
+	return k8s.ListContextsFromKubeconfig(kubeconfigPath, "")
 }
 
-// SwitchContext changes the active kubeconfig context at runtime.
+// SwitchContext changes the active kubeconfig context at runtime. If no k8s
+// client exists yet (e.g. initial connection failed), it creates one.
 func (a *App) SwitchContext(name string) error {
 	if a.k8s == nil {
-		return errNoCluster
-	}
-	if err := a.k8s.SwitchContext(name); err != nil {
-		return err
+		// First connection — bootstrap a client targeting this context.
+		a.logger.Info("bootstrapping k8s client on first context switch",
+			slog.String("context", name),
+		)
+		client, err := k8s.NewClient(a.cfg, a.logger)
+		if err != nil {
+			return fmt.Errorf("create k8s client: %w", err)
+		}
+		if err := client.SwitchContext(name); err != nil {
+			return err
+		}
+		a.k8s = client
+	} else {
+		if err := a.k8s.SwitchContext(name); err != nil {
+			return err
+		}
 	}
 	// Rebuild the agent connector with the new client.
 	a.agentConn = agentconn.New(
@@ -218,6 +241,15 @@ func (a *App) GetPodLogs(namespace, podName string, tailLines int64) ([]alerts.L
 		return nil, nil
 	}
 	return a.k8s.GetPodLogs(a.ctx, namespace, podName, tailLines)
+}
+
+// DeletePod deletes a pod by namespace and name.
+func (a *App) DeletePod(namespace, podName string) error {
+	if a.k8s == nil {
+		return errNoCluster
+	}
+	a.logger.Info("deleting pod", slog.String("namespace", namespace), slog.String("pod", podName))
+	return a.k8s.DeletePod(a.ctx, namespace, podName)
 }
 
 // GetFeatures returns all features and their availability for the current tier.
@@ -607,77 +639,31 @@ func (a *App) SyncApplication(namespace, name string) error {
 
 // --- Vulnerability bindings ---
 
-type Vulnerability struct {
-	ID       string `json:"id"`
-	Pkg      string `json:"pkg"`
-	Severity string `json:"severity"`
-	Desc     string `json:"desc"`
-	Fix      string `json:"fix"`
+// ListVulnerabilities returns cached scan results (or demo data if no scan has run).
+func (a *App) ListVulnerabilities() ([]vulnscan.ScannedImage, error) {
+	if a.scanner == nil {
+		return vulnscan.DemoResults(), nil
+	}
+	return a.scanner.List(), nil
 }
 
-type AIOptimization struct {
-	Issue string `json:"issue"`
-	Fix   string `json:"fix"`
-}
-
-type ScannedImage struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Namespace string          `json:"namespace"`
-	LastScan  string          `json:"lastScan"`
-	Critical  int             `json:"critical"`
-	High      int             `json:"high"`
-	Medium    int             `json:"medium"`
-	Low       int             `json:"low"`
-	Status    string          `json:"status"`
-	CVEs      []Vulnerability `json:"cves"`
-	AIOpt     AIOptimization  `json:"aiOpt"`
-}
-
-// ListVulnerabilities returns a mocked list of vulnerabilities to satisfy the UI integration.
-func (a *App) ListVulnerabilities() ([]ScannedImage, error) {
-	// In a real implementation this would fetch from a database or cluster agent.
-	// We return a mock response to ensure the frontend displays data correctly.
-	return []ScannedImage{
-		{
-			ID: "img-1", Name: "web-app:v1.2.4", Namespace: "default", LastScan: "10m ago",
-			Critical: 2, High: 5, Medium: 12, Low: 24, Status: "Vulnerable",
-			CVEs: []Vulnerability{
-				{ID: "CVE-2023-38545", Pkg: "curl", Severity: "Critical", Desc: "Heap based buffer overflow in SOCKS5 proxy handshake.", Fix: "Upgrade to curl 8.4.0"},
-				{ID: "CVE-2023-4911", Pkg: "glibc", Severity: "Critical", Desc: "Buffer overflow in ld.so (Looney Tunables).", Fix: "Update glibc to 2.38-r1"},
-			},
-			AIOpt: AIOptimization{Issue: "Base image is using debian:bullseye which has numerous unpatched CVEs.", Fix: "Rebuild image using distroless/cc-debian12 to reduce attack surface and drop 85% of these vulnerabilities."},
-		},
-		{
-			ID: "img-2", Name: "worker:latest", Namespace: "default", LastScan: "1h ago",
-			Critical: 0, High: 1, Medium: 4, Low: 8, Status: "Warning",
-			CVEs: []Vulnerability{
-				{ID: "CVE-2023-5363", Pkg: "openssl", Severity: "High", Desc: "Incorrect cipher key & IV length processing.", Fix: "Upgrade to openssl 3.0.12"},
-			},
-			AIOpt: AIOptimization{Issue: "Using \"latest\" tag is an anti-pattern and masks underlying OS updates.", Fix: "Pin to a specific SHA digest or immutable tag."},
-		},
-		{
-			ID: "img-3", Name: "payment:v2.0", Namespace: "finance", LastScan: "2m ago",
-			Critical: 0, High: 0, Medium: 0, Low: 0, Status: "Clean",
-			CVEs: []Vulnerability{},
-			AIOpt: AIOptimization{Issue: "None", Fix: "Image is optimal and following least-privilege principles."},
-		},
-		{
-			ID: "img-4", Name: "ingress-nginx:v1.9.0", Namespace: "kube-system", LastScan: "1d ago",
-			Critical: 1, High: 3, Medium: 15, Low: 40, Status: "Vulnerable",
-			CVEs: []Vulnerability{
-				{ID: "CVE-2023-44487", Pkg: "nginx", Severity: "Critical", Desc: "HTTP/2 Rapid Reset Attack.", Fix: "Upgrade to ingress-nginx v1.9.3+"},
-			},
-			AIOpt: AIOptimization{Issue: "Nginx ingress controller is exposed to HTTP/2 Rapid Reset DOS.", Fix: "Patch controller deployment and enable global rate limiting."},
-		},
-	}, nil
-}
-
-// ScanImage triggers a vulnerability scan.
+// ScanImage triggers a Trivy vulnerability scan for a single container image.
 func (a *App) ScanImage(image string, engine string) (string, error) {
-	// Mock implementation
-	a.logger.InfoContext(a.ctx, "Scanning image", slog.String("image", image), slog.String("engine", engine))
-	return "Scan complete. Found updated vulnerabilities.", nil
+	if a.scanner == nil {
+		return "Scanner not initialized — no cluster connection", nil
+	}
+	return a.scanner.ScanSingleImage(a.ctx, image, engine)
+}
+
+// ScanAllImages enumerates all images in the cluster and scans each via Trivy.
+func (a *App) ScanAllImages(namespace string) ([]vulnscan.ScannedImage, error) {
+	if a.scanner == nil {
+		return vulnscan.DemoResults(), nil
+	}
+	if namespace == "" {
+		namespace = ""
+	}
+	return a.scanner.ScanAll(a.ctx, namespace)
 }
 
 // --- Code Block bindings ---

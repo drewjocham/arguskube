@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/djocham/kube-watcher/internal/config"
+	"github.com/argues/kube-watcher/internal/config"
 )
 
 // Log attribute keys — no magic strings.

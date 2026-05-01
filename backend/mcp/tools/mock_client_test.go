@@ -6,7 +6,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 
-	"github.com/djocham/kube-watcher/pkg/kube"
+	"github.com/argues/kube-watcher/pkg/kube"
 )
 
 type mockK8sClient struct {

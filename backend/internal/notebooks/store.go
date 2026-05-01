@@ -17,7 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	appconfig "github.com/djocham/kube-watcher/internal/config"
+	appconfig "github.com/argues/kube-watcher/internal/config"
 )
 
 // FileEntry represents a notebook file or folder in the tree structure.

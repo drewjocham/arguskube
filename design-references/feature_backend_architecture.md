@@ -99,6 +99,11 @@ The backend is split into two primary components:
 
 ## 7. Operations Views
 
+### ArgusCD (GitOps)
+* **Feature**: ArgoCD-style GitOps sync status, showing drift between Git repositories and live cluster state.
+* **Backend Architecture**:
+  * *Desktop Client*: Interfaces with the Kubernetes API to read custom resources (e.g., `Application` CRDs) or directly queries the ArgusCD/ArgoCD API server.
+
 ### Runbooks & Incident Log
 * **Feature**: Executable markdown runbooks and tracking of cluster incidents.
 * **Backend Architecture**:
@@ -117,3 +122,42 @@ The backend is split into two primary components:
 * **Feature**: WYSIWYG Markdown editor with syntax highlighting, synced to an S3 bucket.
 * **Backend Architecture**:
   * *Desktop Client*: Uses `aws-sdk-go-v2`. When a file is saved, the Wails backend intercepts the content, writes it to a local cache directory (for offline support), and asynchronously uploads it to the configured AWS S3 bucket. Supports directory structures by mapping S3 prefixes to local folders.
+
+---
+
+## 9. Security Views
+
+### Vulnerability Scanner (Trivy)
+* **Feature**: Automated and on-demand container image vulnerability scanning.
+* **Backend Architecture**:
+  * *Desktop Client*: Spawns the local `trivy` binary or interacts with the Trivy Kubernetes operator to scan images used by running pods, reporting CVEs with severity ratings and remediation steps.
+
+---
+
+## 10. Integrated Terminal (Warp-style)
+
+### AI-Powered Terminal
+* **Feature**: A modern, GPU-accelerated terminal built directly into the platform with AI command generation, error explanation, and semantic autocomplete.
+* **Backend Architecture**:
+  * *Desktop Client*: Uses an internal PTY (pseudo-terminal) package in Go to spawn shell sessions.
+  * *AI Integration*: Uses the built-in MCP (Model Context Protocol) server to pass terminal output to the LLM for real-time analysis and "Natural Language to Kubectl" translation.
+
+---
+
+## 11. Future SRE Roadmap (The Masterpiece Vision)
+
+### Multi-Cluster Fleet Management
+* **Feature**: Seamless context switching, federated resource views, and cross-cluster resource comparisons.
+* **Backend Architecture**: Parses multiple `kubeconfig` contexts and aggregates data streams via a unified gRPC backend.
+
+### eBPF Network Visualizer
+* **Feature**: Hubble/Cilium-style network traffic map showing real-time L3/L4/L7 flows between pods without sidecar proxies.
+* **Backend Architecture**: A privileged eBPF agent deployed as a DaemonSet to trace `connect()` and `accept()` syscalls, pushing flow graphs to the desktop client via WebSockets.
+
+### RBAC Simulator & Visualizer
+* **Feature**: Interactive graph showing exactly "Who can do What", with a simulation engine to test permissions before applying RBAC manifests.
+* **Backend Architecture**: Local evaluation engine that computes `SubjectAccessReview` rules against a cached snapshot of Roles and RoleBindings.
+
+### FinOps & Right-Sizing (Cost Allocation)
+* **Feature**: Node cost breakdown and pod right-sizing recommendations based on historical usage vs requested limits.
+* **Backend Architecture**: Integrates with cloud-provider billing APIs and historical PromQL queries to calculate wasted resources and generate optimal `VerticalPodAutoscaler` manifests.

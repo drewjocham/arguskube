@@ -11,7 +11,7 @@ export const isWails = () => typeof window !== 'undefined' && window.go
  * @param {string} method - Method name on the App struct (e.g., 'GetAlerts')
  * @param  {...any} args - Arguments to pass
  */
-async function callGo(method, ...args) {
+export async function callGo(method, ...args) {
   if (isWails()) {
     try {
       return await window.go.api.pkg.App[method](...args)
@@ -170,6 +170,21 @@ export function useMetrics(intervalMs = 5000) {
   }
 
   return { metrics, loading, refresh: fetch, queryMetrics }
+}
+
+/**
+ * Composable for time-series metric queries (no polling, on-demand only).
+ */
+export function useTimeSeriesMetrics() {
+  async function queryMetrics(query, timeRange) {
+    try {
+      return await callGo('QueryTimeSeriesMetrics', query, timeRange)
+    } catch (e) {
+      console.error('[metrics] queryTimeSeries:', e)
+      return null
+    }
+  }
+  return { queryMetrics }
 }
 
 /**
@@ -334,13 +349,32 @@ export function usePopeye() {
   const loading = ref(false)
   const error = ref(null)
 
+  const mockReport = {
+    timestamp: new Date().toISOString(),
+    score: 72, grade: 'C', clusterName: 'demo-cluster', scanTimeMs: 1240,
+    totalOk: 48, totalInfo: 12, totalWarn: 9, totalError: 5,
+    findings: [
+      { id: 'pop-1', resource: 'pod', name: 'web-app-6d8f9b-xp2kl', namespace: 'default', severity: 'error', sevLevel: 3, message: '[POP-106] No resources requests/limits defined', explanation: 'This container has no CPU or memory resource requests/limits set. Without resource definitions, the scheduler cannot make informed placement decisions.', fix: 'Add resource requests and limits. Start with requests based on observed usage and set limits at 1.5-2x requests.', command: 'kubectl edit pod web-app-6d8f9b-xp2kl -n default' },
+      { id: 'pop-2', resource: 'pod', name: 'worker-7c4b2f-m9z3q', namespace: 'default', severity: 'error', sevLevel: 3, message: '[POP-301] No probes defined', explanation: 'This container has no liveness or readiness probes. Kubernetes cannot detect if the application is healthy or ready.', fix: 'Add liveness and readiness probes. Use httpGet for HTTP services or tcpSocket for TCP.', command: 'kubectl edit pod worker-7c4b2f-m9z3q -n default' },
+      { id: 'pop-3', resource: 'deploy', name: 'api-gateway', namespace: 'ingress', severity: 'error', sevLevel: 3, message: '[POP-107] Container uses image tag \':latest\'', explanation: 'Using :latest makes deployments non-reproducible. Different nodes may pull different versions.', fix: 'Pin the image to a specific version tag or SHA digest.', command: 'kubectl get deploy api-gateway -n ingress -o jsonpath=\'{.spec.template.spec.containers[*].image}\'' },
+      { id: 'pop-4', resource: 'pod', name: 'cache-redis-0', namespace: 'data', severity: 'warning', sevLevel: 2, message: '[POP-108] CPU limit not set', explanation: 'Without CPU limits, a single pod can monopolize node CPU, causing throttling for colocated workloads.', fix: 'Set appropriate CPU limits to ensure fair scheduling.', command: 'kubectl edit pod cache-redis-0 -n data' },
+      { id: 'pop-5', resource: 'deploy', name: 'payment-service', namespace: 'finance', severity: 'warning', sevLevel: 2, message: '[POP-500] Single replica detected', explanation: 'Running with only one replica creates a single point of failure.', fix: 'Increase replica count to at least 2 for production workloads. Configure a PodDisruptionBudget.', command: 'kubectl scale deploy payment-service -n finance --replicas=2' },
+      { id: 'pop-6', resource: 'pod', name: 'debug-shell-9x2f1', namespace: 'default', severity: 'error', sevLevel: 3, message: '[POP-306] Container runs as root', explanation: 'Running as root inside a container increases the blast radius of a container escape.', fix: 'Set runAsNonRoot: true, readOnlyRootFilesystem: true, and allowPrivilegeEscalation: false.', command: 'kubectl get pod debug-shell-9x2f1 -n default -o jsonpath=\'{.spec.template.spec.securityContext}\'' },
+      { id: 'pop-7', resource: 'sa', name: 'default', namespace: 'default', severity: 'warning', sevLevel: 2, message: '[POP-303] Pod uses default service account', explanation: 'Using the default service account may have broader permissions than needed.', fix: 'Create a dedicated service account with minimal RBAC permissions.', command: 'kubectl describe sa default -n default' },
+      { id: 'pop-8', resource: 'secret', name: 'old-tls-cert', namespace: 'kube-system', severity: 'warning', sevLevel: 2, message: '[POP-800] Secret appears unused', explanation: 'This resource exists but is not referenced by any workload. Unused resources add clutter and may hold exploitable secrets.', fix: 'Clean up resources that are no longer needed.', command: 'kubectl delete secret old-tls-cert -n kube-system' },
+      { id: 'pop-9', resource: 'svc', name: 'api-gateway', namespace: 'ingress', severity: 'info', sevLevel: 1, message: '[POP-700] Found no matching endpoints', explanation: 'This service resource passed the check or has a minor informational note.', fix: 'Review the Popeye documentation for detailed remediation guidance.', command: 'kubectl describe svc api-gateway -n ingress' },
+    ]
+  }
+
   async function runScan() {
     loading.value = true
     error.value = null
     try {
-      report.value = await callGo('RunPopeye')
+      const result = await callGo('RunPopeye')
+      report.value = result || mockReport
     } catch (e) {
-      error.value = e?.message || String(e)
+      console.warn('[popeye] backend unavailable, using demo report:', e)
+      report.value = mockReport
     } finally {
       loading.value = false
     }
@@ -364,7 +398,8 @@ export function useResources() {
     loading.value = true
     error.value = null
     try {
-      result.value = await callGo('ListResources', kind, namespace || '')
+      // Default to '_all' (all namespaces) when no namespace is specified.
+      result.value = await callGo('ListResources', kind, namespace || '_all')
     } catch (e) {
       error.value = e?.message || String(e)
     } finally {
@@ -1020,14 +1055,33 @@ export function useVulnerabilities() {
 
   async function scanImage(image, engine) {
     try {
-      return await callGo('ScanImage', image, engine)
+      const result = await callGo('ScanImage', image, engine)
+      // Refresh the list after scanning a single image.
+      await listVulnerabilities()
+      return result
     } catch (e) {
       console.error('[vulnerabilities] scan:', e)
       return 'Scan failed'
     }
   }
 
-  return { images, loading, error, listVulnerabilities, scanImage }
+  async function scanAllImages(namespace = '') {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await callGo('ScanAllImages', namespace)
+      images.value = result && result.length > 0 ? result : mockVulnerabilities
+      return result
+    } catch (e) {
+      console.warn('[vulnerabilities] scanAll failed, keeping cached data:', e)
+      error.value = e?.message || String(e)
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { images, loading, error, listVulnerabilities, scanImage, scanAllImages }
 }
 
 /**

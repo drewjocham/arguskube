@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/djocham/kube-watcher/pkg/kube"
+	"github.com/argues/kube-watcher/pkg/kube"
 )
 
 type NamespaceListTool struct {

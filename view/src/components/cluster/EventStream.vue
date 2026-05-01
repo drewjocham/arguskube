@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useResources } from '../../composables/useWails'
 
 const { result, loading, listResources } = useResources()
@@ -13,8 +13,11 @@ const mockEvents = [
 ]
 
 const events = ref([])
+const autoRefresh = ref(true)
+const filterType = ref('all')
+let refreshTimer = null
 
-onMounted(async () => {
+async function fetchEvents() {
   await listResources('events', '')
   if (result.value && result.value.items && result.value.items.length > 0) {
     events.value = result.value.items.map((item, i) => ({
@@ -29,15 +32,58 @@ onMounted(async () => {
   } else {
     events.value = mockEvents
   }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh()
+  refreshTimer = setInterval(fetchEvents, 10000)
+}
+function stopAutoRefresh() {
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }
+}
+function toggleAutoRefresh() {
+  autoRefresh.value = !autoRefresh.value
+  if (autoRefresh.value) startAutoRefresh()
+  else stopAutoRefresh()
+}
+
+const filteredEvents = ref([])
+import { computed } from 'vue'
+const displayEvents = computed(() => {
+  if (filterType.value === 'all') return events.value
+  return events.value.filter(e => e.type.toLowerCase() === filterType.value)
 })
+
+onMounted(async () => {
+  await fetchEvents()
+  if (autoRefresh.value) startAutoRefresh()
+})
+onUnmounted(() => stopAutoRefresh())
 </script>
 
 <template>
   <div class="events-view">
     <div class="header">
-      <div class="title">Cluster Events</div>
-      <div class="subtitle">Real-time stream of state changes and warnings</div>
+      <div class="header-text">
+        <div class="title">Cluster Events</div>
+        <div class="subtitle">Real-time stream of state changes and warnings</div>
+      </div>
+      <div class="header-controls">
+        <div class="filter-group">
+          <button class="filter-btn" :class="{ active: filterType === 'all' }" @click="filterType = 'all'">All</button>
+          <button class="filter-btn" :class="{ active: filterType === 'warning' }" @click="filterType = 'warning'">Warnings</button>
+          <button class="filter-btn" :class="{ active: filterType === 'normal' }" @click="filterType = 'normal'">Normal</button>
+        </div>
+        <button class="refresh-btn" @click="fetchEvents" :disabled="loading">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+        </button>
+        <button class="auto-btn" :class="{ active: autoRefresh }" @click="toggleAutoRefresh">
+          {{ autoRefresh ? 'Live' : 'Paused' }}
+        </button>
+      </div>
     </div>
+
+    <div class="event-count">{{ displayEvents.length }} events</div>
 
     <div class="events-list">
       <div class="event-header-row">
@@ -48,7 +94,7 @@ onMounted(async () => {
         <div class="col-age">Age</div>
       </div>
 
-      <div v-for="e in events" :key="e.id" class="event-row" :class="e.type.toLowerCase()">
+      <div v-for="e in displayEvents" :key="e.id" class="event-row" :class="e.type.toLowerCase()">
         <div class="col-type">
           <span class="type-pill" :class="e.type.toLowerCase()">{{ e.type }}</span>
         </div>
@@ -70,8 +116,27 @@ onMounted(async () => {
   overflow-y: auto;
   height: 100%;
 }
-.header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
-.header .subtitle { font-size: 13px; color: #8b8f96; }
+.header { display: flex; justify-content: space-between; align-items: flex-start; }
+.header-text .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
+.header-text .subtitle { font-size: 13px; color: #8b8f96; }
+.header-controls { display: flex; align-items: center; gap: 8px; }
+.filter-group { display: flex; gap: 4px; }
+.filter-btn {
+  background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #8b8f96;
+  padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all 0.2s;
+}
+.filter-btn.active { background: rgba(255,255,255,0.08); color: #fff; border-color: rgba(255,255,255,0.2); }
+.refresh-btn {
+  background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #8b8f96;
+  padding: 5px 8px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; transition: all 0.2s;
+}
+.refresh-btn:hover { color: #fff; border-color: rgba(255,255,255,0.2); }
+.auto-btn {
+  background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #8b8f96;
+  padding: 4px 10px; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all 0.2s;
+}
+.auto-btn.active { background: rgba(62, 207, 142, 0.15); color: #3ecf8e; border-color: rgba(62, 207, 142, 0.3); }
+.event-count { font-size: 12px; color: #8b8f96; }
 
 .events-list {
   background: #1e2023;

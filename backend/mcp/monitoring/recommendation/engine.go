@@ -3,11 +3,11 @@ package recommendation
 import (
 	"context"
 	"fmt"
-	"github.com/djocham/kube-watcher/mcp/monitoring/history"
+	"github.com/argues/kube-watcher/mcp/monitoring/history"
 	"log/slog"
 	"time"
 
-	"github.com/djocham/kube-watcher/pkg/kube/watch"
+	"github.com/argues/kube-watcher/pkg/kube/watch"
 )
 
 type Recommendation struct {

@@ -13,8 +13,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/djocham/kube-watcher/internal/alerts"
-	"github.com/djocham/kube-watcher/internal/config"
+	"github.com/argues/kube-watcher/internal/alerts"
+	"github.com/argues/kube-watcher/internal/config"
 )
 
 const (
@@ -317,6 +317,11 @@ func (c *Client) GetPodLogs(ctx context.Context, namespace, podName string, tail
 	return lines, nil
 }
 
+// DeletePod deletes a pod by name and namespace.
+func (c *Client) DeletePod(ctx context.Context, namespace, podName string) error {
+	return c.cs.CoreV1().Pods(namespace).Delete(ctx, podName, metav1.DeleteOptions{})
+}
+
 // ContextInfo describes a kubeconfig context entry.
 type ContextInfo struct {
 	Name    string `json:"name"`
@@ -326,9 +331,23 @@ type ContextInfo struct {
 
 // ListContexts reads the kubeconfig and returns all available contexts.
 func (c *Client) ListContexts() ([]ContextInfo, error) {
+	kubeconfigPath := ""
+	activeOverride := ""
+	if c.cfg != nil {
+		kubeconfigPath = c.cfg.Kubernetes.Config
+		activeOverride = c.cfg.Kubernetes.Context
+	}
+	return ListContextsFromKubeconfig(kubeconfigPath, activeOverride)
+}
+
+// ListContextsFromKubeconfig reads the kubeconfig file and returns all available
+// contexts. It does not require an active k8s client, so it works even when the
+// cluster is unreachable. kubeconfigPath may be empty (uses default loading
+// rules). activeOverride, if non-empty, marks that context as active.
+func ListContextsFromKubeconfig(kubeconfigPath, activeOverride string) ([]ContextInfo, error) {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if c.cfg.Kubernetes.Config != "" {
-		rules.ExplicitPath = c.cfg.Kubernetes.Config
+	if kubeconfigPath != "" {
+		rules.ExplicitPath = kubeconfigPath
 	}
 
 	rawCfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, &clientcmd.ConfigOverrides{}).RawConfig()
@@ -336,7 +355,7 @@ func (c *Client) ListContexts() ([]ContextInfo, error) {
 		return nil, fmt.Errorf("load kubeconfig: %w", err)
 	}
 
-	activeCtx := c.cfg.Kubernetes.Context
+	activeCtx := activeOverride
 	if activeCtx == "" || activeCtx == "default" {
 		activeCtx = rawCfg.CurrentContext
 	}
