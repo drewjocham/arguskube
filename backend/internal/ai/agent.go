@@ -28,6 +28,17 @@ type ChatEntry struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// DiagnosticContext is the enriched context bundle passed to the AI agent.
+// It includes everything the agent needs to reason about the cluster state.
+type DiagnosticContext struct {
+	Metrics        *alerts.ClusterMetrics `json:"metrics,omitempty"`
+	RecentEvents   []string               `json:"recentEvents,omitempty"`   // Last 20 K8s warning events
+	CascadeAlerts  []alerts.Alert         `json:"cascadeAlerts,omitempty"`  // Correlated alerts
+	NamespaceSummary map[string]int        `json:"namespaceSummary,omitempty"` // ns → pod count
+	TopRestarters  []string               `json:"topRestarters,omitempty"`  // Pods with high restarts
+	RecentPatterns []string               `json:"recentPatterns,omitempty"` // Agent event log
+}
+
 // AutoSummary is the agent's automatic investigation result for an alert.
 type AutoSummary struct {
 	AlertID    string    `json:"alertId"`
@@ -145,19 +156,38 @@ func (a *Agent) investigate(ctx context.Context, alert alerts.Alert, metrics *al
 }
 
 // SendMessage sends a user message in the context of an alert and returns the response.
-func (a *Agent) SendMessage(ctx context.Context, alertID string, userMessage string, alert *alerts.Alert, metrics *alerts.ClusterMetrics) (string, error) {
+func (a *Agent) SendMessage(ctx context.Context, alertID string, userMessage string, alert *alerts.Alert, diagCtx *DiagnosticContext) (string, error) {
 	a.mu.Lock()
 	history, ok := a.conversations[alertID]
 	if !ok {
-		// Start a new conversation.
+		// Start a new conversation with full diagnostic context.
+		var metrics *alerts.ClusterMetrics
+		if diagCtx != nil {
+			metrics = diagCtx.Metrics
+		}
 		systemPrompt := a.buildSystemPrompt(metrics)
 		history = []ChatEntry{
 			{Role: "system", Content: systemPrompt, Timestamp: time.Now()},
 		}
 		if alert != nil {
+			contextMsg := "Context for this conversation:\n" + formatAlertForAgent(*alert)
+
+			// Enrich with diagnostic context if available.
+			if diagCtx != nil {
+				contextMsg += a.formatDiagnosticContext(diagCtx)
+			}
+
 			history = append(history, ChatEntry{
 				Role:      "user",
-				Content:   "Context for this conversation:\n" + formatAlertForAgent(*alert),
+				Content:   contextMsg,
+				Timestamp: time.Now(),
+			})
+		} else if diagCtx != nil {
+			// Global chat without specific alert — still provide cluster context.
+			contextMsg := "Current cluster context:\n" + a.formatDiagnosticContext(diagCtx)
+			history = append(history, ChatEntry{
+				Role:      "user",
+				Content:   contextMsg,
 				Timestamp: time.Now(),
 			})
 		}
@@ -256,6 +286,48 @@ Current cluster state:
 			metrics.ErrorRate, metrics.RestartCount, metrics.RestartTop,
 			metrics.WarningEvents, metrics.SLOStatus,
 		))
+	}
+
+	return sb.String()
+}
+
+// formatDiagnosticContext builds a human-readable context block from the diagnostic bundle.
+func (a *Agent) formatDiagnosticContext(dc *DiagnosticContext) string {
+	var sb strings.Builder
+
+	if len(dc.RecentEvents) > 0 {
+		sb.WriteString("\n\nRecent warning events:\n")
+		for _, e := range dc.RecentEvents {
+			sb.WriteString("- " + e + "\n")
+		}
+	}
+
+	if len(dc.CascadeAlerts) > 0 {
+		sb.WriteString("\nCorrelated alerts (possible cascade):\n")
+		for _, ca := range dc.CascadeAlerts {
+			sb.WriteString(fmt.Sprintf("- [%s] %s in %s/%s\n", ca.Severity, ca.Name, ca.Namespace, ca.PodName))
+		}
+	}
+
+	if len(dc.TopRestarters) > 0 {
+		sb.WriteString("\nPods with high restart counts:\n")
+		for _, r := range dc.TopRestarters {
+			sb.WriteString("- " + r + "\n")
+		}
+	}
+
+	if len(dc.NamespaceSummary) > 0 {
+		sb.WriteString("\nNamespace pod counts:\n")
+		for ns, count := range dc.NamespaceSummary {
+			sb.WriteString(fmt.Sprintf("- %s: %d pods\n", ns, count))
+		}
+	}
+
+	if len(dc.RecentPatterns) > 0 {
+		sb.WriteString("\nAgent pattern log (last 2h):\n")
+		for _, p := range dc.RecentPatterns {
+			sb.WriteString("- " + p + "\n")
+		}
 	}
 
 	return sb.String()

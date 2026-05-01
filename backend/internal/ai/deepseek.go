@@ -46,6 +46,13 @@ type ChatResponse struct {
 	} `json:"usage"`
 }
 
+// Retry configuration for transient API failures.
+const (
+	maxRetries     = 3
+	initialBackoff = 500 * time.Millisecond
+	maxBackoff     = 10 * time.Second
+)
+
 // DeepSeekClient is an OpenAI-compatible HTTP client for DeepSeek.
 type DeepSeekClient struct {
 	baseURL    string
@@ -66,6 +73,14 @@ func NewDeepSeekClient(apiKey string, logger *slog.Logger) *DeepSeekClient {
 		},
 		logger: logger,
 	}
+}
+
+// isRetryable returns true for status codes that warrant a retry.
+func isRetryable(code int) bool {
+	return code == http.StatusTooManyRequests ||
+		code == http.StatusBadGateway ||
+		code == http.StatusServiceUnavailable ||
+		code == http.StatusGatewayTimeout
 }
 
 // Chat sends a chat completion request and returns the assistant message.
@@ -95,20 +110,64 @@ func (c *DeepSeekClient) Chat(ctx context.Context, messages []Message) (string, 
 		slog.Int("messages", len(messages)),
 	)
 
-	resp, err := c.httpClient.Do(httpReq)
-	if err != nil {
-		return "", fmt.Errorf("deepseek request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("deepseek returned %d: %s", resp.StatusCode, string(respBody))
-	}
-
 	var chatResp ChatResponse
-	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-		return "", fmt.Errorf("decode response: %w", err)
+	backoff := initialBackoff
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			c.logger.WarnContext(ctx, "deepseek retrying",
+				slog.Int("attempt", attempt),
+				slog.Duration("backoff", backoff),
+			)
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+
+			// Rebuild the request body (reader is consumed after first attempt).
+			httpReq, err = http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
+			if err != nil {
+				return "", fmt.Errorf("create request: %w", err)
+			}
+			httpReq.Header.Set("Content-Type", "application/json")
+			httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+		}
+
+		resp, doErr := c.httpClient.Do(httpReq)
+		if doErr != nil {
+			if attempt < maxRetries {
+				continue
+			}
+			return "", fmt.Errorf("deepseek request: %w", doErr)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			respBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+
+			if attempt < maxRetries && isRetryable(resp.StatusCode) {
+				// Check for Retry-After header from rate limiter.
+				if ra := resp.Header.Get("Retry-After"); ra != "" {
+					if d, parseErr := time.ParseDuration(ra + "s"); parseErr == nil {
+						backoff = d
+					}
+				}
+				continue
+			}
+			return "", fmt.Errorf("deepseek returned %d: %s", resp.StatusCode, string(respBody))
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+			resp.Body.Close()
+			return "", fmt.Errorf("decode response: %w", err)
+		}
+		resp.Body.Close()
+		break
 	}
 
 	if len(chatResp.Choices) == 0 {

@@ -26,35 +26,45 @@ const itemDetail = ref(null)
 const expandedItem = ref(null)
 const notification = ref(null)
 
-onMounted(async () => {
+const list = computed(() => props.type === 'cronjobs' ? cronjobs.value : jobs.value)
+
+async function fetchData() {
   const resourceType = props.type === 'cronjobs' ? 'cronjobs' : 'jobs'
-  await listResources(resourceType, '')
-  if (result.value && result.value.items && result.value.items.length > 0) {
-    if (resourceType === 'jobs') {
-      jobs.value = result.value.items.map(item => ({
-        name: item.name,
-        namespace: item.namespace,
-        completions: item.fields?.completions || '0/0',
-        duration: item.fields?.duration || '—',
-        status: item.status || '—',
-        age: item.age || '—'
-      }))
+  try {
+    await listResources(resourceType, '')
+    if (result.value && result.value.items && result.value.items.length > 0) {
+      if (resourceType === 'jobs') {
+        jobs.value = result.value.items.map(item => ({
+          name: item.name,
+          namespace: item.namespace,
+          completions: item.fields?.completions || '0/0',
+          duration: item.fields?.duration || '—',
+          status: item.status || '—',
+          age: item.age || '—'
+        }))
+      } else {
+        cronjobs.value = result.value.items.map(item => ({
+          name: item.name,
+          namespace: item.namespace,
+          schedule: item.fields?.schedule || '—',
+          suspend: item.fields?.suspend === 'True' || item.fields?.suspend === true,
+          active: parseInt(item.fields?.active || '0'),
+          lastSchedule: item.fields?.last_schedule || '—',
+          age: item.age || '—'
+        }))
+      }
     } else {
-      cronjobs.value = result.value.items.map(item => ({
-        name: item.name,
-        namespace: item.namespace,
-        schedule: item.fields?.schedule || '—',
-        suspend: item.fields?.suspend === 'True' || item.fields?.suspend === true,
-        active: parseInt(item.fields?.active || '0'),
-        lastSchedule: item.fields?.last_schedule || '—',
-        age: item.age || '—'
-      }))
+      jobs.value = mockJobs
+      cronjobs.value = mockCronjobs
     }
-  } else {
+  } catch (e) {
+    console.error('[JobCronJobList] fetch failed:', e)
     jobs.value = mockJobs
     cronjobs.value = mockCronjobs
   }
-})
+}
+
+onMounted(fetchData)
 
 async function toggleExpand(itemName) {
   if (expandedItem.value === itemName) {
@@ -72,8 +82,6 @@ async function toggleExpand(itemName) {
     }
   }
 }
-
-const list = computed(() => props.type === 'cronjobs' ? cronjobs.value : jobs.value)
 </script>
 
 <template>

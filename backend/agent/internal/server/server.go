@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/drewjocham/arguskube/agent/internal/k8s"
+	"github.com/argues/kube-watcher/agent/internal/k8s"
 	"k8s.io/apimachinery/pkg/labels"
 )
 

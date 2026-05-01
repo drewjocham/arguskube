@@ -17,8 +17,6 @@ import (
 	"github.com/argues/kube-watcher/internal/features"
 )
 
-// Assembler builds the bounded context bundle that feeds the AI diagnostics panel.
-// Target: ~8k tokens, 3-second assembly window.
 type Assembler struct {
 	cfg      *config.OnlineDataConfig
 	gate     *features.Gate
@@ -45,13 +43,11 @@ type Bundle struct {
 	Diagnosis      *alerts.Diagnosis      `json:"diagnosis,omitempty"`
 }
 
-// DecisionEntry is a parsed entry from DECISION_LOG.md.
 type DecisionEntry struct {
 	Date    string `json:"date"`
 	Content string `json:"content"`
 }
 
-// Assemble builds a context bundle for a given alert within the configured timeout.
 func (a *Assembler) Assemble(ctx context.Context, alert alerts.Alert, allAlerts []alerts.Alert) (*Bundle, error) {
 	ctx, cancel := context.WithTimeout(ctx, a.cfg.AI.ContextTimeout)
 	defer cancel()
@@ -64,9 +60,6 @@ func (a *Assembler) Assemble(ctx context.Context, alert alerts.Alert, allAlerts 
 	}
 	done := make(chan result, 3)
 
-	// Parallel assembly within timeout window.
-
-	// 1. Parse DECISION_LOG.md (pro only).
 	go func() {
 		if !a.gate.Allowed(features.FeatureDecisionLog) {
 			done <- result{name: "decisionLog"}
@@ -85,7 +78,6 @@ func (a *Assembler) Assemble(ctx context.Context, alert alerts.Alert, allAlerts 
 		done <- result{name: "decisionLog"}
 	}()
 
-	// 2. Cascade correlation (pro only).
 	go func() {
 		if !a.gate.Allowed(features.FeatureCascadeCorr) {
 			done <- result{name: "cascade"}
@@ -96,7 +88,6 @@ func (a *Assembler) Assemble(ctx context.Context, alert alerts.Alert, allAlerts 
 		done <- result{name: "cascade"}
 	}()
 
-	// 3. Anomstack anomaly check (pro only).
 	go func() {
 		if !a.gate.Allowed(features.FeatureAnomstack) || a.detector == nil {
 			done <- result{name: "anomaly"}
@@ -125,7 +116,6 @@ func (a *Assembler) Assemble(ctx context.Context, alert alerts.Alert, allAlerts 
 		done <- result{name: "anomaly"}
 	}()
 
-	// Collect results, respect timeout.
 	var errs []error
 	for i := 0; i < 3; i++ {
 		select {
@@ -142,21 +132,18 @@ func (a *Assembler) Assemble(ctx context.Context, alert alerts.Alert, allAlerts 
 	}
 
 	if len(errs) > 0 {
-		// Partial assembly is acceptable — return what we have.
 		a.logger.WarnContext(ctx, "partial context assembly",
 			slog.String("alertId", alert.ID),
 			slog.Int("errors", len(errs)),
 		)
 	}
 
-	// Generate diagnosis from the assembled context.
 	bundle.Diagnosis = GenerateDiagnosis(bundle)
 
 	return bundle, nil
 }
 
-// correlateCascade finds alerts that are causally related.
-// e.g., DiskPressure → metrics-server eviction → HPA can't scale → CPU throttle.
+
 func (a *Assembler) correlateCascade(target alerts.Alert, all []alerts.Alert) []alerts.Alert {
 	var related []alerts.Alert
 
@@ -165,19 +152,16 @@ func (a *Assembler) correlateCascade(target alerts.Alert, all []alerts.Alert) []
 			continue
 		}
 
-		// Same namespace correlation.
 		if other.Namespace == target.Namespace {
 			related = append(related, other)
 			continue
 		}
 
-		// Node-to-pod cascade: node pressure can affect pods on that node.
 		if target.NodeName != "" && other.NodeName == target.NodeName {
 			related = append(related, other)
 			continue
 		}
 
-		// Infra → workload cascade: evictions in infra affect dependent workloads.
 		if other.Namespace == "infra" || other.Namespace == "monitoring" || other.Namespace == "kube-system" {
 			for _, evicted := range other.EvictedPods {
 				if isMonitoringComponent(evicted) {
@@ -191,7 +175,6 @@ func (a *Assembler) correlateCascade(target alerts.Alert, all []alerts.Alert) []
 	return related
 }
 
-// parseDecisionLog reads DECISION_LOG.md and extracts entries relevant to the alert.
 func (a *Assembler) parseDecisionLog(ctx context.Context, alert alerts.Alert) ([]DecisionEntry, error) {
 	f, err := os.Open(a.cfg.DecisionLog.Path)
 	if err != nil {
@@ -234,18 +217,15 @@ func (a *Assembler) parseDecisionLog(ctx context.Context, alert alerts.Alert) ([
 	return entries, scanner.Err()
 }
 
-// isRelevant checks if a decision log entry is relevant to the given alert.
 func isRelevant(content string, alert alerts.Alert) bool {
 	lower := strings.ToLower(content)
 
-	// Match by pod name, namespace, node, or image tag.
 	checks := []string{
 		strings.ToLower(alert.PodName),
 		strings.ToLower(alert.Namespace),
 		strings.ToLower(alert.NodeName),
 	}
 
-	// Extract deployment base name (e.g., "payments-api" from "payments-api-7f9cd82b-x9kzp").
 	if parts := strings.Split(alert.PodName, "-"); len(parts) >= 2 {
 		checks = append(checks, strings.ToLower(strings.Join(parts[:2], "-")))
 	}

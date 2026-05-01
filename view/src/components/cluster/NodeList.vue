@@ -1,43 +1,31 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useResources } from '../../composables/useWails'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useResources, useNodeLogs } from '../../composables/useWails'
 
 const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
-
-const mockNodes = [
-  {
-    name: 'ip-10-0-1-143.ec2.internal', status: 'Ready', roles: 'control-plane, master',
-    version: 'v1.28.2', os: 'Ubuntu 22.04', cpuCapacity: '4', memCapacity: '15.6Gi',
-    internalIp: '10.0.1.143', age: '14d2h'
-  },
-  {
-    name: 'ip-10-0-2-45.ec2.internal', status: 'Ready', roles: 'worker',
-    version: 'v1.28.2', os: 'Ubuntu 22.04', cpuCapacity: '8', memCapacity: '31.4Gi',
-    internalIp: '10.0.2.45', age: '14d2h'
-  },
-  {
-    name: 'ip-10-0-2-89.ec2.internal', status: 'NotReady', roles: 'worker',
-    version: 'v1.28.2', os: 'Ubuntu 22.04', cpuCapacity: '8', memCapacity: '31.4Gi',
-    internalIp: '10.0.2.89', age: '14d2h'
-  }
-]
+const { logs: rawNodeLogs, loading: logsLoading, error: logsError, fetchNodeLogs, clear: clearLogs } = useNodeLogs()
 
 const nodes = ref([])
 const nodeDetail = ref(null)
 const expandedNode = ref(null)
 const logSearch = ref('')
-const isStreamingLogs = ref(true)
+const isStreamingLogs = ref(false)
+let logPollTimer = null
 
 async function fetchNodes() {
   await listResources('nodes', '')
   if (result.value && result.value.items && result.value.items.length > 0) {
     nodes.value = result.value.items.map(mapNode)
   } else {
-    nodes.value = mockNodes
+    nodes.value = []
   }
 }
 
 onMounted(fetchNodes)
+
+onUnmounted(() => {
+  stopLogPolling()
+})
 
 function mapNode(item) {
   return {
@@ -58,17 +46,66 @@ async function toggleExpand(nodeName) {
   if (expandedNode.value === nodeName) {
     expandedNode.value = null
     nodeDetail.value = null
+    stopLogPolling()
+    clearLogs()
   } else {
     expandedNode.value = nodeName
-    // Fetch full detail from backend.
-    await getResourceDetail('nodes', '', nodeName)
+    // Fetch detail and logs in parallel.
+    const detailPromise = getResourceDetail('nodes', '', nodeName)
+    const logsPromise = fetchNodeLogs(nodeName, 200)
+    await Promise.all([detailPromise, logsPromise])
     if (detail.value) {
       nodeDetail.value = detail.value
     }
   }
 }
 
-// Generate simple sparklines
+// Mapped + filtered log entries.
+const nodeLogs = computed(() => {
+  const entries = rawNodeLogs.value || []
+  return entries.map(e => ({
+    time: e.time || '',
+    level: e.level || 'INFO',
+    service: e.service || '',
+    msg: e.message || ''
+  }))
+})
+
+const filteredLogs = computed(() => {
+  if (!logSearch.value) return nodeLogs.value
+  const q = logSearch.value.toLowerCase()
+  return nodeLogs.value.filter(l =>
+    l.msg.toLowerCase().includes(q) ||
+    l.service.toLowerCase().includes(q)
+  )
+})
+
+// Polling for live log updates.
+function toggleStreaming() {
+  isStreamingLogs.value = !isStreamingLogs.value
+  if (isStreamingLogs.value && expandedNode.value) {
+    startLogPolling(expandedNode.value)
+  } else {
+    stopLogPolling()
+  }
+}
+
+function startLogPolling(nodeName) {
+  stopLogPolling()
+  logPollTimer = setInterval(() => {
+    fetchNodeLogs(nodeName, 200)
+  }, 5000)
+}
+
+function stopLogPolling() {
+  if (logPollTimer) {
+    clearInterval(logPollTimer)
+    logPollTimer = null
+  }
+  isStreamingLogs.value = false
+}
+
+// Generate simple sparklines.
 const generateSparkline = (points) => {
   let path = ''
   for (let i = 0; i < points; i++) {
@@ -81,15 +118,6 @@ const generateSparkline = (points) => {
 const cpuSpark = ref(generateSparkline(20))
 const memSpark = ref(generateSparkline(20))
 const diskSpark = ref(generateSparkline(20))
-
-// Mock logs
-const nodeLogs = ref([
-  { time: '14:32:01', level: 'INFO', msg: 'kubelet: Starting kubelet main sync loop.' },
-  { time: '14:32:05', level: 'WARN', msg: 'containerd: garbage collection delayed.' },
-  { time: '14:33:12', level: 'INFO', msg: 'kube-proxy: Successfully synced proxy rules.' },
-  { time: '14:34:00', level: 'INFO', msg: 'kubelet: Node status updated successfully.' },
-  { time: '14:35:10', level: 'INFO', msg: 'containerd: Image garbage collection complete.' }
-])
 </script>
 
 <template>
@@ -194,20 +222,29 @@ const nodeLogs = ref([
           <!-- Log Streaming Area -->
           <div class="node-logs-section">
             <div class="logs-header">
-              <h4 class="section-title">System Service Logs (kubelet, containerd)</h4>
+              <h4 class="section-title">System Service Logs (kubelet, containerd, kube-proxy)</h4>
               <div class="logs-controls">
                 <input type="text" placeholder="Filter logs..." v-model="logSearch" class="log-search" />
-                <button class="log-btn" :class="{active: isStreamingLogs}" @click.stop="isStreamingLogs = !isStreamingLogs">
+                <button class="log-btn" @click.stop="fetchNodeLogs(expandedNode, 200)" :disabled="logsLoading">
+                  {{ logsLoading ? 'Loading…' : 'Refresh' }}
+                </button>
+                <button class="log-btn" :class="{active: isStreamingLogs}" @click.stop="toggleStreaming">
                   <span class="pulse-dot" v-if="isStreamingLogs"></span>
-                  {{ isStreamingLogs ? 'Streaming' : 'Paused' }}
+                  {{ isStreamingLogs ? 'Streaming' : 'Stream' }}
                 </button>
               </div>
             </div>
+            <div v-if="logsError" class="logs-error">{{ logsError }}</div>
+            <div v-if="logsLoading && filteredLogs.length === 0" class="logs-loading">Loading node logs…</div>
             <div class="logs-viewer">
-              <div v-for="(line, i) in nodeLogs" :key="i" class="log-line" v-show="line.msg.includes(logSearch)">
+              <div v-for="(line, i) in filteredLogs" :key="i" class="log-line">
                 <span class="time">{{ line.time }}</span>
                 <span class="lvl" :class="line.level.toLowerCase()">{{ line.level }}</span>
+                <span class="svc">{{ line.service }}</span>
                 <span class="msg">{{ line.msg }}</span>
+              </div>
+              <div v-if="!logsLoading && filteredLogs.length === 0 && !logsError" class="logs-empty">
+                No logs available. The node may not support kubelet proxy log access.
               </div>
             </div>
           </div>
@@ -414,8 +451,13 @@ const nodeLogs = ref([
   display: flex; align-items: center; gap: 6px;
 }
 .log-btn.active { color: #3ecf8e; border-color: rgba(62, 207, 142, 0.3); background: rgba(62, 207, 142, 0.1); }
+.log-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: #3ecf8e; animation: pulse 1.5s infinite; }
 @keyframes pulse { 0% { opacity: 1;} 50% {opacity: 0.3;} 100% {opacity: 1;} }
+
+.logs-error { padding: 8px 16px; font-size: 12px; color: #f05454; background: rgba(240, 84, 84, 0.08); border-bottom: 1px solid rgba(240, 84, 84, 0.15); }
+.logs-loading { padding: 12px 16px; font-size: 12px; color: #8b8f96; }
+.logs-empty { padding: 12px 0; font-size: 12px; color: #6b7078; text-align: center; }
 
 .logs-viewer {
   padding: 12px;
@@ -434,5 +476,6 @@ const nodeLogs = ref([
 .lvl.info { color: #3ecf8e; }
 .lvl.warn { color: #f5a623; }
 .lvl.error { color: #f05454; }
+.svc { color: #a78bfa; flex-shrink: 0; min-width: 80px; font-weight: 500; }
 .msg { color: #d4d4d4; word-break: break-all; }
 </style>

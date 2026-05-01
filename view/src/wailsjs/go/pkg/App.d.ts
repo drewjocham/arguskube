@@ -11,6 +11,7 @@ import {anomaly} from '../models';
 import {k8s} from '../models';
 import {features} from '../models';
 import {config} from '../models';
+import {workflows} from '../models';
 import {notebooks} from '../models';
 import {vulnscan} from '../models';
 import {popeye} from '../models';
@@ -33,6 +34,8 @@ export function DeleteNotebook(arg1:string):Promise<void>;
 export function DeletePod(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteRunbook(arg1:string):Promise<void>;
+
+export function DeleteWorkflow(arg1:string):Promise<void>;
 
 export function DeployAgent(arg1:string):Promise<setup.SetupResult>;
 
@@ -58,6 +61,8 @@ export function GetClusterInfo():Promise<k8s.ClusterInfo>;
 
 export function GetCodeSuggestion(arg1:string,arg2:string):Promise<string>;
 
+export function GetDeploymentRevisions(arg1:string,arg2:string,arg3:number):Promise<Array<k8s.DeploymentRevision>>;
+
 export function GetFeatures():Promise<Record<features.Feature, boolean>>;
 
 export function GetMetrics():Promise<alerts.ClusterMetrics>;
@@ -74,9 +79,13 @@ export function GetTier():Promise<config.Tier>;
 
 export function GetTopology(arg1:string):Promise<k8s.TopologyResult>;
 
+export function GetVPARecommendations(arg1:string):Promise<Array<k8s.VPARecommendation>>;
+
+export function GetWorkflow(arg1:string):Promise<workflows.Workflow>;
+
 export function HandleURL(arg1:string):Promise<void>;
 
-export function InstallPopeye():Promise<setup.SetupResult>;
+export function InstallArgusScan():Promise<setup.SetupResult>;
 
 export function ListAllNamespaces():Promise<Array<string>>;
 
@@ -94,6 +103,8 @@ export function ListRunbooks():Promise<Array<runbooks.Runbook>>;
 
 export function ListVulnerabilities():Promise<Array<vulnscan.ScannedImage>>;
 
+export function ListWorkflows():Promise<Array<workflows.WorkflowSummary>>;
+
 export function LoginSaaS(arg1:string):Promise<string>;
 
 export function MoveNotebook(arg1:string,arg2:string):Promise<void>;
@@ -104,13 +115,15 @@ export function QueryTimeSeriesMetrics(arg1:string,arg2:string):Promise<Array<nu
 
 export function ResizeTerminal(arg1:number,arg2:number):Promise<void>;
 
-export function RunCodeSandbox(arg1:string,arg2:string):Promise<string>;
+export function RunArgusScan():Promise<popeye.Report>;
 
-export function RunPopeye():Promise<popeye.Report>;
+export function RunCodeSandbox(arg1:string,arg2:string):Promise<string>;
 
 export function SaveNotebook(arg1:string,arg2:string):Promise<void>;
 
 export function SaveRunbook(arg1:string,arg2:string):Promise<void>;
+
+export function SaveWorkflow(arg1:workflows.Workflow):Promise<workflows.Workflow>;
 
 export function ScanAllImages(arg1:string):Promise<Array<vulnscan.ScannedImage>>;
 
@@ -127,6 +140,8 @@ export function StartEventLoop(arg1:context.Context):Promise<void>;
 export function StartHTTPServer(arg1:number):Promise<void>;
 
 export function StartTerminal(arg1:number,arg2:number):Promise<void>;
+
+export function StreamPodLogsFollow(arg1:string,arg2:string,arg3:string,arg4:number):Promise<Array<string>>;
 
 export function SwitchContext(arg1:string):Promise<void>;
 

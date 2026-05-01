@@ -23,7 +23,7 @@ const logLines = computed(() => {
   return localLines.value
 })
 
-// Fallback: simulate log lines when not connected to Wails.
+// simulate log lines when not connected to Wails
 function generateLogLine() {
   if (props.externalLines.length > 0 || props.alerts.length === 0) return
 

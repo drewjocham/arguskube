@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"log/slog"
+	"os"
+	"path/filepath"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -23,6 +25,7 @@ import (
 	"github.com/argues/kube-watcher/internal/runbooks"
 	"github.com/argues/kube-watcher/internal/setup"
 	"github.com/argues/kube-watcher/internal/vulnscan"
+	"github.com/argues/kube-watcher/internal/workflows"
 	"github.com/argues/kube-watcher/view"
 )
 
@@ -104,6 +107,12 @@ func run() error {
 
 	incidentStore := incidents.NewStore("", logger)
 
+	home, _ := os.UserHomeDir()
+	workflowStore, err := workflows.New(filepath.Join(home, ".kube-watcher"), logger)
+	if err != nil {
+		logger.Warn("workflow store initialization failed", slog.String("error", err.Error()))
+	}
+
 	setupMgr := setup.NewManager(
 		cfg.Kubernetes.Config,
 		cfg.Kubernetes.Context,
@@ -124,6 +133,7 @@ func run() error {
 		Notebooks: notebooksStore,
 		Runbooks:  runbooksStore,
 		Incidents: incidentStore,
+		Workflows: workflowStore,
 		Setup:     setupMgr,
 	})
 

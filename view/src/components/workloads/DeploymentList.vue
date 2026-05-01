@@ -1,8 +1,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useResources } from '../../composables/useWails'
+import { useResources, useDeploymentRevisions } from '../../composables/useWails'
 
 const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
+const { revisions, loading: revisionsLoading, error: revisionsError, fetchRevisions } = useDeploymentRevisions()
 
 const mockDeployments = [
   { name: 'web-app', namespace: 'default', ready: 3, desired: 3, upToDate: 3, available: 3, image: 'web-app:v1.2.4', age: '14d' },
@@ -14,6 +15,7 @@ const mockDeployments = [
 const deployments = ref([])
 const depDetail = ref(null)
 const expandedDep = ref(null)
+const activeDetailTab = ref('details')
 
 onMounted(async () => {
   await listResources('deployments', '')
@@ -42,16 +44,24 @@ async function toggleExpand(depName) {
   if (expandedDep.value === depName) {
     expandedDep.value = null
     depDetail.value = null
+    activeDetailTab.value = 'details'
   } else {
     expandedDep.value = depName
+    activeDetailTab.value = 'details'
     const dep = deployments.value.find(d => d.name === depName)
     if (dep) {
       await getResourceDetail('deployments', dep.namespace, depName)
       if (detail.value) {
         depDetail.value = detail.value
       }
+      // Also fetch revision history in parallel.
+      fetchRevisions(dep.namespace, dep.name, 25)
     }
   }
+}
+
+function switchDetailTab(tab) {
+  activeDetailTab.value = tab
 }
 </script>
 
@@ -132,52 +142,95 @@ async function toggleExpand(depName) {
         <!-- Expanded Detail -->
         <div class="dep-expanded" v-if="expandedDep === d.name">
           <div class="timeline-header">
-            <h4>Deployment Details</h4>
+            <div class="dep-tabs">
+              <button class="dep-tab" :class="{ active: activeDetailTab === 'details' }" @click="switchDetailTab('details')">Details</button>
+              <button class="dep-tab" :class="{ active: activeDetailTab === 'revisions' }" @click="switchDetailTab('revisions')">
+                Revisions
+                <span class="rev-count" v-if="revisions.length">{{ revisions.length }}</span>
+              </button>
+            </div>
             <button class="close-btn" @click="toggleExpand(d.name)">Close</button>
           </div>
 
-          <div v-if="detailLoading" style="color:#8b8f96; font-size:13px; padding:12px;">Loading…</div>
-          <div v-else-if="depDetail" class="detail-panels">
-            <!-- Properties -->
-            <div class="detail-section" v-if="depDetail.properties && depDetail.properties.length">
-              <h5 class="section-title">Properties</h5>
-              <div class="props-grid">
-                <div class="prop-row" v-for="prop in depDetail.properties" :key="prop.key">
-                  <span class="prop-label">{{ prop.key }}</span>
-                  <span class="prop-value font-mono">{{ prop.value }}</span>
+          <!-- Details Tab -->
+          <div v-if="activeDetailTab === 'details'">
+            <div v-if="detailLoading" style="color:#8b8f96; font-size:13px; padding:12px;">Loading…</div>
+            <div v-else-if="depDetail" class="detail-panels">
+              <!-- Properties -->
+              <div class="detail-section" v-if="depDetail.properties && depDetail.properties.length">
+                <h5 class="section-title">Properties</h5>
+                <div class="props-grid">
+                  <div class="prop-row" v-for="prop in depDetail.properties" :key="prop.key">
+                    <span class="prop-label">{{ prop.key }}</span>
+                    <span class="prop-value font-mono">{{ prop.value }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Conditions -->
+              <div class="detail-section" v-if="depDetail.conditions && depDetail.conditions.length">
+                <h5 class="section-title">Conditions</h5>
+                <div class="conditions-list">
+                  <div class="condition-row" v-for="c in depDetail.conditions" :key="c.type">
+                    <span class="cond-type font-mono">{{ c.type }}</span>
+                    <span class="cond-status" :class="c.status === 'True' ? 'ok' : 'fail'">{{ c.status }}</span>
+                    <span class="cond-reason font-mono" v-if="c.reason">{{ c.reason }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Labels -->
+              <div class="detail-section" v-if="depDetail.labels && Object.keys(depDetail.labels).length">
+                <h5 class="section-title">Labels</h5>
+                <div class="labels-grid">
+                  <span class="label-chip" v-for="(v, k) in depDetail.labels" :key="k">{{ k }}={{ v }}</span>
+                </div>
+              </div>
+
+              <!-- Events -->
+              <div class="detail-section" v-if="depDetail.events && depDetail.events.length">
+                <h5 class="section-title">Recent Events</h5>
+                <div class="events-mini">
+                  <div class="event-mini-row" v-for="(ev, i) in depDetail.events" :key="i" :class="ev.type?.toLowerCase()">
+                    <span class="ev-type">{{ ev.type }}</span>
+                    <span class="ev-reason font-mono">{{ ev.reason }}</span>
+                    <span class="ev-msg">{{ ev.message }}</span>
+                    <span class="ev-age font-mono">{{ ev.age }}</span>
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- Conditions -->
-            <div class="detail-section" v-if="depDetail.conditions && depDetail.conditions.length">
-              <h5 class="section-title">Conditions</h5>
-              <div class="conditions-list">
-                <div class="condition-row" v-for="c in depDetail.conditions" :key="c.type">
-                  <span class="cond-type font-mono">{{ c.type }}</span>
-                  <span class="cond-status" :class="c.status === 'True' ? 'ok' : 'fail'">{{ c.status }}</span>
-                  <span class="cond-reason font-mono" v-if="c.reason">{{ c.reason }}</span>
+          <!-- Revisions Tab -->
+          <div v-if="activeDetailTab === 'revisions'" class="revisions-panel">
+            <div v-if="revisionsLoading" style="color:#8b8f96; font-size:13px; padding:12px;">Loading revision history…</div>
+            <div v-else-if="revisionsError" style="color:#f5a623; font-size:13px; padding:12px;">{{ revisionsError }}</div>
+            <div v-else-if="revisions.length === 0" class="empty-revisions">
+              No revision history available. The deployment may not have been rolled out yet.
+            </div>
+            <div v-else class="revision-timeline">
+              <div v-for="(rev, idx) in revisions" :key="rev.revision"
+                   class="revision-entry" :class="{ active: rev.active, latest: idx === 0 }">
+                <div class="rev-marker">
+                  <div class="rev-dot" :class="{ active: rev.active }"></div>
+                  <div class="rev-line" v-if="idx < revisions.length - 1"></div>
                 </div>
-              </div>
-            </div>
-
-            <!-- Labels -->
-            <div class="detail-section" v-if="depDetail.labels && Object.keys(depDetail.labels).length">
-              <h5 class="section-title">Labels</h5>
-              <div class="labels-grid">
-                <span class="label-chip" v-for="(v, k) in depDetail.labels" :key="k">{{ k }}={{ v }}</span>
-              </div>
-            </div>
-
-            <!-- Events -->
-            <div class="detail-section" v-if="depDetail.events && depDetail.events.length">
-              <h5 class="section-title">Recent Events</h5>
-              <div class="events-mini">
-                <div class="event-mini-row" v-for="(ev, i) in depDetail.events" :key="i" :class="ev.type?.toLowerCase()">
-                  <span class="ev-type">{{ ev.type }}</span>
-                  <span class="ev-reason font-mono">{{ ev.reason }}</span>
-                  <span class="ev-msg">{{ ev.message }}</span>
-                  <span class="ev-age font-mono">{{ ev.age }}</span>
+                <div class="rev-content">
+                  <div class="rev-header">
+                    <span class="rev-number">Revision #{{ rev.revision }}</span>
+                    <span class="rev-active-badge" v-if="rev.active">ACTIVE</span>
+                    <span class="rev-replicas font-mono">{{ rev.readyReplicas || 0 }}/{{ rev.replicas || 0 }} replicas</span>
+                  </div>
+                  <div class="rev-image font-mono">{{ rev.image || '—' }}</div>
+                  <div class="rev-meta">
+                    <span class="rev-rs font-mono" v-if="rev.replicaSet">RS: {{ rev.replicaSet }}</span>
+                    <span class="rev-time" v-if="rev.createdAt">{{ new Date(rev.createdAt).toLocaleString() }}</span>
+                  </div>
+                  <div class="rev-cause" v-if="rev.changeCause">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                    {{ rev.changeCause }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -328,4 +381,68 @@ async function toggleExpand(depName) {
 .ev-reason { color: #a78bfa; }
 .ev-msg { color: #8b8f96; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ev-age { color: #6b7078; text-align: right; }
+
+/* Deployment Tabs */
+.dep-tabs { display: flex; gap: 4px; }
+.dep-tab {
+  background: transparent; border: none; color: #6b7078; padding: 6px 14px;
+  font-size: 12px; font-weight: 500; cursor: pointer; border-radius: 4px; transition: all 0.2s;
+  display: flex; align-items: center; gap: 6px;
+}
+.dep-tab:hover { color: #b0b4ba; background: rgba(255,255,255,0.04); }
+.dep-tab.active { color: #fff; background: rgba(255,255,255,0.08); }
+.rev-count {
+  background: rgba(167, 139, 250, 0.2); color: #a78bfa;
+  font-size: 10px; padding: 1px 5px; border-radius: 8px; font-weight: 600;
+}
+
+/* Revisions Panel */
+.revisions-panel { padding: 16px; }
+.empty-revisions { color: #6b7078; font-size: 13px; text-align: center; padding: 32px; }
+
+.revision-timeline { display: flex; flex-direction: column; gap: 0; }
+
+.revision-entry {
+  display: flex; gap: 16px; padding: 0;
+}
+
+.rev-marker {
+  display: flex; flex-direction: column; align-items: center; flex-shrink: 0; width: 20px;
+}
+.rev-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #4b5058; border: 2px solid #2a2d31;
+  flex-shrink: 0; margin-top: 4px;
+}
+.rev-dot.active { background: #3ecf8e; border-color: rgba(62, 207, 142, 0.3); box-shadow: 0 0 8px rgba(62, 207, 142, 0.3); }
+.rev-line {
+  width: 2px; flex: 1; background: rgba(255, 255, 255, 0.06); min-height: 12px;
+}
+
+.rev-content {
+  flex: 1; display: flex; flex-direction: column; gap: 4px;
+  padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.revision-entry:last-child .rev-content { border-bottom: none; }
+
+.rev-header { display: flex; align-items: center; gap: 10px; }
+.rev-number { font-size: 13px; font-weight: 600; color: #e8eaec; }
+.rev-active-badge {
+  font-size: 9px; padding: 2px 6px; border-radius: 3px; font-weight: 700;
+  background: rgba(62, 207, 142, 0.15); color: #3ecf8e; letter-spacing: 0.05em;
+}
+.rev-replicas { color: #8b8f96; font-size: 11px; margin-left: auto; }
+
+.rev-image { font-size: 12px; color: #a78bfa; }
+
+.rev-meta { display: flex; gap: 16px; font-size: 11px; }
+.rev-rs { color: #6b7078; }
+.rev-time { color: #6b7078; }
+
+.rev-cause {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: #8b8f96; margin-top: 2px;
+  padding: 4px 8px; background: rgba(255,255,255,0.02); border-radius: 4px;
+}
+.rev-cause svg { color: #6b7078; flex-shrink: 0; }
 </style>

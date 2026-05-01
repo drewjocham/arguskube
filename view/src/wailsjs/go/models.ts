@@ -808,6 +808,51 @@ export namespace k8s {
 	        this.active = source["active"];
 	    }
 	}
+	export class DeploymentRevision {
+	    revision: string;
+	    replicaSet: string;
+	    image: string;
+	    replicas: number;
+	    readyReplicas: number;
+	    active: boolean;
+	    changeCause?: string;
+	    // Go type: time
+	    createdAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new DeploymentRevision(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.revision = source["revision"];
+	        this.replicaSet = source["replicaSet"];
+	        this.image = source["image"];
+	        this.replicas = source["replicas"];
+	        this.readyReplicas = source["readyReplicas"];
+	        this.active = source["active"];
+	        this.changeCause = source["changeCause"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class KeyValue {
 	    key: string;
 	    value: string;
@@ -1122,6 +1167,75 @@ export namespace k8s {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.nodes = this.convertValues(source["nodes"], TopologyNode);
 	        this.edges = this.convertValues(source["edges"], TopologyEdge);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class VPAContainerRecommend {
+	    containerName: string;
+	    lowerCpu: string;
+	    lowerMemory: string;
+	    targetCpu: string;
+	    targetMemory: string;
+	    upperCpu: string;
+	    upperMemory: string;
+	    uncappedCpu?: string;
+	    uncappedMemory?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new VPAContainerRecommend(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.containerName = source["containerName"];
+	        this.lowerCpu = source["lowerCpu"];
+	        this.lowerMemory = source["lowerMemory"];
+	        this.targetCpu = source["targetCpu"];
+	        this.targetMemory = source["targetMemory"];
+	        this.upperCpu = source["upperCpu"];
+	        this.upperMemory = source["upperMemory"];
+	        this.uncappedCpu = source["uncappedCpu"];
+	        this.uncappedMemory = source["uncappedMemory"];
+	    }
+	}
+	export class VPARecommendation {
+	    name: string;
+	    namespace: string;
+	    targetRef: string;
+	    updateMode: string;
+	    containers: VPAContainerRecommend[];
+	    // Go type: time
+	    createdAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new VPARecommendation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.namespace = source["namespace"];
+	        this.targetRef = source["targetRef"];
+	        this.updateMode = source["updateMode"];
+	        this.containers = this.convertValues(source["containers"], VPAContainerRecommend);
+	        this.createdAt = this.convertValues(source["createdAt"], null);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1720,6 +1834,113 @@ export namespace vulnscan {
 	        this.status = source["status"];
 	        this.cves = this.convertValues(source["cves"], Vulnerability);
 	        this.aiOpt = this.convertValues(source["aiOpt"], AIOptimization);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace workflows {
+	
+	export class Step {
+	    id: number;
+	    type: string;
+	    name: string;
+	    icon: string;
+	    actionType: string;
+	    config?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Step(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.type = source["type"];
+	        this.name = source["name"];
+	        this.icon = source["icon"];
+	        this.actionType = source["actionType"];
+	        this.config = source["config"];
+	    }
+	}
+	export class Workflow {
+	    id: string;
+	    title: string;
+	    steps: Step[];
+	    // Go type: time
+	    createdAt: any;
+	    // Go type: time
+	    updatedAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Workflow(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.steps = this.convertValues(source["steps"], Step);
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class WorkflowSummary {
+	    id: string;
+	    title: string;
+	    stepCount: number;
+	    // Go type: time
+	    createdAt: any;
+	    // Go type: time
+	    updatedAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkflowSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.stepCount = source["stepCount"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.updatedAt = this.convertValues(source["updatedAt"], null);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

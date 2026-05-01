@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useLogs } from '../../composables/useWails'
+import { useWailsEvent, Events } from '../../composables/useEvents'
 
 const { entries: backendLogs, histogram: backendHistogram, fields: backendFields, total, loading: logLoading, queryTime: backendQueryTime, error: logError, queryLogs } = useLogs()
 
@@ -49,19 +50,26 @@ const fieldSections = computed(() => {
 
   return {
     'kubernetes.pod_namespace': {
-      open: true,
+      open: openSections.value['kubernetes.pod_namespace'] ?? true,
       items: Object.entries(nsMap).map(([k, v]) => ({ label: `${k} (${v})`, checked: false })),
     },
     'kubernetes.pod_name': {
-      open: false,
+      open: openSections.value['kubernetes.pod_name'] ?? false,
       items: Object.entries(podMap).map(([k, v]) => ({ label: `${k} (${v})`, checked: false })),
     },
     'kubernetes.container_name': {
-      open: false,
+      open: openSections.value['kubernetes.container_name'] ?? false,
       items: Object.entries(containerMap).map(([k, v]) => ({ label: `${k} (${v})`, checked: false })),
     },
   }
 })
+
+// Track which field sections are open (separate from the computed so we can toggle).
+const openSections = ref({ 'kubernetes.pod_namespace': true, 'kubernetes.pod_name': false, 'kubernetes.container_name': false })
+
+function toggleFieldSection(key) {
+  openSections.value[key] = !openSections.value[key]
+}
 
 // Filter actions.
 function removeFilter(index) {
@@ -96,6 +104,25 @@ const fakeLogs = computed(() => allLogs.value.slice(0, limit.value))
 // Initial load.
 onMounted(() => {
   queryLogs('*', '', limit.value)
+})
+
+// Listen for live log streams
+useWailsEvent(Events.LOG_LINE, (data) => {
+  if (data && backendLogs.value && !logLoading.value) {
+    // Only prepend if we're not actively querying
+    const newEntry = {
+      time: new Date(data.timestamp).toISOString().replace('T', ' ').slice(0, -1),
+      message: data.message,
+      pod: data.source ? data.source.replace(/\[|\]/g, '') : 'unknown',
+      namespace: '', 
+      container: '',
+      node: ''
+    }
+    backendLogs.value.unshift(newEntry)
+    if (backendLogs.value.length > limit.value) {
+      backendLogs.value.pop()
+    }
+  }
 })
 </script>
 

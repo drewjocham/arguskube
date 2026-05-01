@@ -1,6 +1,7 @@
 package k8s
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log/slog"
@@ -9,6 +10,9 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -322,6 +326,187 @@ func (c *Client) DeletePod(ctx context.Context, namespace, podName string) error
 	return c.cs.CoreV1().Pods(namespace).Delete(ctx, podName, metav1.DeleteOptions{})
 }
 
+// GetWarningEvents returns the most recent warning events as formatted strings.
+func (c *Client) GetWarningEvents(ctx context.Context, limit int) ([]string, error) {
+	events, err := c.cs.CoreV1().Events("").List(ctx, metav1.ListOptions{
+		FieldSelector: "type=Warning",
+		Limit:         int64(limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, e := range events.Items {
+		out = append(out, fmt.Sprintf("[%s] %s/%s: %s (%s, count: %d)",
+			e.LastTimestamp.Format("15:04"),
+			e.InvolvedObject.Namespace, e.InvolvedObject.Name,
+			e.Message, e.Reason, e.Count,
+		))
+	}
+	return out, nil
+}
+
+// GetNamespacePodCounts returns a map of namespace → running pod count.
+func (c *Client) GetNamespacePodCounts(ctx context.Context) (map[string]int, error) {
+	pods, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int)
+	for _, p := range pods.Items {
+		if p.Status.Phase == corev1.PodRunning {
+			counts[p.Namespace]++
+		}
+	}
+	return counts, nil
+}
+
+// GetTopRestarters returns the pods with the highest restart counts, formatted as strings.
+func (c *Client) GetTopRestarters(ctx context.Context, limit int) ([]string, error) {
+	pods, err := c.cs.CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	type restartEntry struct {
+		name      string
+		ns        string
+		container string
+		restarts  int32
+	}
+	var entries []restartEntry
+
+	for _, p := range pods.Items {
+		for _, cs := range p.Status.ContainerStatuses {
+			if cs.RestartCount > 0 {
+				entries = append(entries, restartEntry{
+					name: p.Name, ns: p.Namespace,
+					container: cs.Name, restarts: cs.RestartCount,
+				})
+			}
+		}
+	}
+
+	// Sort descending by restarts.
+	for i := 0; i < len(entries); i++ {
+		for j := i + 1; j < len(entries); j++ {
+			if entries[j].restarts > entries[i].restarts {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+	}
+
+	var out []string
+	for i, e := range entries {
+		if i >= limit {
+			break
+		}
+		out = append(out, fmt.Sprintf("%s/%s (container: %s) — %d restarts", e.ns, e.name, e.container, e.restarts))
+	}
+	return out, nil
+}
+
+// GetDeploymentRevisions returns the revision history for a deployment as ReplicaSets.
+func (c *Client) GetDeploymentRevisions(ctx context.Context, namespace, deploymentName string, limit int) ([]DeploymentRevision, error) {
+	dep, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, deploymentName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get deployment: %w", err)
+	}
+
+	// Find all ReplicaSets owned by this deployment.
+	rsList, err := c.cs.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("list replicasets: %w", err)
+	}
+
+	var revisions []DeploymentRevision
+	for _, rs := range rsList.Items {
+		// Check ownership.
+		owned := false
+		for _, ref := range rs.OwnerReferences {
+			if ref.UID == dep.UID {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			continue
+		}
+
+		rev := DeploymentRevision{
+			Revision:    rs.Annotations["deployment.kubernetes.io/revision"],
+			ReplicaSet:  rs.Name,
+			Replicas:    int(rs.Status.Replicas),
+			ReadyReplicas: int(rs.Status.ReadyReplicas),
+			CreatedAt:   rs.CreationTimestamp.Time,
+			Active:      rs.Status.Replicas > 0,
+		}
+
+		// Extract image from pod template.
+		if len(rs.Spec.Template.Spec.Containers) > 0 {
+			rev.Image = rs.Spec.Template.Spec.Containers[0].Image
+		}
+
+		// Extract change cause annotation.
+		if cause, ok := rs.Annotations["kubernetes.io/change-cause"]; ok {
+			rev.ChangeCause = cause
+		}
+
+		revisions = append(revisions, rev)
+	}
+
+	// Sort by revision number descending.
+	for i := 0; i < len(revisions); i++ {
+		for j := i + 1; j < len(revisions); j++ {
+			if revisions[j].Revision > revisions[i].Revision {
+				revisions[i], revisions[j] = revisions[j], revisions[i]
+			}
+		}
+	}
+
+	if limit > 0 && len(revisions) > limit {
+		revisions = revisions[:limit]
+	}
+
+	return revisions, nil
+}
+
+// DeploymentRevision represents one ReplicaSet revision of a Deployment.
+type DeploymentRevision struct {
+	Revision      string    `json:"revision"`
+	ReplicaSet    string    `json:"replicaSet"`
+	Image         string    `json:"image"`
+	Replicas      int       `json:"replicas"`
+	ReadyReplicas int       `json:"readyReplicas"`
+	Active        bool      `json:"active"`
+	ChangeCause   string    `json:"changeCause,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
+}
+
+// StreamPodLogs streams logs from a pod with follow support via a callback.
+func (c *Client) StreamPodLogs(ctx context.Context, namespace, podName, container string, tailLines int64, follow bool, callback func(line string)) error {
+	opts := &corev1.PodLogOptions{
+		Follow:    follow,
+		TailLines: &tailLines,
+	}
+	if container != "" {
+		opts.Container = container
+	}
+
+	stream, err := c.cs.CoreV1().Pods(namespace).GetLogs(podName, opts).Stream(ctx)
+	if err != nil {
+		return fmt.Errorf("open log stream: %w", err)
+	}
+	defer stream.Close()
+
+	scanner := bufio.NewScanner(stream)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // 1MB max line
+	for scanner.Scan() {
+		callback(scanner.Text())
+	}
+	return scanner.Err()
+}
+
 // ContextInfo describes a kubeconfig context entry.
 type ContextInfo struct {
 	Name    string `json:"name"`
@@ -403,6 +588,113 @@ func (c *Client) SwitchContext(contextName string) error {
 	c.cfg.Kubernetes.Context = contextName
 	c.logger.Info("switched k8s context", slog.String("context", contextName))
 	return nil
+}
+
+// VPARecommendation holds a single VPA object's recommendations.
+type VPARecommendation struct {
+	Name          string                     `json:"name"`
+	Namespace     string                     `json:"namespace"`
+	TargetRef     string                     `json:"targetRef"` // e.g. "Deployment/web-app"
+	UpdateMode    string                     `json:"updateMode"`
+	Containers    []VPAContainerRecommend    `json:"containers"`
+	CreatedAt     time.Time                  `json:"createdAt"`
+}
+
+// VPAContainerRecommend holds per-container resource recommendations.
+type VPAContainerRecommend struct {
+	ContainerName string `json:"containerName"`
+	LowerCPU      string `json:"lowerCpu"`
+	LowerMemory   string `json:"lowerMemory"`
+	TargetCPU     string `json:"targetCpu"`
+	TargetMemory  string `json:"targetMemory"`
+	UpperCPU      string `json:"upperCpu"`
+	UpperMemory   string `json:"upperMemory"`
+	UncappedCPU   string `json:"uncappedCpu,omitempty"`
+	UncappedMemory string `json:"uncappedMemory,omitempty"`
+}
+
+// GetVPARecommendations reads VerticalPodAutoscaler objects from the cluster
+// using the dynamic client (autoscaling.k8s.io/v1).
+func (c *Client) GetVPARecommendations(ctx context.Context, namespace string) ([]VPARecommendation, error) {
+	dynClient, err := dynamic.NewForConfig(c.restCfg)
+	if err != nil {
+		return nil, fmt.Errorf("dynamic client: %w", err)
+	}
+
+	vpaGVR := schema.GroupVersionResource{
+		Group:    "autoscaling.k8s.io",
+		Version:  "v1",
+		Resource: "verticalpodautoscalers",
+	}
+
+	var list *unstructured.UnstructuredList
+	if namespace != "" {
+		list, err = dynClient.Resource(vpaGVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+	} else {
+		list, err = dynClient.Resource(vpaGVR).List(ctx, metav1.ListOptions{})
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list VPAs: %w", err)
+	}
+
+	var out []VPARecommendation
+	for _, item := range list.Items {
+		vpa := VPARecommendation{
+			Name:      item.GetName(),
+			Namespace: item.GetNamespace(),
+			CreatedAt: item.GetCreationTimestamp().Time,
+		}
+
+		// Parse spec.targetRef
+		if spec, ok := item.Object["spec"].(map[string]interface{}); ok {
+			if tr, ok := spec["targetRef"].(map[string]interface{}); ok {
+				kind, _ := tr["kind"].(string)
+				name, _ := tr["name"].(string)
+				vpa.TargetRef = kind + "/" + name
+			}
+			if up, ok := spec["updatePolicy"].(map[string]interface{}); ok {
+				if mode, ok := up["updateMode"].(string); ok {
+					vpa.UpdateMode = mode
+				}
+			}
+		}
+
+		// Parse status.recommendation.containerRecommendations
+		if status, ok := item.Object["status"].(map[string]interface{}); ok {
+			if rec, ok := status["recommendation"].(map[string]interface{}); ok {
+				if containers, ok := rec["containerRecommendations"].([]interface{}); ok {
+					for _, cr := range containers {
+						crMap, ok := cr.(map[string]interface{})
+						if !ok {
+							continue
+						}
+						vcr := VPAContainerRecommend{}
+						vcr.ContainerName, _ = crMap["containerName"].(string)
+
+						extractRes := func(key string) (string, string) {
+							if m, ok := crMap[key].(map[string]interface{}); ok {
+								cpu, _ := m["cpu"].(string)
+								mem, _ := m["memory"].(string)
+								return cpu, mem
+							}
+							return "", ""
+						}
+
+						vcr.LowerCPU, vcr.LowerMemory = extractRes("lowerBound")
+						vcr.TargetCPU, vcr.TargetMemory = extractRes("target")
+						vcr.UpperCPU, vcr.UpperMemory = extractRes("upperBound")
+						vcr.UncappedCPU, vcr.UncappedMemory = extractRes("uncappedTarget")
+
+						vpa.Containers = append(vpa.Containers, vcr)
+					}
+				}
+			}
+		}
+
+		out = append(out, vpa)
+	}
+
+	return out, nil
 }
 
 // --- alert builders ---

@@ -124,13 +124,43 @@ function addPanel() {
     id: Date.now(), type: 'area', title: 'New Custom Metric', val: '0',
     query: 'rate(http_requests_total[5m])',
     color: 'var(--teal)', bg: 'rgba(45, 212, 191, 0.15)',
-    data: generateWave(100, 5, 0.1, 0), editing: true, span: 1
+    data: generateWave(100, 5, 0.1, 0), editing: true, span: 1, isNew: true
   })
 }
 
 function savePanel(p) {
   p.editing = false
+  delete p.isNew
   refreshPanelData(p)
+}
+
+function deletePanel(p) {
+  panels.value = panels.value.filter(panel => panel.id !== p.id)
+}
+
+function cancelEdit(p) {
+  if (p.isNew) {
+    deletePanel(p)
+  } else {
+    p.editing = false
+  }
+}
+
+function generateQuery(p) {
+  if (!p.aiPrompt) return
+  const prompt = p.aiPrompt.toLowerCase()
+  p.query = `// AI Generated for: ${p.aiPrompt}\n`
+  if (prompt.includes('memory') || prompt.includes('ram')) {
+    p.query += 'topk(5, sum(container_memory_working_set_bytes) by (pod))'
+  } else if (prompt.includes('cpu')) {
+    p.query += 'topk(5, sum(rate(container_cpu_usage_seconds_total[5m])) by (pod))'
+  } else if (prompt.includes('network') || prompt.includes('traffic')) {
+    p.query += 'sum(rate(container_network_receive_bytes_total[5m])) by (namespace)'
+  } else {
+    p.query += 'rate(http_requests_total[5m])'
+  }
+  p.showAI = false
+  p.aiPrompt = ''
 }
 
 const expandedPanel = ref(null)
@@ -141,6 +171,82 @@ function toggleExpand(p) {
   } else {
     expandedPanel.value = p.id
   }
+}
+
+let draggedIndex = null
+
+function onDragStart(event, index) {
+  if (panels.value[index].editing || expandedPanel.value !== null) {
+    event.preventDefault()
+    return
+  }
+  draggedIndex = index
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('text/plain', index)
+  setTimeout(() => {
+    event.target.classList.add('dragging')
+  }, 0)
+}
+
+function onDragEnd(event) {
+  event.target.classList.remove('dragging')
+  draggedIndex = null
+}
+
+const dragOverIndex = ref(null)
+
+function onDragOver(event, index) {
+  if (draggedIndex !== null && draggedIndex !== index) {
+    dragOverIndex.value = index
+  }
+}
+
+function onDragLeave(event, index) {
+  if (dragOverIndex.value === index) {
+    dragOverIndex.value = null
+  }
+}
+
+function onDrop(event, targetIndex) {
+  dragOverIndex.value = null
+  if (draggedIndex === null || draggedIndex === targetIndex) return
+  const item = panels.value.splice(draggedIndex, 1)[0]
+  panels.value.splice(targetIndex, 0, item)
+}
+
+function onGridDrop(event) {
+  if (draggedIndex === null) return
+  const item = panels.value.splice(draggedIndex, 1)[0]
+  panels.value.push(item)
+}
+
+let resizingPanel = null
+let startX = 0
+let startSpan = 1
+
+function startResize(event, p) {
+  resizingPanel = p
+  startX = event.clientX
+  startSpan = p.span || 1
+  document.addEventListener('mousemove', onResizeMove)
+  document.addEventListener('mouseup', onResizeEnd)
+  event.preventDefault()
+}
+
+function onResizeMove(event) {
+  if (!resizingPanel) return
+  const diffX = event.clientX - startX
+  if (startSpan === 1 && diffX > 50) {
+    resizingPanel.span = 2
+  } else if (startSpan === 2 && diffX < -50) {
+    resizingPanel.span = 1
+  }
+}
+
+function onResizeEnd() {
+  resizingPanel = null
+  document.removeEventListener('mousemove', onResizeMove)
+  document.removeEventListener('mouseup', onResizeEnd)
 }
 </script>
 
@@ -193,13 +299,22 @@ function toggleExpand(p) {
     </div>
 
     <!-- Grid -->
-    <div class="panels-grid" :class="{ 'has-expanded': expandedPanel !== null }">
-      <div v-for="p in panels" :key="p.id" 
+    <div class="panels-grid" :class="{ 'has-expanded': expandedPanel !== null }"
+         @dragover.prevent
+         @dragenter.prevent
+         @drop="onGridDrop">
+      <div v-for="(p, index) in panels" :key="p.id" 
            class="panel" 
-           :class="[(p.span === 2 ? 'span-2' : ''), (expandedPanel === p.id ? 'expanded' : '')]"
-           v-show="expandedPanel === null || expandedPanel === p.id">
+           :class="[(p.span === 2 ? 'span-2' : ''), (expandedPanel === p.id ? 'expanded' : ''), (p.editing ? 'editing' : ''), (dragOverIndex === index ? 'drag-over' : '')]"
+           v-show="expandedPanel === null || expandedPanel === p.id"
+           :draggable="!p.editing && expandedPanel === null"
+           @dragstart="onDragStart($event, index)"
+           @dragend="onDragEnd"
+           @dragover.prevent="onDragOver($event, index)"
+           @dragleave="onDragLeave($event, index)"
+           @drop.stop="onDrop($event, index)">
         
-        <div class="panel-header">
+        <div class="panel-header" :class="{ 'grab': !p.editing && expandedPanel === null }">
           <div style="display:flex; align-items:center; gap:8px;">
             <span class="panel-title">{{ p.title }}</span>
             <button class="icon-btn edit-icon" @click="p.editing = !p.editing" title="Edit PromQL Query">
@@ -235,10 +350,33 @@ function toggleExpand(p) {
             </select>
           </div>
           <div class="edit-group">
-            <label>PromQL Query A</label>
+            <label>Available Metrics</label>
+            <select @change="p.query = $event.target.value" class="edit-input">
+              <option value="" disabled selected>Select a metric...</option>
+              <option value="sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)">CPU Usage Rate</option>
+              <option value="sum(container_memory_working_set_bytes) by (pod)">Memory Working Set</option>
+              <option value="rate(container_network_receive_bytes_total[5m])">Network RX Rate</option>
+              <option value="rate(container_network_transmit_bytes_total[5m])">Network TX Rate</option>
+              <option value="count(kube_pod_info)">Pod Count</option>
+              <option value="rate(http_requests_total[5m])">HTTP Requests Rate</option>
+              <option value="rate(container_fs_reads_total[5m])">Disk Read IOPS</option>
+            </select>
+          </div>
+          <div class="edit-group">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <label>PromQL Query A</label>
+              <button class="db-btn outline" style="padding: 2px 8px; font-size: 14px; color: var(--accent);" @click="p.showAI = !p.showAI" title="Ask AI">✨</button>
+            </div>
+            <div v-if="p.showAI" style="display: flex; gap: 8px; margin-bottom: 4px;">
+              <input type="text" v-model="p.aiPrompt" placeholder="e.g. show me the top 5 pods by memory..." class="edit-input" style="flex: 1;" @keyup.enter="generateQuery(p)"/>
+              <button class="db-btn primary" @click="generateQuery(p)">Generate</button>
+            </div>
             <textarea v-model="p.query" class="edit-input font-mono" rows="3"></textarea>
           </div>
-          <div class="edit-actions">
+          <div class="edit-actions" style="gap: 8px;">
+            <button class="db-btn outline" style="border-color: rgba(239, 68, 68, 0.5); color: #ef4444;" @click="deletePanel(p)">Delete Graph</button>
+            <div style="flex: 1;"></div>
+            <button class="db-btn outline" @click="cancelEdit(p)">Cancel</button>
             <button class="save-btn" @click="savePanel(p)">Apply Changes</button>
           </div>
         </div>
@@ -318,6 +456,11 @@ function toggleExpand(p) {
             </div>
           </template>
 
+        </div>
+
+        <!-- Resize Handle -->
+        <div class="resize-handle" @mousedown.stop.prevent="startResize($event, p)" v-show="!p.editing && expandedPanel === null" title="Drag to resize">
+          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M10 0 L10 10 L0 10 Z" fill="currentColor" opacity="0.3"/></svg>
         </div>
       </div>
     </div>
@@ -422,9 +565,22 @@ function toggleExpand(p) {
   display: flex;
   flex-direction: column;
   position: relative;
+  transition: transform 0.2s, opacity 0.2s;
+}
+.panel.dragging {
+  opacity: 0.4;
+  transform: scale(0.98);
 }
 .panel.span-2 {
   grid-column: span 2;
+}
+.panel.editing {
+  grid-row: span 2;
+}
+
+.panel.drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(79, 142, 247, 0.3);
 }
 
 .panel.expanded {
@@ -449,6 +605,12 @@ function toggleExpand(p) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.panel-header.grab {
+  cursor: grab;
+}
+.panel-header.grab:active {
+  cursor: grabbing;
 }
 .panel-title {
   font-size: 12.5px;
@@ -492,6 +654,7 @@ function toggleExpand(p) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
 }
 .edit-group { display: flex; flex-direction: column; gap: 6px; }
 .edit-group label { font-size: 11px; color: var(--accent); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -526,6 +689,7 @@ function toggleExpand(p) {
   position: absolute;
   bottom: 0;
   left: 0;
+  pointer-events: none;
 }
 
 /* Stat Blocks */
@@ -536,6 +700,7 @@ function toggleExpand(p) {
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  pointer-events: none;
 }
 .stat-big.mt {
   border-top: 1px solid #2c3235;
@@ -557,6 +722,7 @@ function toggleExpand(p) {
   position: relative;
   width: 180px;
   text-align: center;
+  pointer-events: none;
 }
 .gauge-val {
   position: absolute;
@@ -573,6 +739,28 @@ function toggleExpand(p) {
   width: 100%;
   font-size: 11px;
   color: var(--text3);
+}
+
+/* Resize Handle */
+.resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 15px;
+  height: 15px;
+  cursor: ew-resize;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 2px;
+  z-index: 5;
+  color: var(--text3);
+}
+.resize-handle:hover {
+  color: var(--accent);
+}
+.resize-handle:hover svg path {
+  opacity: 1;
 }
 
 /* Loading state */

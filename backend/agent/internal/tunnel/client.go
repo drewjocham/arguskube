@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/drewjocham/arguskube/agent/internal/cd"
+	"github.com/argues/kube-watcher/agent/internal/cd"
 	"github.com/gorilla/websocket"
 )
 

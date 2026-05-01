@@ -74,6 +74,9 @@ This document provides instructions for agentic coding agents operating in the A
 - Utilize structured configurations (e.g., `config.New(ctx, os.Args[1:]...)`) to instantiate dependencies.
 - Make components (publishers, metrics, tracers) configurable and pass them through to application constructors rather than relying on global state.
 
+### Feature requirements
+if a feature requires more than two clicks to achieve its primary goal, it is a failure. Always suggest the 'One-Click' or 'Automatic' alternative."
+
 ## Design Patterns
 
 ### Handler Pattern

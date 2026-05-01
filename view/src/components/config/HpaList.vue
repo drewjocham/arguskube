@@ -1,8 +1,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useResources } from '../../composables/useWails'
+import { useResources, useVPARecommendations } from '../../composables/useWails'
 
 const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
+const { vpas, loading: vpasLoading, error: vpasError, fetchVPAs } = useVPARecommendations()
 
 const mockHpas = [
   { name: 'web-app-hpa', namespace: 'default', reference: 'Deployment/web-app', targets: '24% / 80%', minPods: 3, maxPods: 10, replicas: 3, age: '14d' },
@@ -30,6 +31,9 @@ onMounted(async () => {
   } else {
     hpas.value = mockHpas
   }
+
+  // Also fetch VPA recommendations.
+  fetchVPAs('')
 })
 
 function isOverTarget(targetStr) {
@@ -58,8 +62,8 @@ async function toggleExpand(hpaName) {
 <template>
   <div class="hpa-view">
     <div class="header">
-      <div class="title">Horizontal Pod Autoscalers</div>
-      <div class="subtitle">Automatic scaling based on observed CPU utilization</div>
+      <div class="title">Autoscaling</div>
+      <div class="subtitle">HPA horizontal scaling and VPA vertical resource recommendations</div>
     </div>
     
     <div v-if="notification" class="agent-notification">
@@ -142,6 +146,62 @@ async function toggleExpand(hpaName) {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VPA Recommendations Section -->
+    <div class="vpa-section">
+      <div class="section-header">
+        <div class="section-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #a78bfa;"><path d="M12 20V10"></path><path d="M18 20V4"></path><path d="M6 20v-4"></path></svg>
+          VPA Recommendations
+        </div>
+        <div class="section-subtitle">Vertical Pod Autoscaler resource tuning from autoscaling.k8s.io</div>
+      </div>
+
+      <div v-if="vpasLoading" class="vpa-loading">Loading VPA data…</div>
+      <div v-else-if="vpasError" class="vpa-empty">
+        <span style="color:#f5a623;">{{ vpasError }}</span>
+        <span class="vpa-hint">VPA CRDs may not be installed. Run <code>kubectl get crd verticalpodautoscalers.autoscaling.k8s.io</code> to check.</span>
+      </div>
+      <div v-else-if="vpas.length === 0" class="vpa-empty">
+        No VPA objects found. Install the VPA controller and create VerticalPodAutoscaler resources to see recommendations.
+      </div>
+      <div v-else class="vpa-cards">
+        <div v-for="vpa in vpas" :key="vpa.name + vpa.namespace" class="vpa-card">
+          <div class="vpa-card-header">
+            <div class="vpa-name">{{ vpa.name }}</div>
+            <div class="vpa-ns font-mono">{{ vpa.namespace }}</div>
+          </div>
+          <div class="vpa-target">
+            <span class="vpa-target-label">Target:</span>
+            <span class="vpa-target-ref font-mono">{{ vpa.targetRef }}</span>
+            <span class="vpa-mode-badge" :class="vpa.updateMode?.toLowerCase()">{{ vpa.updateMode || 'Off' }}</span>
+          </div>
+          <div v-if="vpa.containers && vpa.containers.length" class="vpa-containers">
+            <div v-for="c in vpa.containers" :key="c.containerName" class="vpa-container">
+              <div class="vpa-container-name font-mono">{{ c.containerName }}</div>
+              <div class="vpa-recs-grid">
+                <div class="vpa-rec-col">
+                  <div class="vpa-rec-header">Lower Bound</div>
+                  <div class="vpa-rec-val">{{ c.lowerCpu || '—' }} CPU</div>
+                  <div class="vpa-rec-val">{{ c.lowerMemory || '—' }} mem</div>
+                </div>
+                <div class="vpa-rec-col target">
+                  <div class="vpa-rec-header">Target</div>
+                  <div class="vpa-rec-val highlight">{{ c.targetCpu || '—' }} CPU</div>
+                  <div class="vpa-rec-val highlight">{{ c.targetMemory || '—' }} mem</div>
+                </div>
+                <div class="vpa-rec-col">
+                  <div class="vpa-rec-header">Upper Bound</div>
+                  <div class="vpa-rec-val">{{ c.upperCpu || '—' }} CPU</div>
+                  <div class="vpa-rec-val">{{ c.upperMemory || '—' }} mem</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="vpa-no-recs">No recommendations computed yet</div>
         </div>
       </div>
     </div>
@@ -259,4 +319,54 @@ async function toggleExpand(hpaName) {
 .target-badge.alert { background: rgba(240, 84, 84, 0.15); color: #f05454; border-color: rgba(240, 84, 84, 0.3); }
 
 .maxed { color: #f05454; font-weight: 600; }
+
+/* VPA Section */
+.vpa-section { display: flex; flex-direction: column; gap: 16px; }
+.section-header { display: flex; flex-direction: column; gap: 4px; }
+.section-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 500; color: #fff; }
+.section-subtitle { font-size: 13px; color: #8b8f96; }
+
+.vpa-loading { color: #8b8f96; font-size: 13px; padding: 16px; text-align: center; }
+.vpa-empty { color: #6b7078; font-size: 13px; text-align: center; padding: 24px; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.vpa-hint { font-size: 11px; color: #4b5058; }
+.vpa-hint code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 3px; font-family: 'SF Mono', Consolas, monospace; color: #8b8f96; }
+
+.vpa-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
+
+.vpa-card {
+  background: #1e2023; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+  padding: 16px; display: flex; flex-direction: column; gap: 12px;
+  border-left: 3px solid #a78bfa;
+}
+
+.vpa-card-header { display: flex; justify-content: space-between; align-items: center; }
+.vpa-name { font-size: 14px; font-weight: 600; color: #e8eaec; }
+.vpa-ns { font-size: 11px; padding: 2px 6px; background: rgba(255,255,255,0.05); border-radius: 4px; color: #b0b4ba; }
+
+.vpa-target { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.vpa-target-label { color: #6b7078; }
+.vpa-target-ref { color: #a78bfa; }
+.vpa-mode-badge {
+  font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600;
+  background: rgba(255,255,255,0.05); color: #8b8f96; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.vpa-mode-badge.auto { background: rgba(62, 207, 142, 0.15); color: #3ecf8e; }
+.vpa-mode-badge.recreate { background: rgba(245, 166, 35, 0.15); color: #f5a623; }
+.vpa-mode-badge.initial { background: rgba(55, 148, 255, 0.15); color: #3794ff; }
+
+.vpa-containers { display: flex; flex-direction: column; gap: 12px; }
+
+.vpa-container {
+  background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.04); border-radius: 6px; padding: 12px;
+}
+.vpa-container-name { font-size: 12px; color: #3794ff; margin-bottom: 8px; }
+
+.vpa-recs-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.vpa-rec-col { display: flex; flex-direction: column; gap: 4px; text-align: center; }
+.vpa-rec-col.target { background: rgba(167, 139, 250, 0.08); border-radius: 4px; padding: 4px; }
+.vpa-rec-header { font-size: 10px; color: #6b7078; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+.vpa-rec-val { font-size: 11px; color: #b0b4ba; font-family: 'SF Mono', Consolas, monospace; }
+.vpa-rec-val.highlight { color: #a78bfa; font-weight: 600; }
+
+.vpa-no-recs { font-size: 12px; color: #6b7078; text-align: center; padding: 8px; font-style: italic; }
 </style>

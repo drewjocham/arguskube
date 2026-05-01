@@ -33,9 +33,9 @@ type DetectResult struct {
 	MetricName  string    `json:"metric_name"`
 	IsAnomaly   bool      `json:"is_anomaly"`
 	Score       float64   `json:"score"`       // 0.0 = normal, 1.0 = extreme anomaly
-	Description string    `json:"description"` // human-readable summary
+	Description string    `json:"description"` 
 	DetectedAt  time.Time `json:"detected_at"`
-	ModelUsed   string    `json:"model_used"` // PyOD model name
+	ModelUsed   string    `json:"model_used"` 
 }
 
 // Job represents an Anomstack anomaly detection job.

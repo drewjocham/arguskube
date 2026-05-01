@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useResources } from '../../composables/useWails'
 
 const { result, loading, listResources } = useResources()
@@ -47,8 +47,6 @@ function toggleAutoRefresh() {
   else stopAutoRefresh()
 }
 
-const filteredEvents = ref([])
-import { computed } from 'vue'
 const displayEvents = computed(() => {
   if (filterType.value === 'all') return events.value
   return events.value.filter(e => e.type.toLowerCase() === filterType.value)

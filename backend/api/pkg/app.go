@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/argues/kube-watcher/internal/setup"
 	"github.com/argues/kube-watcher/internal/terminal"
 	"github.com/argues/kube-watcher/internal/vulnscan"
+	"github.com/argues/kube-watcher/internal/workflows"
 )
 
 // AppConfig holds all dependencies for the application. Flat, explicit.
@@ -39,6 +41,7 @@ type AppConfig struct {
 	Runbooks  *runbooks.Store
 	Setup     *setup.Manager
 	Incidents *incidents.Store
+	Workflows *workflows.Store
 	AppMode   string
 }
 
@@ -61,6 +64,7 @@ type App struct {
 	setup     *setup.Manager
 	incidents *incidents.Store
 	hub       *Hub
+	workflows *workflows.Store
 
 	appMode string
 
@@ -93,6 +97,7 @@ func NewApp(ac AppConfig) *App {
 		term:      terminal.New(ac.Logger),
 		setup:     ac.Setup,
 		incidents: ac.Incidents,
+		workflows: ac.Workflows,
 		appMode:   ac.AppMode,
 		hub:       NewHub(ac.Logger.With("component", "saas-hub")),
 	}
@@ -116,6 +121,15 @@ func (a *App) Startup(ctx context.Context) {
 	a.logger.InfoContext(ctx, "kubewatcher started",
 		slog.String("tier", string(a.cfg.Features.Tier)),
 	)
+
+	// Eagerly populate cached metrics so AI agent has context from first message.
+	if a.k8s != nil {
+		if m, err := a.k8s.GetMetrics(ctx); err == nil && m != nil {
+			a.cachedMetrics = m
+			a.logger.Info("cached initial cluster metrics")
+		}
+	}
+
 	a.StartEventLoop(ctx)
 }
 
@@ -252,6 +266,53 @@ func (a *App) DeletePod(namespace, podName string) error {
 	return a.k8s.DeletePod(a.ctx, namespace, podName)
 }
 
+// GetDeploymentRevisions returns the rollout history for a deployment.
+func (a *App) GetDeploymentRevisions(namespace, deployment string, limit int) ([]k8s.DeploymentRevision, error) {
+	if a.k8s == nil {
+		return nil, errNoCluster
+	}
+	if limit <= 0 {
+		limit = 25
+	}
+	return a.k8s.GetDeploymentRevisions(a.ctx, namespace, deployment, limit)
+}
+
+// StreamPodLogsFollow returns log lines with follow enabled (streams until context canceled).
+func (a *App) StreamPodLogsFollow(namespace, podName, container string, tailLines int64) ([]string, error) {
+	if a.k8s == nil {
+		return nil, errNoCluster
+	}
+	// For Wails bindings we collect into a buffer (WebSocket streaming is via the agent).
+	// Limit to 500 lines to prevent memory issues in the desktop app.
+	var lines []string
+	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
+	defer cancel()
+
+	err := a.k8s.StreamPodLogs(ctx, namespace, podName, container, tailLines, false, func(line string) {
+		if len(lines) < 500 {
+			lines = append(lines, line)
+		}
+	})
+	return lines, err
+}
+
+// GetVPARecommendations returns VerticalPodAutoscaler recommendations from the cluster.
+func (a *App) GetVPARecommendations(namespace string) ([]k8s.VPARecommendation, error) {
+	if a.k8s == nil {
+		return nil, errNoCluster
+	}
+	return a.k8s.GetVPARecommendations(a.ctx, namespace)
+}
+
+// GetNodeLogs fetches real kubelet/containerd/kube-proxy logs from a cluster node
+// via the kubelet proxy API.
+func (a *App) GetNodeLogs(nodeName string, tailLines int) ([]k8s.NodeLogEntry, error) {
+	if a.k8s == nil {
+		return nil, errNoCluster
+	}
+	return a.k8s.GetNodeLogs(a.ctx, nodeName, nil, tailLines)
+}
+
 // GetFeatures returns all features and their availability for the current tier.
 func (a *App) GetFeatures() map[features.Feature]bool {
 	return a.gate.AllFeatures()
@@ -284,11 +345,14 @@ func (a *App) SendChatMessage(alertID string, message string) (string, error) {
 		return "", features.ErrProRequired
 	}
 
-	// Find the alert for context.
+	// Build full diagnostic context for the AI agent.
 	var alert *alerts.Alert
-	if a.k8s != nil && alertID != "global" {
-		allAlerts, err := a.k8s.DetectAlerts(a.ctx)
-		if err == nil {
+	var allAlerts []alerts.Alert
+
+	if a.k8s != nil {
+		var err error
+		allAlerts, err = a.k8s.DetectAlerts(a.ctx)
+		if err == nil && alertID != "global" {
 			for i := range allAlerts {
 				if allAlerts[i].ID == alertID {
 					alert = &allAlerts[i]
@@ -298,7 +362,36 @@ func (a *App) SendChatMessage(alertID string, message string) (string, error) {
 		}
 	}
 
-	return a.agent.SendMessage(a.ctx, alertID, message, alert, a.cachedMetrics)
+	// Assemble the enriched diagnostic context.
+	diagCtx := &ai.DiagnosticContext{
+		Metrics: a.cachedMetrics,
+	}
+
+	// Add recent warning events from the cluster.
+	if a.k8s != nil {
+		if events, err := a.k8s.GetWarningEvents(a.ctx, 20); err == nil {
+			diagCtx.RecentEvents = events
+		}
+
+		// Add namespace pod counts for situational awareness.
+		if nsSummary, err := a.k8s.GetNamespacePodCounts(a.ctx); err == nil {
+			diagCtx.NamespaceSummary = nsSummary
+		}
+
+		// Add pods with high restart counts.
+		if restarters, err := a.k8s.GetTopRestarters(a.ctx, 5); err == nil {
+			diagCtx.TopRestarters = restarters
+		}
+	}
+
+	// Add cascade-correlated alerts if we have a target alert.
+	if alert != nil && a.assembler != nil {
+		if bundle, err := a.assembler.Assemble(a.ctx, *alert, allAlerts); err == nil && bundle != nil {
+			diagCtx.CascadeAlerts = bundle.CascadeAlerts
+		}
+	}
+
+	return a.agent.SendMessage(a.ctx, alertID, message, alert, diagCtx)
 }
 
 // GetChatHistory returns the conversation history for an alert.
@@ -325,12 +418,12 @@ func (a *App) GetAgentEventLog() []ai.AgentEvent {
 	return a.agent.GetEventLog()
 }
 
-// --- Popeye bindings ---
+// --- Argus Scan bindings ---
 
-// RunPopeye executes a Popeye cluster scan and returns structured findings.
-func (a *App) RunPopeye() (*popeye.Report, error) {
+// RunArgusScan executes a cluster scan and returns structured findings.
+func (a *App) RunArgusScan() (*popeye.Report, error) {
 	if a.popeye == nil {
-		return nil, fmt.Errorf("popeye not configured — install popeye CLI")
+		return nil, fmt.Errorf("argus scan not configured — install argus scan CLI (popeye)")
 	}
 	return a.popeye.Run(a.ctx)
 }
@@ -541,10 +634,10 @@ func (a *App) CheckToolStatus() []setup.ToolStatus {
 	return a.setup.CheckAllTools(a.ctx)
 }
 
-// InstallPopeye installs Popeye via go install or Docker pull.
-func (a *App) InstallPopeye() (*setup.SetupResult, error) {
+// InstallArgusScan installs the scanner via go install or Docker pull.
+func (a *App) InstallArgusScan() (*setup.SetupResult, error) {
 	if a.setup == nil {
-		return &setup.SetupResult{Success: false, Message: "Setup manager not initialized"}, nil
+		return nil, fmt.Errorf("setup manager not initialized")
 	}
 	return a.setup.InstallPopeye(a.ctx), nil
 }
@@ -664,6 +757,40 @@ func (a *App) ScanAllImages(namespace string) ([]vulnscan.ScannedImage, error) {
 		namespace = ""
 	}
 	return a.scanner.ScanAll(a.ctx, namespace)
+}
+
+// --- Workflow bindings ---
+
+// ListWorkflows returns summaries of all saved workflows.
+func (a *App) ListWorkflows() ([]workflows.WorkflowSummary, error) {
+	if a.workflows == nil {
+		return []workflows.WorkflowSummary{}, nil
+	}
+	return a.workflows.List()
+}
+
+// GetWorkflow returns a single workflow by ID.
+func (a *App) GetWorkflow(id string) (*workflows.Workflow, error) {
+	if a.workflows == nil {
+		return nil, fmt.Errorf("workflow store not initialized")
+	}
+	return a.workflows.Get(id)
+}
+
+// SaveWorkflow creates or updates a workflow.
+func (a *App) SaveWorkflow(wf workflows.Workflow) (*workflows.Workflow, error) {
+	if a.workflows == nil {
+		return nil, fmt.Errorf("workflow store not initialized")
+	}
+	return a.workflows.Save(&wf)
+}
+
+// DeleteWorkflow removes a workflow by ID.
+func (a *App) DeleteWorkflow(id string) error {
+	if a.workflows == nil {
+		return fmt.Errorf("workflow store not initialized")
+	}
+	return a.workflows.Delete(id)
 }
 
 // --- Code Block bindings ---

@@ -12,6 +12,12 @@ const editMode = ref(false)
 const showCreateDialog = ref(false)
 const newRunbookName = ref('')
 const newRunbookTrigger = ref('')
+const notification = ref(null)
+
+function showNotification(msg, duration = 3000) {
+  notification.value = msg
+  setTimeout(() => notification.value = null, duration)
+}
 
 // Debounce auto-save.
 let saveTimer = null
@@ -73,7 +79,7 @@ async function handleCreate() {
       editMode.value = true
     }
   } catch (e) {
-    alert('Failed to create runbook: ' + (e?.message || e))
+    showNotification('Failed to create runbook: ' + (e?.message || e))
   }
 }
 
@@ -93,6 +99,7 @@ function renderedMarkdown(content) {
 
 <template>
   <div class="runbooks-layout">
+    <div v-if="notification" class="rb-notification">{{ notification }}</div>
     <!-- Left: Runbook list -->
     <div class="rb-list-panel">
       <div class="view-header">
@@ -182,10 +189,25 @@ function renderedMarkdown(content) {
 </template>
 
 <style scoped>
+.rb-notification {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 8px 16px;
+  background: rgba(239,68,68,0.12);
+  border-bottom: 1px solid rgba(239,68,68,0.2);
+  font-size: 12px;
+  color: #f87171;
+  text-align: center;
+  z-index: 10;
+}
+
 .runbooks-layout {
   display: flex;
   height: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 /* Left panel */

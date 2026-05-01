@@ -123,8 +123,7 @@ const navTree = [
       { id: 'runbooks', label: 'Runbooks' },
       { id: 'incidents', label: 'Incident Log' },
       { id: 'audit', label: 'Config Audit' },
-      { id: 'workflows', label: 'Workflows' },
-      { id: 'arguscd', label: 'ArgusCD' },
+      { id: 'arguscd', label: 'ArgusCD', pro: true },
     ],
   },
   {
@@ -205,18 +204,28 @@ const warningCount = computed(() =>
         </div>
 
         <div v-show="!isCollapsed(section.id)" class="section-items">
-          <div
-            v-for="item in section.items"
-            :key="item.id"
-            class="nav-item"
-            :class="{ active: activeNav === item.id }"
-            @click="emit('update:activeNav', item.id)"
-          >
-            <div class="nav-dot" :class="{ active: activeNav === item.id }"></div>
-            <span class="nav-label">{{ item.label }}</span>
-            <span v-if="item.id === 'alerts' && criticalCount > 0" class="badge badge-red">{{ criticalCount }}</span>
-            <span v-if="item.id === 'alerts' && warningCount > 0 && criticalCount === 0" class="badge badge-amber">{{ warningCount }}</span>
-          </div>
+          <template v-for="item in section.items" :key="item.id">
+            <!-- Pro-gated items: show with lock badge if not allowed -->
+            <div
+              v-if="!item.pro || isAllowed(item.id)"
+              class="nav-item"
+              :class="{ active: activeNav === item.id }"
+              @click="emit('update:activeNav', item.id)"
+            >
+              <div class="nav-dot" :class="{ active: activeNav === item.id }"></div>
+              <span class="nav-label">{{ item.label }}</span>
+              <span v-if="item.id === 'alerts' && criticalCount > 0" class="badge badge-red">{{ criticalCount }}</span>
+              <span v-if="item.id === 'alerts' && warningCount > 0 && criticalCount === 0" class="badge badge-amber">{{ warningCount }}</span>
+            </div>
+            <div
+              v-else
+              class="nav-item pro-locked"
+            >
+              <div class="nav-dot"></div>
+              <span class="nav-label">{{ item.label }}</span>
+              <span class="pro-badge">PRO</span>
+            </div>
+          </template>
         </div>
       </template>
     </div>
@@ -429,4 +438,13 @@ const warningCount = computed(() =>
 .ai-context-body { font-size: 10.5px; color: var(--text3); line-height: 1.5; }
 .ai-context-action { margin-top: 5px; font-size: 10.5px; color: var(--accent2); cursor: pointer; }
 .ai-context-action.pro-label { color: var(--purple); opacity: 0.5; cursor: default; }
+
+/* Pro-locked nav items */
+.nav-item.pro-locked { opacity: 0.4; cursor: default; }
+.nav-item.pro-locked:hover { background: transparent; color: var(--text2); }
+.pro-badge {
+  font-size: 8px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--purple); background: rgba(167, 139, 250, 0.12);
+  padding: 1px 4px; border-radius: 3px; margin-left: auto;
+}
 </style>

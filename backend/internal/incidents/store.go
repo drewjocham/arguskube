@@ -42,7 +42,9 @@ func NewStore(dataDir string, logger *slog.Logger) *Store {
 		home, _ := os.UserHomeDir()
 		dataDir = filepath.Join(home, ".kubewatcher")
 	}
-	_ = os.MkdirAll(dataDir, 0o755)
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		logger.Error("incidents: failed to create data directory", slog.String("path", dataDir), slog.String("error", err.Error()))
+	}
 
 	s := &Store{
 		filePath: filepath.Join(dataDir, "incidents.json"),
@@ -152,15 +154,21 @@ func (s *Store) Delete(_ context.Context, id string) error {
 	return fmt.Errorf("incident %q not found", id)
 }
 
-// persist writes the incidents to disk.
+// persist writes the incidents to disk atomically (write temp + rename).
 func (s *Store) persist() {
 	data, err := json.MarshalIndent(s.incidents, "", "  ")
 	if err != nil {
 		s.logger.Error("failed to marshal incidents", "error", err)
 		return
 	}
-	if err := os.WriteFile(s.filePath, data, 0o644); err != nil {
-		s.logger.Error("failed to write incidents file", "error", err)
+
+	tmp := s.filePath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		s.logger.Error("failed to write incidents temp file", "error", err)
+		return
+	}
+	if err := os.Rename(tmp, s.filePath); err != nil {
+		s.logger.Error("failed to rename incidents temp file", "error", err)
 	}
 }
 

@@ -2,6 +2,7 @@
 import { ref, provide } from 'vue'
 import { useAppMode, useClusterInfo, useMetrics, useAlerts, useDiagnostics, useFeatures } from './composables/useWails'
 import { useWailsEvent, Events } from './composables/useEvents'
+import ToastContainer from './components/ToastContainer.vue'
 import Titlebar from './components/titlebar/Titlebar.vue'
 import Sidebar from './components/sidebar/Sidebar.vue'
 import CenterPanel from './components/center/CenterPanel.vue'
@@ -143,6 +144,7 @@ provide('isAllowed', isAllowed)
       </div>
     </div>
     
+    <ToastContainer />
     <ProDesktopApp v-if="popOutOpen" @close="popOutOpen = false" />
   </template>
 </template>

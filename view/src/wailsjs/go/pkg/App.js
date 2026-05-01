@@ -38,6 +38,10 @@ export function DeleteRunbook(arg1) {
   return window['go']['pkg']['App']['DeleteRunbook'](arg1);
 }
 
+export function DeleteWorkflow(arg1) {
+  return window['go']['pkg']['App']['DeleteWorkflow'](arg1);
+}
+
 export function DeployAgent(arg1) {
   return window['go']['pkg']['App']['DeployAgent'](arg1);
 }
@@ -86,6 +90,10 @@ export function GetCodeSuggestion(arg1, arg2) {
   return window['go']['pkg']['App']['GetCodeSuggestion'](arg1, arg2);
 }
 
+export function GetDeploymentRevisions(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['GetDeploymentRevisions'](arg1, arg2, arg3);
+}
+
 export function GetFeatures() {
   return window['go']['pkg']['App']['GetFeatures']();
 }
@@ -118,12 +126,20 @@ export function GetTopology(arg1) {
   return window['go']['pkg']['App']['GetTopology'](arg1);
 }
 
+export function GetVPARecommendations(arg1) {
+  return window['go']['pkg']['App']['GetVPARecommendations'](arg1);
+}
+
+export function GetWorkflow(arg1) {
+  return window['go']['pkg']['App']['GetWorkflow'](arg1);
+}
+
 export function HandleURL(arg1) {
   return window['go']['pkg']['App']['HandleURL'](arg1);
 }
 
-export function InstallPopeye() {
-  return window['go']['pkg']['App']['InstallPopeye']();
+export function InstallArgusScan() {
+  return window['go']['pkg']['App']['InstallArgusScan']();
 }
 
 export function ListAllNamespaces() {
@@ -158,6 +174,10 @@ export function ListVulnerabilities() {
   return window['go']['pkg']['App']['ListVulnerabilities']();
 }
 
+export function ListWorkflows() {
+  return window['go']['pkg']['App']['ListWorkflows']();
+}
+
 export function LoginSaaS(arg1) {
   return window['go']['pkg']['App']['LoginSaaS'](arg1);
 }
@@ -178,12 +198,12 @@ export function ResizeTerminal(arg1, arg2) {
   return window['go']['pkg']['App']['ResizeTerminal'](arg1, arg2);
 }
 
-export function RunCodeSandbox(arg1, arg2) {
-  return window['go']['pkg']['App']['RunCodeSandbox'](arg1, arg2);
+export function RunArgusScan() {
+  return window['go']['pkg']['App']['RunArgusScan']();
 }
 
-export function RunPopeye() {
-  return window['go']['pkg']['App']['RunPopeye']();
+export function RunCodeSandbox(arg1, arg2) {
+  return window['go']['pkg']['App']['RunCodeSandbox'](arg1, arg2);
 }
 
 export function SaveNotebook(arg1, arg2) {
@@ -192,6 +212,10 @@ export function SaveNotebook(arg1, arg2) {
 
 export function SaveRunbook(arg1, arg2) {
   return window['go']['pkg']['App']['SaveRunbook'](arg1, arg2);
+}
+
+export function SaveWorkflow(arg1) {
+  return window['go']['pkg']['App']['SaveWorkflow'](arg1);
 }
 
 export function ScanAllImages(arg1) {
@@ -224,6 +248,10 @@ export function StartHTTPServer(arg1) {
 
 export function StartTerminal(arg1, arg2) {
   return window['go']['pkg']['App']['StartTerminal'](arg1, arg2);
+}
+
+export function StreamPodLogsFollow(arg1, arg2, arg3, arg4) {
+  return window['go']['pkg']['App']['StreamPodLogsFollow'](arg1, arg2, arg3, arg4);
 }
 
 export function SwitchContext(arg1) {

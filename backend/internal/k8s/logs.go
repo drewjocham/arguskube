@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -219,5 +221,145 @@ func buildHistogram(entries []LogEntry, buckets int) []int {
 	}
 
 	return hist
+}
+
+// --- Node-level log streaming (kubelet, containerd) ---
+
+// NodeLogEntry is a structured log line from a node's system services.
+type NodeLogEntry struct {
+	Timestamp string `json:"time"`
+	Level     string `json:"level"`   // INFO, WARN, ERROR
+	Service   string `json:"service"` // kubelet, containerd, kube-proxy, etc.
+	Message   string `json:"message"`
+}
+
+// journalRe matches systemd journal lines: "May 01 14:32:01 hostname kubelet[1234]: message"
+var journalRe = regexp.MustCompile(`^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+\S+\s+(\S+?)(?:\[\d+\])?:\s+(.*)$`)
+
+// GetNodeLogs fetches system service logs from a node via the kubelet proxy API.
+// Services: kubelet, containerd, kube-proxy. Returns the most recent tailLines entries.
+func (c *Client) GetNodeLogs(ctx context.Context, nodeName string, services []string, tailLines int) ([]NodeLogEntry, error) {
+	if tailLines <= 0 {
+		tailLines = 100
+	}
+	if len(services) == 0 {
+		services = []string{"kubelet", "containerd", "kube-proxy"}
+	}
+
+	var allEntries []NodeLogEntry
+
+	for _, svc := range services {
+		entries, err := c.fetchNodeServiceLogs(ctx, nodeName, svc, tailLines)
+		if err != nil {
+			c.logger.WarnContext(ctx, "failed to fetch node service logs",
+				"node", nodeName, "service", svc, "error", err)
+			continue // Partial results are fine.
+		}
+		allEntries = append(allEntries, entries...)
+	}
+
+	// Sort by timestamp descending (newest first).
+	sort.Slice(allEntries, func(i, j int) bool {
+		return allEntries[i].Timestamp > allEntries[j].Timestamp
+	})
+
+	// Trim to tailLines.
+	if len(allEntries) > tailLines {
+		allEntries = allEntries[:tailLines]
+	}
+
+	return allEntries, nil
+}
+
+// fetchNodeServiceLogs reads logs for a single service from a node's journal via
+// the kubelet proxy endpoint: /api/v1/nodes/{name}/proxy/logs/journal
+// with query parameter ?unit={service}.
+func (c *Client) fetchNodeServiceLogs(ctx context.Context, nodeName, service string, tailLines int) ([]NodeLogEntry, error) {
+	// Use the kubelet /logs/journal endpoint with systemd unit filter.
+	// Fallback: /logs/{service} for plain-file log systems.
+	body, err := c.cs.CoreV1().RESTClient().Get().
+		Resource("nodes").
+		Name(nodeName).
+		SubResource("proxy", "logs", "journal").
+		Param("unit", service).
+		Param("boot", "0"). // Current boot only.
+		Do(ctx).
+		Raw()
+
+	if err != nil {
+		// Fallback to plain log file access (/var/log/{service}.log).
+		body, err = c.cs.CoreV1().RESTClient().Get().
+			Resource("nodes").
+			Name(nodeName).
+			SubResource("proxy", "logs", service+".log").
+			Do(ctx).
+			Raw()
+		if err != nil {
+			return nil, fmt.Errorf("node proxy logs for %s/%s: %w", nodeName, service, err)
+		}
+	}
+
+	return parseNodeLogOutput(body, service, tailLines)
+}
+
+// parseNodeLogOutput parses raw log output from the kubelet proxy into structured entries.
+func parseNodeLogOutput(data []byte, service string, tailLines int) ([]NodeLogEntry, error) {
+	reader := strings.NewReader(string(data))
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
+
+	var entries []NodeLogEntry
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		entry := parseJournalLine(line, service)
+		entries = append(entries, entry)
+	}
+
+	if err := scanner.Err(); err != nil && err != io.EOF {
+		return entries, fmt.Errorf("scan node logs: %w", err)
+	}
+
+	// Take only the last tailLines entries.
+	if len(entries) > tailLines {
+		entries = entries[len(entries)-tailLines:]
+	}
+
+	return entries, nil
+}
+
+// parseJournalLine parses a single journal/syslog line into a NodeLogEntry.
+func parseJournalLine(line, defaultService string) NodeLogEntry {
+	entry := NodeLogEntry{
+		Level:   "INFO",
+		Service: defaultService,
+	}
+
+	// Try systemd journal format: "May 01 14:32:01 hostname kubelet[1234]: message"
+	if m := journalRe.FindStringSubmatch(line); m != nil {
+		entry.Timestamp = m[1]
+		entry.Service = m[2]
+		entry.Message = m[3]
+	} else {
+		// Try RFC3339 prefixed format.
+		ts, msg := parseTimestampedLine(line)
+		entry.Timestamp = ts
+		entry.Message = msg
+	}
+
+	// Infer log level from message content.
+	lower := strings.ToLower(entry.Message)
+	switch {
+	case strings.Contains(lower, "error") || strings.Contains(lower, "fatal") || strings.Contains(lower, "failed"):
+		entry.Level = "ERROR"
+	case strings.Contains(lower, "warn") || strings.Contains(lower, "timeout") || strings.Contains(lower, "delayed"):
+		entry.Level = "WARN"
+	}
+
+	return entry
 }
 

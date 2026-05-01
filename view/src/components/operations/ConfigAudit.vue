@@ -1,13 +1,13 @@
 <script setup>
-import { usePopeye } from '../../composables/useWails'
-import PopeyeReport from '../center/PopeyeReport.vue'
+import { useArgusScan } from '../../composables/useWails'
+import ArgusScanReport from '../center/ArgusScanReport.vue'
 
-const { report, loading, error, runScan } = usePopeye()
+const { report, loading, error, runScan } = useArgusScan()
 </script>
 
 <template>
   <div class="config-audit-view">
-    <PopeyeReport
+    <ArgusScanReport
       :report="report"
       :loading="loading"
       :error="error"

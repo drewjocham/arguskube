@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useSetup } from '../../composables/useWails'
 
-const { tools, loading, actionLoading, checkTools, installPopeye, deployAgent, undeployAgent } = useSetup()
+const { tools, loading, actionLoading, checkTools, installArgusScan, deployAgent, undeployAgent } = useSetup()
 
 const agentNamespace = ref('kubewatcher')
 const lastResult = ref(null)
@@ -27,8 +27,8 @@ function toolLabel(name) {
     kubectl: 'kubectl',
     docker: 'Docker',
     helm: 'Helm',
-    popeye: 'Popeye (Cluster Audit)',
-    'kubewatcher-agent': 'KubeWatcher Agent (Anomaly Detector)',
+    popeye: 'Argus Scan (Cluster Audit)',
+    'kubewatcher-agent': 'KubeWatcher AI Agent',
   }
   return labels[name] || name
 }
@@ -36,7 +36,7 @@ function toolLabel(name) {
 function toolDescription(name) {
   const descriptions = {
     kubectl: 'Kubernetes CLI — required for cluster communication',
-    docker: 'Container runtime — used to run Popeye if binary not installed',
+    docker: 'Container runtime — used to run Argus Scan if binary not installed',
     helm: 'Package manager — optional, used for Helm-based deployments',
     popeye: 'Cluster linter that scans your workloads for best-practice violations',
     'kubewatcher-agent': 'In-cluster DaemonSet that provides real-time anomaly detection, topology mapping, and streaming metrics',
@@ -49,8 +49,8 @@ function isInstallable(name) {
 }
 
 async function handleInstall(name) {
-  if (name === 'popeye') {
-    lastResult.value = await installPopeye()
+  if (name === 'argusScan') {
+    lastResult.value = await installArgusScan()
   } else if (name === 'kubewatcher-agent') {
     lastResult.value = await deployAgent(agentNamespace.value)
   }
@@ -150,8 +150,8 @@ const totalCount = computed(() => tools.value.length)
           <input type="text" class="config-input" v-model="agentNamespace" placeholder="kubewatcher" />
         </div>
 
-        <!-- Popeye install info -->
-        <div v-if="tool.name === 'popeye' && !tool.installed" class="install-info">
+        <!-- Argus Scan install info -->
+        <div v-if="tool.name === 'argusScan' && !tool.installed" class="install-info">
           Will try <code>go install</code> first, then fall back to <code>docker pull quay.io/derailed/popeye</code>
         </div>
       </div>

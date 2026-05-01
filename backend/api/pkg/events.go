@@ -1,11 +1,16 @@
 package pkg
 
 import (
+	"bufio"
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/argues/kube-watcher/internal/ai"
 	"github.com/argues/kube-watcher/internal/alerts"
@@ -28,6 +33,7 @@ func (a *App) StartEventLoop(ctx context.Context) {
 	}
 	go a.pollAlerts(ctx)
 	go a.pollMetrics(ctx)
+	go a.pollLogs(ctx)
 }
 
 func (a *App) pollAlerts(ctx context.Context) {
@@ -129,4 +135,74 @@ func (a *App) pollMetrics(ctx context.Context) {
 // EmitLogLine allows manual log injection (for testing/demo).
 func (a *App) EmitLogLine(line alerts.LogLine) {
 	runtime.EventsEmit(a.ctx, EventLogLine, line)
+}
+
+func (a *App) pollLogs(ctx context.Context) {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	var lastPoll time.Time
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if lastPoll.IsZero() {
+				lastPoll = time.Now().Add(-3 * time.Second)
+			}
+			now := time.Now()
+			sinceTime := metav1.NewTime(lastPoll)
+
+			// Get all pods across all namespaces
+			pods, err := a.k8s.GetClientset().CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+			if err != nil {
+				continue
+			}
+
+			for i := range pods.Items {
+				p := &pods.Items[i]
+				if p.Status.Phase != corev1.PodRunning {
+					continue
+				}
+				for _, cs := range p.Status.ContainerStatuses {
+					opts := &corev1.PodLogOptions{
+						Container: cs.Name,
+						SinceTime: &sinceTime,
+					}
+					req := a.k8s.GetClientset().CoreV1().Pods(p.Namespace).GetLogs(p.Name, opts)
+					stream, err := req.Stream(ctx)
+					if err != nil {
+						continue
+					}
+
+					scanner := bufio.NewScanner(stream)
+					for scanner.Scan() {
+						line := scanner.Text()
+						if len(line) == 0 {
+							continue
+						}
+						
+						lowerMsg := strings.ToLower(line)
+						level := "info"
+						if strings.Contains(lowerMsg, "error") || strings.Contains(lowerMsg, "fail") || strings.Contains(lowerMsg, "fatal") {
+							level = "error"
+						} else if strings.Contains(lowerMsg, "warn") {
+							level = "warn"
+						}
+
+						entry := alerts.LogLine{
+							Timestamp: now,
+							Source:    "[" + p.Name + "]",
+							Level:     level,
+							Message:   line,
+						}
+						runtime.EventsEmit(ctx, EventLogLine, entry)
+					}
+					stream.Close()
+				}
+			}
+			lastPoll = now
+		}
+	}
 }

@@ -9,7 +9,7 @@ import ResourceDetail from '../resources/ResourceDetail.vue'
 import RunbooksView from '../operations/RunbooksView.vue'
 import IncidentLog from '../operations/IncidentLog.vue'
 import ConfigAudit from '../operations/ConfigAudit.vue'
-import WorkflowEditor from '../operations/WorkflowEditor.vue'
+// WorkflowEditor deprecated — duplicates Argo Workflows.
 import ArgusCDList from '../operations/ArgusCDList.vue'
 import LogExplorer from './LogExplorer.vue'
 import AnomalyDetection from './AnomalyDetection.vue'
@@ -28,11 +28,11 @@ import JobCronJobList from '../workloads/JobCronJobList.vue'
 import StatefulDaemonSetList from '../workloads/StatefulDaemonSetList.vue'
 import HpaList from '../config/HpaList.vue'
 import NetworkPolicyList from '../network/NetworkPolicyList.vue'
-import PopeyeReport from './PopeyeReport.vue'
+import ArgusScanReport from './ArgusScanReport.vue'
 import SetupPanel from '../setup/SetupPanel.vue'
-import { usePopeye } from '../../composables/useWails'
+import { useArgusScan } from '../../composables/useWails'
 
-const { report: popeyeReport, loading: popeyeLoading, error: popeyeError, runScan: runPopeyeReal } = usePopeye()
+const { report: argusScanReport, loading: argusScanLoading, error: argusScanError, runScan: runArgusScanReal } = useArgusScan()
 
 const props = defineProps({
   metrics: { type: Object, default: null },
@@ -90,7 +90,7 @@ const resourceViews = [
 ]
 
 // Operations views.
-const operationViews = ['runbooks', 'incidents', 'audit', 'workflows', 'arguscd']
+const operationViews = ['runbooks', 'incidents', 'audit', 'arguscd']
 
 // Knowledge views.
 const knowledgeViews = ['notebooks']
@@ -104,12 +104,12 @@ const isOperations = computed(() => operationViews.includes(props.activeNav))
 const isKnowledge = computed(() => knowledgeViews.includes(props.activeNav))
 const isAdmin = computed(() => adminViews.includes(props.activeNav))
 
-// Popeye logic — real backend only.
-const reportData = computed(() => popeyeReport.value || null)
-const loadingReport = computed(() => popeyeLoading.value)
+// Argus Scan logic — real backend only.
+const reportData = computed(() => argusScanReport.value || null)
+const loadingReport = computed(() => argusScanLoading.value)
 
-async function runPopeyeScan() {
-  await runPopeyeReal()
+async function runArgusScan() {
+  await runArgusScanReal()
 }
 </script>
 
@@ -130,7 +130,7 @@ async function runPopeyeScan() {
         <AnomalyDetection />
       </template>
       <template v-else-if="activeNav === 'analysis'">
-        <PopeyeReport :report="reportData" :loading="loadingReport" :error="popeyeError" @run-scan="runPopeyeScan" />
+        <ArgusScanReport :report="reportData" :loading="loadingReport" :error="argusScanError" @run-scan="runArgusScan" />
       </template>
       <template v-else>
         <div class="tabs">
@@ -218,7 +218,7 @@ async function runPopeyeScan() {
     <template v-else-if="isOperations">
       <div class="ops-header">
         <div class="ops-title">
-          {{ activeNav === 'runbooks' ? 'Runbooks' : activeNav === 'incidents' ? 'Incident Log' : activeNav === 'audit' ? 'Config Audit' : activeNav === 'arguscd' ? 'ArgusCD' : 'Workflows' }}
+          {{ activeNav === 'runbooks' ? 'Runbooks' : activeNav === 'incidents' ? 'Incident Log' : activeNav === 'audit' ? 'Config Audit' : 'ArgusCD' }}
         </div>
       </div>
 
@@ -226,7 +226,6 @@ async function runPopeyeScan() {
         <RunbooksView v-if="activeNav === 'runbooks'" />
         <IncidentLog v-if="activeNav === 'incidents'" />
         <ConfigAudit v-if="activeNav === 'audit'" />
-        <WorkflowEditor v-if="activeNav === 'workflows'" />
         <ArgusCDList v-if="activeNav === 'arguscd'" />
       </div>
     </template>

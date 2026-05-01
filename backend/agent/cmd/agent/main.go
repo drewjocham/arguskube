@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/drewjocham/arguskube/agent/internal/config"
-	"github.com/drewjocham/arguskube/agent/internal/k8s"
-	"github.com/drewjocham/arguskube/agent/internal/server"
-	"github.com/drewjocham/arguskube/agent/internal/tunnel"
+	"github.com/argues/kube-watcher/agent/internal/config"
+	"github.com/argues/kube-watcher/agent/internal/k8s"
+	"github.com/argues/kube-watcher/agent/internal/server"
+	"github.com/argues/kube-watcher/agent/internal/tunnel"
 	"golang.org/x/sync/errgroup"
 )
 

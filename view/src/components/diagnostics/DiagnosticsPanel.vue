@@ -114,6 +114,16 @@ function eventTypeColor(type_) {
 <template>
   <div class="ai-panel" :class="{ 'pro-gate locked': !isAllowed('ai_diagnostics') }">
 
+    <!-- Pro upgrade CTA overlay -->
+    <div v-if="!isAllowed('ai_diagnostics')" class="pro-overlay">
+      <div class="pro-overlay-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+      </div>
+      <div class="pro-overlay-title">Argus Diagnostics requires Pro</div>
+      <div class="pro-overlay-desc">AI-powered root cause analysis, contextual chat, and auto-investigation for every alert.</div>
+      <a class="pro-overlay-btn" href="https://kubewatcher.dev/pro" target="_blank">Upgrade to Pro</a>
+    </div>
+
     <!-- Header -->
     <div class="ai-panel-header">
       <div class="ai-orb"></div>
@@ -138,7 +148,7 @@ function eventTypeColor(type_) {
     <!-- Diagnostics tab -->
     <div v-show="activeTab === 'diagnostics'" class="ai-scroll">
       <div v-if="!selectedAlert" class="empty-state">
-        Click an alert to see AI diagnostics
+        Click an alert to see Argus diagnostics
       </div>
 
       <div v-else-if="loading" class="loading-state">
@@ -380,4 +390,23 @@ function eventTypeColor(type_) {
 .error-state { color: var(--red2); }
 
 @keyframes typing { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
+
+/* Pro gate overlay */
+.ai-panel.locked { position: relative; }
+.ai-panel.locked > *:not(.pro-overlay):not(.ai-panel-header) { filter: blur(3px); opacity: 0.3; pointer-events: none; }
+.pro-overlay {
+  position: absolute; top: 50px; left: 0; right: 0; z-index: 10;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 32px 24px; text-align: center;
+}
+.pro-overlay-icon { color: var(--purple); opacity: 0.7; }
+.pro-overlay-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.pro-overlay-desc { font-size: 12px; color: var(--text3); line-height: 1.5; max-width: 240px; }
+.pro-overlay-btn {
+  display: inline-block; margin-top: 4px; padding: 7px 20px;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+  color: #fff; font-size: 12px; font-weight: 600; border-radius: 6px;
+  text-decoration: none; transition: opacity 0.2s;
+}
+.pro-overlay-btn:hover { opacity: 0.9; }
 </style>

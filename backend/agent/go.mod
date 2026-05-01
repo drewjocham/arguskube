@@ -1,4 +1,4 @@
-module github.com/drewjocham/arguskube/agent
+module github.com/argues/kube-watcher/agent
 
 go 1.26.2
 

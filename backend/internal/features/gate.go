@@ -18,28 +18,28 @@ const (
 	FeatureClusterView Feature = "cluster_view"
 	FeatureLogStream   Feature = "log_stream"
 	FeatureTopology    Feature = "topology"
+	FeatureCascadeCorr Feature = "cascade_correlation"
+	FeatureAnomstack   Feature = "anomstack_anomaly"
 
 	// Pro tier features
 	FeatureAIDiagnostics   Feature = "ai_diagnostics"
-	FeatureCascadeCorr     Feature = "cascade_correlation"
-	FeatureAnomstack       Feature = "anomstack_anomaly"
 	FeatureRunbookAuto     Feature = "runbook_automation"
 	FeatureDecisionLog     Feature = "decision_log_context"
 	FeatureMultiCluster    Feature = "multi_cluster"
 	FeatureExtendedHistory Feature = "extended_history"
 	FeatureCustomRunbooks  Feature = "custom_runbooks"
+	FeatureArgusCD         Feature = "arguscd"
 )
 
 // proOnly lists features that require Pro tier.
 var proOnly = map[Feature]bool{
 	FeatureAIDiagnostics:   true,
-	FeatureCascadeCorr:     true,
-	FeatureAnomstack:       true,
 	FeatureRunbookAuto:     true,
 	FeatureDecisionLog:     true,
 	FeatureMultiCluster:    true,
 	FeatureExtendedHistory: true,
 	FeatureCustomRunbooks:  true,
+	FeatureArgusCD:         true,
 }
 
 // Gate checks whether a feature is available for the current tier.
@@ -69,8 +69,10 @@ func (g *Gate) Tier() config.Tier {
 func (g *Gate) AllFeatures() map[Feature]bool {
 	all := []Feature{
 		FeatureAlerts, FeatureClusterView, FeatureLogStream, FeatureTopology,
-		FeatureAIDiagnostics, FeatureCascadeCorr, FeatureAnomstack, FeatureRunbookAuto,
+		FeatureCascadeCorr, FeatureAnomstack,
+		FeatureAIDiagnostics, FeatureRunbookAuto,
 		FeatureDecisionLog, FeatureMultiCluster, FeatureExtendedHistory, FeatureCustomRunbooks,
+		FeatureArgusCD,
 	}
 	result := make(map[Feature]bool, len(all))
 	for _, f := range all {

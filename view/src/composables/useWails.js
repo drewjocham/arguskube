@@ -342,9 +342,9 @@ export function useChat() {
 }
 
 /**
- * Composable for Popeye cluster scan.
+ * Composable for Argus Scan cluster scan.
  */
-export function usePopeye() {
+export function useArgusScan() {
   const report = ref(null)
   const loading = ref(false)
   const error = ref(null)
@@ -365,19 +365,22 @@ export function usePopeye() {
       { id: 'pop-9', resource: 'svc', name: 'api-gateway', namespace: 'ingress', severity: 'info', sevLevel: 1, message: '[POP-700] Found no matching endpoints', explanation: 'This service resource passed the check or has a minor informational note.', fix: 'Review the Popeye documentation for detailed remediation guidance.', command: 'kubectl describe svc api-gateway -n ingress' },
     ]
   }
-
   async function runScan() {
     loading.value = true
     error.value = null
     try {
-      const result = await callGo('RunPopeye')
-      report.value = result || mockReport
+      const result = await callGo('RunArgusScan')
+      report.value = result || generateDemoArgusScan()
     } catch (e) {
-      console.warn('[popeye] backend unavailable, using demo report:', e)
-      report.value = mockReport
+      console.warn('[argusScan] backend unavailable, using demo report:', e)
+      report.value = generateDemoArgusScan()
     } finally {
       loading.value = false
     }
+  }
+
+  function generateDemoArgusScan() {
+    return mockReport
   }
 
   return { report, loading, error, runScan }
@@ -414,7 +417,7 @@ export function useResources() {
     } catch (e) {
       console.error('[resource-detail]', e)
     } finally {
-      detailLoading.value = false
+      detailLoading.value = detailLoading.value = false
     }
   }
 
@@ -741,7 +744,7 @@ export function useSetup() {
     { name: 'kubectl', installed: true, version: 'v1.30.2', via: 'binary', message: 'kubectl available' },
     { name: 'docker', installed: true, version: '27.0.3', via: 'binary', message: 'Docker available' },
     { name: 'helm', installed: false, message: 'Helm not found' },
-    { name: 'popeye', installed: false, message: 'Popeye not found. Install via binary or Docker.' },
+    { name: 'argusScan', installed: false, message: 'Argus Scan not found. Install via binary or Docker.' },
     { name: 'kubewatcher-agent', installed: false, message: 'Agent not deployed to cluster' },
   ]
 
@@ -758,14 +761,14 @@ export function useSetup() {
     }
   }
 
-  async function installPopeye() {
-    actionLoading.value = 'popeye'
+  async function installArgusScan() {
+    actionLoading.value = 'argusScan'
     try {
-      const result = await callGo('InstallPopeye')
+      const result = await callGo('InstallArgusScan')
       await checkTools()
       return result
     } catch (e) {
-      console.error('[setup] installPopeye:', e)
+      console.error('[setup] installArgusScan:', e)
       return { success: false, message: e?.message || String(e) }
     } finally {
       actionLoading.value = null
@@ -800,7 +803,7 @@ export function useSetup() {
     }
   }
 
-  return { tools, loading, actionLoading, checkTools, installPopeye, deployAgent, undeployAgent }
+  return { tools, loading, actionLoading, checkTools, installArgusScan, deployAgent, undeployAgent }
 }
 
 /**
@@ -1085,6 +1088,122 @@ export function useVulnerabilities() {
 }
 
 /**
+ * Composable for live pod log streaming with follow mode.
+ * Uses StreamPodLogsFollow binding for real-time tailing.
+ */
+export function useLogStream() {
+  const lines = ref([])
+  const streaming = ref(false)
+  const error = ref(null)
+
+  async function startStream(namespace, podName, container = '', tailLines = 100) {
+    streaming.value = true
+    error.value = null
+    lines.value = []
+    try {
+      const result = await callGo('StreamPodLogsFollow', namespace, podName, container, tailLines)
+      if (result && Array.isArray(result)) {
+        lines.value = result
+      } else if (typeof result === 'string') {
+        lines.value = result.split('\n').filter(Boolean).map(line => ({ message: line }))
+      }
+    } catch (e) {
+      error.value = e?.message || String(e)
+    } finally {
+      streaming.value = false
+    }
+  }
+
+  function clear() {
+    lines.value = []
+    error.value = null
+  }
+
+  return { lines, streaming, error, startStream, clear }
+}
+
+/**
+ * Composable for deployment revision history (rollout timeline).
+ */
+export function useDeploymentRevisions() {
+  const revisions = ref([])
+  const loading = ref(false)
+  const error = ref(null)
+
+  async function fetchRevisions(namespace, deploymentName, limit = 25) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await callGo('GetDeploymentRevisions', namespace, deploymentName, limit)
+      revisions.value = result && Array.isArray(result) ? result : []
+    } catch (e) {
+      error.value = e?.message || String(e)
+      revisions.value = []
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { revisions, loading, error, fetchRevisions }
+}
+
+/**
+ * Composable for VPA (Vertical Pod Autoscaler) recommendations.
+ */
+export function useVPARecommendations() {
+  const vpas = ref([])
+  const loading = ref(false)
+  const error = ref(null)
+
+  async function fetchVPAs(namespace = '') {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await callGo('GetVPARecommendations', namespace)
+      vpas.value = result && Array.isArray(result) ? result : []
+    } catch (e) {
+      error.value = e?.message || String(e)
+      vpas.value = []
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { vpas, loading, error, fetchVPAs }
+}
+
+/**
+ * Composable for node-level system service logs (kubelet, containerd, kube-proxy).
+ * Uses the kubelet proxy API to fetch real journal entries from cluster nodes.
+ */
+export function useNodeLogs() {
+  const logs = ref([])
+  const loading = ref(false)
+  const error = ref(null)
+
+  async function fetchNodeLogs(nodeName, tailLines = 100) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await callGo('GetNodeLogs', nodeName, tailLines)
+      logs.value = result && Array.isArray(result) ? result : []
+    } catch (e) {
+      error.value = e?.message || String(e)
+      logs.value = []
+    } finally {
+      loading.value = false
+    }
+  }
+
+  function clear() {
+    logs.value = []
+    error.value = null
+  }
+
+  return { logs, loading, error, fetchNodeLogs, clear }
+}
+
+/**
  * Composable for code blocks and sandboxing.
  */
 export function useCodeBlock() {
@@ -1120,4 +1239,80 @@ export function useCodeBlock() {
   }
 
   return { isRunning, output, isAnalyzing, suggestion, runCode, getAiSuggestion }
+}
+
+/**
+ * Composable for workflow CRUD.
+ */
+export function useWorkflows() {
+  const workflows = ref([])
+  const current = ref(null)
+  const loading = ref(false)
+  const saving = ref(false)
+  const error = ref(null)
+
+  async function listWorkflows() {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await callGo('ListWorkflows')
+      workflows.value = result || []
+    } catch (e) {
+      error.value = e?.message || String(e)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function getWorkflow(id) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await callGo('GetWorkflow', id)
+      if (result) current.value = result
+      return result
+    } catch (e) {
+      error.value = e?.message || String(e)
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function saveWorkflow(wf) {
+    saving.value = true
+    error.value = null
+    try {
+      const result = await callGo('SaveWorkflow', wf)
+      if (result) {
+        current.value = result
+        // Update the list entry or add new.
+        const idx = workflows.value.findIndex(w => w.id === result.id)
+        const summary = { id: result.id, title: result.title, stepCount: (result.steps || []).length, createdAt: result.createdAt, updatedAt: result.updatedAt }
+        if (idx >= 0) {
+          workflows.value[idx] = summary
+        } else {
+          workflows.value.unshift(summary)
+        }
+      }
+      return result
+    } catch (e) {
+      error.value = e?.message || String(e)
+      return null
+    } finally {
+      saving.value = false
+    }
+  }
+
+  async function deleteWorkflow(id) {
+    try {
+      await callGo('DeleteWorkflow', id)
+      workflows.value = workflows.value.filter(w => w.id !== id)
+      if (current.value?.id === id) current.value = null
+    } catch (e) {
+      error.value = e?.message || String(e)
+    }
+  }
+
+  return { workflows, current, loading, saving, error, listWorkflows, getWorkflow, saveWorkflow, deleteWorkflow }
 }

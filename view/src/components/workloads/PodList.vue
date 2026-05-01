@@ -1,9 +1,10 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useResources, usePodLogs, useTimeSeriesMetrics, callGo } from '../../composables/useWails'
+import { useResources, usePodLogs, useLogStream, useTimeSeriesMetrics, callGo } from '../../composables/useWails'
 
 const { result, detail, loading, detailLoading, error: resourceError, listResources, getResourceDetail, listNamespaces, namespaces } = useResources()
-const { logs: podLogs, loading: logsLoading, fetchLogs } = usePodLogs()
+const { logs: podLogs, loading: logsLoading, fetch: fetchLogs } = usePodLogs()
+const { lines: streamLines, streaming, error: streamError, startStream, clear: clearStream } = useLogStream()
 const { queryMetrics } = useTimeSeriesMetrics()
 
 // Demo data shown when the backend is unreachable or returns nothing.
@@ -25,6 +26,7 @@ const activeTab = ref('details')
 const logTailLines = ref(100)
 const logContent = ref([])
 const logSearchFilter = ref('')
+const followMode = ref(false)
 const confirmDelete = ref(null)
 const connectionError = ref(null)
 let autoRefreshTimer = null
@@ -186,8 +188,20 @@ async function switchTab(tab) {
 async function loadLogs() {
   const pod = pods.value.find(p => p.name === expandedPod.value)
   if (!pod) return
-  await fetchLogs(pod.namespace, pod.name, logTailLines.value)
-  logContent.value = podLogs.value || []
+  if (followMode.value) {
+    await startStream(pod.namespace, pod.name, '', logTailLines.value)
+    logContent.value = streamLines.value || []
+  } else {
+    await fetchLogs(pod.namespace, pod.name, logTailLines.value)
+    logContent.value = podLogs.value || []
+  }
+}
+
+function toggleFollow() {
+  followMode.value = !followMode.value
+  if (followMode.value) {
+    loadLogs()
+  }
 }
 
 const filteredLogs = computed(() => {
@@ -466,7 +480,11 @@ onUnmounted(() => {
                 <option :value="500">Last 500 lines</option>
                 <option :value="1000">Last 1000 lines</option>
               </select>
-              <button class="refresh-btn small" @click="loadLogs" :disabled="logsLoading">
+              <button class="follow-btn small" :class="{ active: followMode }" @click="toggleFollow" :disabled="streaming">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
+                {{ followMode ? 'Following' : 'Follow' }}
+              </button>
+              <button class="refresh-btn small" @click="loadLogs" :disabled="logsLoading || streaming">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                 Reload
               </button>
@@ -478,7 +496,8 @@ onUnmounted(() => {
                 <span class="log-msg">{{ line.message }}</span>
               </div>
             </div>
-            <div v-else-if="logsLoading" class="empty-state">Loading logs...</div>
+            <div v-else-if="logsLoading || streaming" class="empty-state">{{ streaming ? 'Streaming logs...' : 'Loading logs...' }}</div>
+            <div v-else-if="streamError" class="empty-state" style="color: #f5a623;">Stream error: {{ streamError }}</div>
             <div v-else class="empty-state">No logs available for this pod.</div>
           </div>
 
@@ -703,6 +722,14 @@ onUnmounted(() => {
   font-family: 'SF Mono', Consolas, monospace;
 }
 .log-filter-input::placeholder { color: #4b5058; }
+.follow-btn {
+  display: flex; align-items: center; gap: 4px;
+  background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #8b8f96;
+  padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: all 0.2s;
+}
+.follow-btn:hover { color: #3ecf8e; border-color: rgba(62, 207, 142, 0.3); }
+.follow-btn.active { background: rgba(62, 207, 142, 0.12); color: #3ecf8e; border-color: rgba(62, 207, 142, 0.3); }
+.follow-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .log-lines-select {
   background: #0d0d0d; border: 1px solid rgba(255,255,255,0.06); color: #b0b4ba;
   padding: 5px 8px; border-radius: 4px; font-size: 11px; outline: none; cursor: pointer;

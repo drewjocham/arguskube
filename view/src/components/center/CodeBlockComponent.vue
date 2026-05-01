@@ -16,41 +16,20 @@
         </select>
       </div>
       <div class="footer-actions">
-        <button class="action-btn" @click="runCode" title="Run Code">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-        </button>
+        <!-- Sandbox execution deprecated: Run and AI Suggestion removed (distraction for SRE tool) -->
         <button class="action-btn" @click="copyCode" title="Copy to clipboard">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-        </button>
-        <button class="action-btn ai-btn" @click="getAiSuggestion" title="AI Suggestion">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
         </button>
       </div>
     </div>
     
-    <div class="code-block-results" v-if="output || suggestion || isRunning || isAnalyzing">
-      <div v-if="isRunning" class="loading-state">
-        <span class="spinner"></span> Executing in sandbox...
-      </div>
-      <div v-else-if="isAnalyzing" class="loading-state">
-        <span class="spinner"></span> AI is analyzing code structure...
-      </div>
-      <div v-else-if="output" class="terminal-output"><pre>{{ output }}</pre></div>
-      <div v-else-if="suggestion" class="ai-suggestion">
-        <div class="ai-header">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
-          Argus Insight
-        </div>
-        <p>{{ suggestion }}</p>
-      </div>
-    </div>
   </node-view-wrapper>
 </template>
 
 <script setup>
+// Sandbox execution deprecated — only copy-to-clipboard remains.
 import { computed } from 'vue'
 import { NodeViewWrapper, NodeViewContent, nodeViewProps } from '@tiptap/vue-3'
-import { useCodeBlock } from '../../composables/useWails'
 
 const props = defineProps(nodeViewProps)
 
@@ -65,23 +44,9 @@ const selectedLanguage = computed({
   }
 })
 
-const { isRunning, output, isAnalyzing, suggestion, runCode: doRunCode, getAiSuggestion: doGetAiSuggestion } = useCodeBlock()
-
 function copyCode() {
   const code = props.node.textContent
   navigator.clipboard.writeText(code)
-}
-
-async function runCode() {
-  suggestion.value = ''
-  const code = props.node.textContent
-  await doRunCode(code, selectedLanguage.value || 'bash')
-}
-
-async function getAiSuggestion() {
-  output.value = ''
-  const code = props.node.textContent
-  await doGetAiSuggestion(code, selectedLanguage.value || 'bash')
 }
 </script>
 

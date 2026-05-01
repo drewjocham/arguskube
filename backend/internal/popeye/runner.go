@@ -382,10 +382,7 @@ func homeDir() string {
 	return "."
 }
 
-// --- Helpers ---
-
 func splitResource(fullName string) (namespace, name string) {
-	// Popeye formats as "namespace/name" or just "name".
 	parts := strings.SplitN(fullName, "/", 2)
 	if len(parts) == 2 {
 		return parts[0], parts[1]
