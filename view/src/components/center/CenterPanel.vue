@@ -31,6 +31,7 @@ import NetworkPolicyList from '../network/NetworkPolicyList.vue'
 import ArgusScanReport from './ArgusScanReport.vue'
 import FinOpsView from './FinOpsView.vue'
 import SetupPanel from '../setup/SetupPanel.vue'
+import SettingsPanel from '../setup/SettingsPanel.vue'
 import { useArgusScan } from '../../composables/useWails'
 
 const { report: argusScanReport, loading: argusScanLoading, error: argusScanError, runScan: runArgusScanReal } = useArgusScan()
@@ -97,7 +98,7 @@ const operationViews = ['runbooks', 'incidents', 'audit', 'arguscd']
 const knowledgeViews = ['notebooks']
 
 // Admin views.
-const adminViews = ['setup']
+const adminViews = ['setup', 'settings']
 
 const isMonitoring = computed(() => monitoringViews.includes(props.activeNav))
 const isResource = computed(() => resourceViews.includes(props.activeNav))
@@ -135,6 +136,17 @@ async function runArgusScan() {
       </template>
       <template v-else-if="activeNav === 'finops'">
         <FinOpsView />
+      </template>
+      <template v-else-if="activeNav === 'topology'">
+        <div class="topology-full">
+          <div class="topo-full-header">
+            <div class="topo-full-title">Service Topology</div>
+            <div class="topo-full-subtitle">Visual map of services, deployments, and their health state</div>
+          </div>
+          <div class="topo-full-body">
+            <TopologyMap :alerts="alerts" />
+          </div>
+        </div>
       </template>
       <template v-else>
         <div class="tabs">
@@ -242,6 +254,7 @@ async function runArgusScan() {
     <!-- Admin views -->
     <template v-else-if="isAdmin">
       <SetupPanel v-if="activeNav === 'setup'" />
+      <SettingsPanel v-if="activeNav === 'settings'" />
     </template>
   </div>
 </template>
@@ -320,4 +333,14 @@ async function runArgusScan() {
 .ops-title { font-size: 13px; font-weight: 500; color: var(--text); }
 
 .ops-scroll { flex: 1; overflow-y: auto; padding: 14px; }
+
+/* Full-page topology */
+.topology-full { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.topo-full-header {
+  height: 50px; display: flex; flex-direction: column; justify-content: center;
+  padding: 0 20px; border-bottom: 1px solid var(--border); background: var(--bg2); flex-shrink: 0;
+}
+.topo-full-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.topo-full-subtitle { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.topo-full-body { flex: 1; overflow-y: auto; padding: 20px; }
 </style>

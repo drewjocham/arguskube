@@ -7,6 +7,10 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
+
+	"github.com/argues/kube-watcher/internal/alerts"
+	"github.com/google/uuid"
 )
 
 type APIRequest struct {
@@ -80,12 +84,104 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(res)
 }
 
+// WebhookPayload is the JSON body from an anomaly detection webhook.
+type WebhookPayload struct {
+	Title      string            `json:"title"`
+	MetricName string            `json:"metric_name"`
+	Threshold  float64           `json:"threshold"`
+	Score      float64           `json:"score"`
+	Severity   string            `json:"severity"`
+	Namespace  string            `json:"namespace"`
+	PodName    string            `json:"pod_name"`
+	NodeName   string            `json:"node_name"`
+	Labels     map[string]string `json:"labels"`
+}
+
+// HandleWebhook receives anomaly alerts from external systems (Anomstack, Grafana, etc.)
+// and merges them into the alert stream visible in the frontend.
+func (a *App) HandleWebhook(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload WebhookPayload
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	severity := alerts.SeverityWarning
+	switch strings.ToLower(payload.Severity) {
+	case "critical":
+		severity = alerts.SeverityCritical
+	case "info":
+		severity = alerts.SeverityInfo
+	}
+	// If threshold is high, escalate to critical.
+	if payload.Threshold >= 0.9 || payload.Score >= 0.9 {
+		severity = alerts.SeverityCritical
+	}
+
+	alertID := uuid.New().String()
+	title := payload.Title
+	if title == "" {
+		title = "Anomaly: " + payload.MetricName
+	}
+
+	alert := alerts.Alert{
+		ID:          alertID,
+		Name:        title,
+		Severity:    severity,
+		Namespace:   payload.Namespace,
+		Timestamp:   time.Now(),
+		PodName:     payload.PodName,
+		NodeName:    payload.NodeName,
+		Description: fmt.Sprintf("Anomaly detected on metric %q (threshold=%.2f, score=%.2f)", payload.MetricName, payload.Threshold, payload.Score),
+		Tags: []alerts.Tag{
+			{Label: "anomaly", Color: "purple"},
+			{Label: payload.MetricName, Color: "teal"},
+		},
+	}
+
+	a.webhookMu.Lock()
+	a.webhookAlerts = append(a.webhookAlerts, alert)
+	// Keep only last 100 webhook alerts.
+	if len(a.webhookAlerts) > 100 {
+		a.webhookAlerts = a.webhookAlerts[len(a.webhookAlerts)-100:]
+	}
+	a.webhookMu.Unlock()
+
+	a.logger.Info("webhook alert received",
+		slog.String("alert_id", alertID),
+		slog.String("title", title),
+		slog.String("metric", payload.MetricName),
+	)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"alert_id": alertID,
+		"status":   "ok",
+	})
+}
+
 // StartHTTPServer starts the SaaS API server on the specified port.
 func (a *App) StartHTTPServer(port int) {
 	mux := http.NewServeMux()
-	
+
 	// REST API endpoint
 	mux.HandleFunc("/api/", a.ServeHTTP)
+
+	// Webhook endpoint for external anomaly detectors
+	mux.HandleFunc("/webhooks/anomstack", a.HandleWebhook)
 
 	// WebSocket Hub endpoint for in-cluster Agents
 	go a.hub.Run(a.ctx)

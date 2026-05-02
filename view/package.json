@@ -12,7 +12,6 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@rollup/rollup-linux-arm64-gnu": "^4.60.2",
     "@tiptap/extension-code-block": "^3.22.5",
     "@tiptap/extension-code-block-lowlight": "^3.22.5",
     "@tiptap/starter-kit": "^3.22.5",

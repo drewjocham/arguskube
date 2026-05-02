@@ -5,10 +5,6 @@ import { useResources, useVPARecommendations } from '../../composables/useWails'
 const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
 const { vpas, loading: vpasLoading, error: vpasError, fetchVPAs } = useVPARecommendations()
 
-const mockHpas = [
-  { name: 'web-app-hpa', namespace: 'default', reference: 'Deployment/web-app', targets: '24% / 80%', minPods: 3, maxPods: 10, replicas: 3, age: '14d' },
-  { name: 'payment-hpa', namespace: 'finance', reference: 'Deployment/payment-service', targets: '91% / 80%', minPods: 2, maxPods: 5, replicas: 5, age: '2h' },
-]
 
 const hpas = ref([])
 const hpaDetail = ref(null)
@@ -29,7 +25,7 @@ onMounted(async () => {
       age: item.age || '—'
     }))
   } else {
-    hpas.value = mockHpas
+    hpas.value = []
   }
 
   // Also fetch VPA recommendations.

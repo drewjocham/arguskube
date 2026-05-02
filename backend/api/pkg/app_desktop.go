@@ -10,6 +10,7 @@ import (
 
 	"github.com/argues/kube-watcher/internal/agentconn"
 	"github.com/argues/kube-watcher/internal/alerts"
+	"github.com/argues/kube-watcher/internal/argocd"
 	"github.com/argues/kube-watcher/internal/config"
 	"github.com/argues/kube-watcher/internal/features"
 	"github.com/argues/kube-watcher/internal/k8s"
@@ -87,12 +88,26 @@ func (a *App) HandleURL(u string) {
 	}
 }
 
-// GetAlerts returns enriched alerts from the cluster.
+// GetAlerts returns enriched alerts from the cluster merged with webhook-received alerts.
 func (a *App) GetAlerts() ([]alerts.Alert, error) {
-	if a.k8s == nil {
-		return nil, nil
+	var result []alerts.Alert
+
+	// Get live k8s alerts.
+	if a.k8s != nil {
+		k8sAlerts, err := a.k8s.DetectAlerts(a.ctx)
+		if err != nil {
+			a.logger.WarnContext(a.ctx, "k8s alert detection failed", "error", err)
+		} else {
+			result = append(result, k8sAlerts...)
+		}
 	}
-	return a.k8s.DetectAlerts(a.ctx)
+
+	// Merge in webhook-received alerts.
+	a.webhookMu.RLock()
+	result = append(result, a.webhookAlerts...)
+	a.webhookMu.RUnlock()
+
+	return result, nil
 }
 
 // GetPodLogs returns recent log lines for a pod.
@@ -158,6 +173,173 @@ func (a *App) GetFeatures() map[features.Feature]bool {
 // GetTier returns the current subscription tier.
 func (a *App) GetTier() config.Tier {
 	return a.gate.Tier()
+}
+
+// --- Settings bindings ---
+
+// SettingsPayload is the JSON structure for runtime config visible in the settings view.
+type SettingsPayload struct {
+	KubeconfigPath string `json:"kubeconfigPath"`
+	CurrentContext string `json:"currentContext"`
+	Namespace      string `json:"namespace"`
+	DeepSeekAPIKey string `json:"deepseekApiKey"` // masked for display
+	AnomstackURL   string `json:"anomstackUrl"`
+	PrometheusURL  string `json:"prometheusUrl"`
+	ArgoCDURL      string `json:"argocdUrl"`
+	ArgoCDToken    string `json:"argocdToken"`    // masked for display
+	ArgoCDInsecure bool   `json:"argocdInsecure"`
+	// Security scanning tools (all optional).
+	SnykToken   string `json:"snykToken"`   // masked for display
+	TrivyBinary string `json:"trivyBinary"` // path to trivy binary
+	FalcoURL    string `json:"falcoUrl"`    // Falco gRPC/HTTP endpoint
+	Tier        string `json:"tier"`
+	LogLevel    string `json:"logLevel"`
+}
+
+// GetSettings returns the current runtime configuration for display in the settings view.
+func (a *App) GetSettings() SettingsPayload {
+	masked := ""
+	if a.cfg.AI.DeepSeekAPIKey != "" {
+		k := a.cfg.AI.DeepSeekAPIKey
+		if len(k) > 8 {
+			masked = k[:4] + "…" + k[len(k)-4:]
+		} else {
+			masked = "••••"
+		}
+	}
+	maskedArgoToken := ""
+	if a.cfg.ArgoCD.Token != "" {
+		t := a.cfg.ArgoCD.Token
+		if len(t) > 8 {
+			maskedArgoToken = t[:4] + "…" + t[len(t)-4:]
+		} else {
+			maskedArgoToken = "••••"
+		}
+	}
+
+	maskedSnyk := ""
+	if a.cfg.Security.SnykToken != "" {
+		s := a.cfg.Security.SnykToken
+		if len(s) > 8 {
+			maskedSnyk = s[:4] + "…" + s[len(s)-4:]
+		} else {
+			maskedSnyk = "••••"
+		}
+	}
+
+	return SettingsPayload{
+		KubeconfigPath: a.cfg.Kubernetes.Config,
+		CurrentContext: a.cfg.Kubernetes.Context,
+		Namespace:      a.cfg.Kubernetes.Namespace,
+		DeepSeekAPIKey: masked,
+		AnomstackURL:   a.cfg.AI.AnomstackURL,
+		PrometheusURL:  a.cfg.AI.PrometheusURL,
+		ArgoCDURL:      a.cfg.ArgoCD.URL,
+		ArgoCDToken:    maskedArgoToken,
+		ArgoCDInsecure: a.cfg.ArgoCD.Insecure,
+		SnykToken:      maskedSnyk,
+		TrivyBinary:    a.cfg.Security.TrivyBinary,
+		FalcoURL:       a.cfg.Security.FalcoURL,
+		Tier:           string(a.cfg.Features.Tier),
+		LogLevel:       a.cfg.Logging.Level,
+	}
+}
+
+// UpdateSettings applies runtime setting overrides. Only non-empty fields are applied.
+// Kubeconfig and context changes trigger a k8s client reconnect.
+func (a *App) UpdateSettings(s SettingsPayload) error {
+	reconnect := false
+
+	if s.KubeconfigPath != "" && s.KubeconfigPath != a.cfg.Kubernetes.Config {
+		a.cfg.Kubernetes.Config = s.KubeconfigPath
+		reconnect = true
+	}
+	if s.CurrentContext != "" && s.CurrentContext != a.cfg.Kubernetes.Context {
+		a.cfg.Kubernetes.Context = s.CurrentContext
+		reconnect = true
+	}
+	if s.Namespace != a.cfg.Kubernetes.Namespace {
+		a.cfg.Kubernetes.Namespace = s.Namespace
+		// Namespace change doesn't need full reconnect, just update config.
+	}
+	if s.DeepSeekAPIKey != "" && !containsMask(s.DeepSeekAPIKey) {
+		a.cfg.AI.DeepSeekAPIKey = s.DeepSeekAPIKey
+	}
+	if s.AnomstackURL != "" {
+		a.cfg.AI.AnomstackURL = s.AnomstackURL
+	}
+	if s.PrometheusURL != "" {
+		a.cfg.AI.PrometheusURL = s.PrometheusURL
+	}
+
+	// Argo CD settings — rebuild client if URL or token changes.
+	rebuildArgoCD := false
+	if s.ArgoCDURL != "" && s.ArgoCDURL != a.cfg.ArgoCD.URL {
+		a.cfg.ArgoCD.URL = s.ArgoCDURL
+		rebuildArgoCD = true
+	}
+	if s.ArgoCDToken != "" && !containsMask(s.ArgoCDToken) {
+		a.cfg.ArgoCD.Token = s.ArgoCDToken
+		rebuildArgoCD = true
+	}
+	if s.ArgoCDInsecure != a.cfg.ArgoCD.Insecure {
+		a.cfg.ArgoCD.Insecure = s.ArgoCDInsecure
+		rebuildArgoCD = true
+	}
+	if rebuildArgoCD {
+		a.argoCD = argocd.New(argocd.Config{
+			URL:      a.cfg.ArgoCD.URL,
+			Token:    a.cfg.ArgoCD.Token,
+			Insecure: a.cfg.ArgoCD.Insecure,
+		}, a.logger)
+		a.logger.Info("ArgoCD client rebuilt",
+			slog.String("url", a.cfg.ArgoCD.URL),
+		)
+	}
+
+	// Security scanning tools (all optional).
+	if s.SnykToken != "" && !containsMask(s.SnykToken) {
+		a.cfg.Security.SnykToken = s.SnykToken
+	}
+	if s.TrivyBinary != "" {
+		a.cfg.Security.TrivyBinary = s.TrivyBinary
+	}
+	if s.FalcoURL != "" {
+		a.cfg.Security.FalcoURL = s.FalcoURL
+	}
+
+	if reconnect {
+		a.logger.Info("settings changed — reconnecting k8s client",
+			slog.String("kubeconfig", a.cfg.Kubernetes.Config),
+			slog.String("context", a.cfg.Kubernetes.Context),
+		)
+		client, err := k8s.NewClient(a.cfg, a.logger)
+		if err != nil {
+			return fmt.Errorf("reconnect failed: %w", err)
+		}
+		a.k8s = client
+
+		// Rebuild agent connector with new client.
+		a.agentConn = agentconn.New(
+			a.k8s.GetClientset(),
+			a.k8s.GetRestConfig(),
+			a.logger.With("component", "agentconn"),
+		)
+
+		// Restart event loop with new client.
+		go a.StartEventLoop(a.ctx)
+	}
+
+	return nil
+}
+
+func containsMask(s string) bool {
+	for _, r := range s {
+		if r == '•' || r == '…' || r == '*' {
+			return true
+		}
+	}
+	return false
 }
 
 // --- Terminal bindings ---

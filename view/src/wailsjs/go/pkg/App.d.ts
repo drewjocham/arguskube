@@ -6,16 +6,18 @@ import {incidents} from '../models';
 import {runbooks} from '../models';
 import {context} from '../models';
 import {alerts} from '../models';
+import {k8s} from '../models';
 import {ai} from '../models';
 import {anomaly} from '../models';
-import {k8s} from '../models';
+import {argocd} from '../models';
+import {pkg} from '../models';
 import {features} from '../models';
 import {config} from '../models';
 import {workflows} from '../models';
+import {http} from '../models';
 import {notebooks} from '../models';
 import {vulnscan} from '../models';
 import {popeye} from '../models';
-import {http} from '../models';
 
 export function CheckToolStatus():Promise<Array<setup.ToolStatus>>;
 
@@ -26,6 +28,8 @@ export function CreateIncident(arg1:string,arg2:string,arg3:string,arg4:string,a
 export function CreateNotebookFolder(arg1:string):Promise<void>;
 
 export function CreateRunbook(arg1:string,arg2:string):Promise<runbooks.Runbook>;
+
+export function DeleteAnomalyRule(arg1:string):Promise<void>;
 
 export function DeleteIncident(arg1:string):Promise<void>;
 
@@ -43,6 +47,8 @@ export function DiagnoseAlert(arg1:string):Promise<context.Bundle>;
 
 export function EmitLogLine(arg1:alerts.LogLine):Promise<void>;
 
+export function EstimateCosts(arg1:string):Promise<k8s.ClusterCostReport>;
+
 export function GetAgentEventLog():Promise<Array<ai.AgentEvent>>;
 
 export function GetAgentTopology(arg1:string):Promise<agentconn.TopologyGraph>;
@@ -51,7 +57,19 @@ export function GetAlerts():Promise<Array<alerts.Alert>>;
 
 export function GetAnomalyJobs():Promise<Array<anomaly.Job>>;
 
+export function GetAnomalyRules():Promise<Array<anomaly.Rule>>;
+
+export function GetAnomalySettings():Promise<anomaly.Settings>;
+
 export function GetAppMode():Promise<string>;
+
+export function GetArgusCDApp(arg1:string):Promise<argocd.App>;
+
+export function GetArgusCDDiffs(arg1:string):Promise<Array<argocd.AppDiff>>;
+
+export function GetArgusCDResources(arg1:string):Promise<Array<argocd.AppResource>>;
+
+export function GetArgusCDStatus():Promise<pkg.ArgusCDStatus>;
 
 export function GetAutoSummary(arg1:string):Promise<ai.AutoSummary>;
 
@@ -67,6 +85,8 @@ export function GetFeatures():Promise<Record<features.Feature, boolean>>;
 
 export function GetMetrics():Promise<alerts.ClusterMetrics>;
 
+export function GetNodeLogs(arg1:string,arg2:number):Promise<Array<k8s.NodeLogEntry>>;
+
 export function GetNotebook(arg1:string):Promise<string>;
 
 export function GetPodLogs(arg1:string,arg2:string,arg3:number):Promise<Array<alerts.LogLine>>;
@@ -74,6 +94,8 @@ export function GetPodLogs(arg1:string,arg2:string,arg3:number):Promise<Array<al
 export function GetResourceDetail(arg1:string,arg2:string,arg3:string):Promise<k8s.ResourceDetailResult>;
 
 export function GetRunbook(arg1:string):Promise<string>;
+
+export function GetSettings():Promise<pkg.SettingsPayload>;
 
 export function GetTier():Promise<config.Tier>;
 
@@ -85,11 +107,15 @@ export function GetWorkflow(arg1:string):Promise<workflows.Workflow>;
 
 export function HandleURL(arg1:string):Promise<void>;
 
+export function HandleWebhook(arg1:http.ResponseWriter,arg2:http.Request):Promise<void>;
+
 export function InstallArgusScan():Promise<setup.SetupResult>;
 
 export function ListAllNamespaces():Promise<Array<string>>;
 
 export function ListApplications(arg1:string):Promise<Array<k8s.Application>>;
+
+export function ListArgusCDApps(arg1:string):Promise<Array<argocd.App>>;
 
 export function ListContexts():Promise<Array<k8s.ContextInfo>>;
 
@@ -113,17 +139,29 @@ export function QueryLogs(arg1:string,arg2:string,arg3:number):Promise<k8s.LogQu
 
 export function QueryTimeSeriesMetrics(arg1:string,arg2:string):Promise<Array<number>>;
 
+export function RefreshArgusCDApp(arg1:string,arg2:boolean):Promise<void>;
+
 export function ResizeTerminal(arg1:number,arg2:number):Promise<void>;
+
+export function RestartDeployment(arg1:string,arg2:string):Promise<void>;
+
+export function RollbackArgusCDApp(arg1:string,arg2:number):Promise<void>;
 
 export function RunArgusScan():Promise<popeye.Report>;
 
 export function RunCodeSandbox(arg1:string,arg2:string):Promise<string>;
+
+export function SaveAnomalyRule(arg1:anomaly.Rule):Promise<void>;
+
+export function SaveAnomalySettings(arg1:anomaly.Settings):Promise<void>;
 
 export function SaveNotebook(arg1:string,arg2:string):Promise<void>;
 
 export function SaveRunbook(arg1:string,arg2:string):Promise<void>;
 
 export function SaveWorkflow(arg1:workflows.Workflow):Promise<workflows.Workflow>;
+
+export function ScaleDeployment(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function ScanAllImages(arg1:string):Promise<Array<vulnscan.ScannedImage>>;
 
@@ -134,6 +172,8 @@ export function SendChatMessage(arg1:string,arg2:string):Promise<string>;
 export function SendTerminalInput(arg1:string):Promise<void>;
 
 export function ServeHTTP(arg1:http.ResponseWriter,arg2:http.Request):Promise<void>;
+
+export function SetPaused(arg1:boolean):Promise<void>;
 
 export function StartEventLoop(arg1:context.Context):Promise<void>;
 
@@ -147,8 +187,16 @@ export function SwitchContext(arg1:string):Promise<void>;
 
 export function SyncApplication(arg1:string,arg2:string):Promise<void>;
 
+export function SyncArgusCDApp(arg1:string):Promise<argocd.SyncResult>;
+
+export function TestArgusCDConnection():Promise<void>;
+
 export function TestS3Connection():Promise<void>;
+
+export function ToggleAnomalyRule(arg1:string):Promise<boolean>;
 
 export function UndeployAgent(arg1:string):Promise<setup.SetupResult>;
 
 export function UpdateIncident(arg1:string,arg2:string,arg3:string):Promise<incidents.Incident>;
+
+export function UpdateSettings(arg1:pkg.SettingsPayload):Promise<void>;

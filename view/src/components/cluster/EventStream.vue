@@ -4,13 +4,6 @@ import { useResources } from '../../composables/useWails'
 
 const { result, loading, listResources } = useResources()
 
-const mockEvents = [
-  { id: 1, type: 'Warning', reason: 'FailedScheduling', object: 'Pod/web-app-58589998-f8q2b', message: '0/3 nodes are available: 3 Insufficient cpu.', age: '2m', count: '3' },
-  { id: 2, type: 'Normal', reason: 'Scheduled', object: 'Pod/worker-6b5d9db9f8-t29zj', message: 'Successfully assigned default/worker to ip-10-0-1-143.ec2.internal', age: '5m', count: '1' },
-  { id: 3, type: 'Normal', reason: 'Pulling', object: 'Pod/worker-6b5d9db9f8-t29zj', message: 'Pulling image "node:18-alpine"', age: '5m', count: '1' },
-  { id: 4, type: 'Normal', reason: 'Created', object: 'Pod/worker-6b5d9db9f8-t29zj', message: 'Created container worker', age: '5m', count: '1' },
-  { id: 5, type: 'Warning', reason: 'BackOff', object: 'Pod/old-app-deployment-6df446-2j98d', message: 'Back-off restarting failed container', age: '12m', count: '8' },
-]
 
 const events = ref([])
 const autoRefresh = ref(true)
@@ -30,7 +23,7 @@ async function fetchEvents() {
       count: item.fields?.count || '1'
     }))
   } else {
-    events.value = mockEvents
+    events.value = []
   }
 }
 

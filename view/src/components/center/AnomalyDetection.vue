@@ -1,19 +1,79 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useAnomaly } from '../../composables/useWails'
 
 const viewMode = ref('dashboard') // 'dashboard' or 'management'
-const { anomalies: agentAnomalies, loading: agentLoading, connectAgent } = useAnomaly()
+const {
+  anomalies: agentAnomalies,
+  settings: backendSettings,
+  rules: backendRules,
+  jobs: backendJobs,
+  loading: agentLoading,
+  error: agentError,
+  connectAgent,
+  getSettings,
+  saveSettings,
+  getRules,
+  toggleRule: backendToggleRule,
+  getJobs,
+} = useAnomaly()
 
-onMounted(() => {
-  // Connect to the in-cluster agent via port-forward dynamically
-  connectAgent('all')
-})
-
+// Local UI state — synced from backend on mount.
 const sensitivitySlider = ref(30)
 const baselineWindow = ref(7)
 const metricType = ref('cpu')
 const algorithm = ref('smart')
+const sensitivitySelect = ref('high')
+const threshold = ref(85)
+const targetNamespace = ref('all')
+const settingsSaved = ref(false)
+
+// Sync local refs from backend settings when they arrive.
+watch(backendSettings, (s) => {
+  if (!s) return
+  sensitivitySlider.value = s.sensitivity
+  baselineWindow.value = s.baselineWindow
+  metricType.value = s.metricType
+  algorithm.value = s.algorithm
+  threshold.value = s.threshold
+  targetNamespace.value = s.targetScope
+  // Derive sensitivity select from numeric slider.
+  if (s.sensitivity < 33) sensitivitySelect.value = 'low'
+  else if (s.sensitivity < 66) sensitivitySelect.value = 'medium'
+  else sensitivitySelect.value = 'high'
+})
+
+onMounted(async () => {
+  // Load persisted settings, rules, and live anomalies in parallel.
+  await Promise.all([
+    getSettings(),
+    getRules(),
+    getJobs(),
+    connectAgent('all'),
+  ])
+})
+
+// Apply settings → persist to backend.
+async function applySettings() {
+  const s = {
+    sensitivity: sensitivitySlider.value,
+    baselineWindow: baselineWindow.value,
+    metricType: metricType.value,
+    algorithm: algorithm.value,
+    threshold: threshold.value,
+    targetScope: targetNamespace.value,
+  }
+  await saveSettings(s)
+  settingsSaved.value = true
+  setTimeout(() => { settingsSaved.value = false }, 2000)
+}
+
+// Sync sensitivity select → numeric slider.
+watch(sensitivitySelect, (val) => {
+  if (val === 'low') sensitivitySlider.value = 15
+  else if (val === 'medium') sensitivitySlider.value = 50
+  else sensitivitySlider.value = 85
+})
 
 const recentAlerts = computed(() => {
   if (!agentAnomalies.value || agentAnomalies.value.length === 0) return []
@@ -25,28 +85,28 @@ const recentAlerts = computed(() => {
   }))
 })
 
-const barChartData = [
-  { val: 30, color: 'var(--accent)' },
-  { val: 15, color: 'var(--amber)' },
-  { val: 10, color: 'var(--text3)' },
-  { val: 40, color: 'var(--accent)' },
-  { val: 70, color: 'var(--red)' },
-  { val: 35, color: 'var(--teal)' },
-  { val: 80, color: 'var(--red)' },
-  { val: 20, color: 'var(--text3)' },
-]
-
-// --- Management State ---
-const sensitivitySelect = ref('high')
-const threshold = ref(85)
-const targetNamespace = ref('all')
-
-const rules = ref([
-  { id: 1, name: 'Sudden Memory Spike', enabled: true, severity: 'critical' },
-  { id: 2, name: 'Anomalous Network Traffic', enabled: true, severity: 'warning' },
-  { id: 3, name: 'CrashLoop Frequency Deviation', enabled: false, severity: 'warning' },
-  { id: 4, name: 'High Error Rate on Ingress', enabled: true, severity: 'critical' },
-])
+const barChartData = computed(() => {
+  // Build from real anomaly data bucketed by score ranges, or fallback to static.
+  if (!agentAnomalies.value || agentAnomalies.value.length === 0) {
+    return [
+      { val: 0, color: 'var(--text3)' },
+    ]
+  }
+  // Group anomalies into 8 time buckets.
+  const anoms = agentAnomalies.value
+  const bucketCount = Math.min(8, anoms.length)
+  const bucketSize = Math.ceil(anoms.length / bucketCount)
+  const buckets = []
+  for (let i = 0; i < bucketCount; i++) {
+    const slice = anoms.slice(i * bucketSize, (i + 1) * bucketSize)
+    const avg = slice.reduce((s, a) => s + a.score, 0) / slice.length
+    buckets.push({
+      val: avg,
+      color: avg > 80 ? 'var(--red)' : avg > 50 ? 'var(--amber)' : 'var(--accent)',
+    })
+  }
+  return buckets
+})
 
 const detectedAnomalies = computed(() => {
   if (!agentAnomalies.value || agentAnomalies.value.length === 0) return []
@@ -59,8 +119,8 @@ const detectedAnomalies = computed(() => {
   }))
 })
 
-function toggleRule(rule) {
-  rule.enabled = !rule.enabled
+async function onToggleRule(rule) {
+  await backendToggleRule(rule.id)
 }
 </script>
 
@@ -245,19 +305,22 @@ function toggleRule(rule) {
           <div class="card-body">
             <div class="sub-title">Active Alerts</div>
             
-            <div class="active-alert-card">
-              <div class="aa-header">
-                <span class="aa-icon">🚩</span>
-                <span class="aa-id">#A3091</span>
-                <span class="aa-sev">HIGH SEVERITY</span>
+            <template v-if="recentAlerts.length > 0">
+              <div class="active-alert-card">
+                <div class="aa-header">
+                  <span class="aa-icon">🚩</span>
+                  <span class="aa-id">#A{{ recentAlerts[0].id }}</span>
+                  <span class="aa-sev">{{ recentAlerts[0].sev.toUpperCase() }} SEVERITY</span>
+                </div>
+                <div class="aa-title">{{ recentAlerts[0].title }}</div>
+                <div class="aa-status">STATUS: <span class="status-open">OPEN</span></div>
+                <div class="aa-actions">
+                  <button class="btn-ack">ACKNOWLEDGE</button>
+                  <button class="btn-res">RESOLVE</button>
+                </div>
               </div>
-              <div class="aa-title">CPU Spike - AWS_Prod_DB</div>
-              <div class="aa-status">STATUS: <span class="status-open">OPEN</span></div>
-              <div class="aa-actions">
-                <button class="btn-ack">ACKNOWLEDGE</button>
-                <button class="btn-res">RESOLVE</button>
-              </div>
-            </div>
+            </template>
+            <div v-else class="empty-state">No active anomaly alerts</div>
 
             <div class="sub-title mt-16">RECENT ALERTS (Last 24h)</div>
             <div class="timeline">
@@ -323,7 +386,7 @@ function toggleRule(rule) {
             </select>
           </div>
 
-          <button class="apply-btn">Apply Settings</button>
+          <button class="apply-btn" @click="applySettings">{{ settingsSaved ? '✓ Saved' : 'Apply Settings' }}</button>
         </div>
       </div>
 
@@ -335,12 +398,12 @@ function toggleRule(rule) {
             <button class="add-rule-btn">+ New Rule</button>
           </div>
           <div class="rules-list">
-            <div v-for="rule in rules" :key="rule.id" class="rule-card" :class="{ disabled: !rule.enabled }">
+            <div v-for="rule in backendRules" :key="rule.id" class="rule-card" :class="{ disabled: !rule.enabled }">
               <div class="rule-info">
                 <div class="rule-name">{{ rule.name }}</div>
                 <div class="rule-sev" :class="'sev-' + rule.severity">{{ rule.severity }}</div>
               </div>
-              <div class="toggle-switch" :class="{ active: rule.enabled }" @click="toggleRule(rule)">
+              <div class="toggle-switch" :class="{ active: rule.enabled }" @click="onToggleRule(rule)">
                 <div class="toggle-knob"></div>
               </div>
             </div>
@@ -364,6 +427,12 @@ function toggleRule(rule) {
                 </tr>
               </thead>
               <tbody>
+                <tr v-if="agentLoading">
+                  <td colspan="5" class="dim" style="text-align:center;padding:24px;">Loading anomaly data...</td>
+                </tr>
+                <tr v-else-if="detectedAnomalies.length === 0">
+                  <td colspan="5" class="dim" style="text-align:center;padding:24px;">No anomalies detected</td>
+                </tr>
                 <tr v-for="an in detectedAnomalies" :key="an.id">
                   <td class="dim">{{ an.time }}</td>
                   <td>{{ an.rule }}</td>
@@ -582,4 +651,22 @@ function toggleRule(rule) {
 .conf-badge { background: rgba(167,139,250,0.15); color: var(--purple); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
 .view-btn { background: var(--bg3); border: 1px solid var(--border); color: var(--text2); padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: all 0.15s; }
 .view-btn:hover { background: var(--bg4); color: var(--text); }
+
+/* Empty state */
+.empty-state {
+  font-size: 12px;
+  color: var(--text3);
+  text-align: center;
+  padding: 24px 12px;
+  background: var(--bg3);
+  border-radius: 6px;
+  border: 1px dashed var(--border);
+}
+
+/* Saved flash */
+.apply-btn.saved {
+  background: rgba(62,207,142,0.15);
+  border-color: rgba(62,207,142,0.3);
+  color: var(--green2);
+}
 </style>

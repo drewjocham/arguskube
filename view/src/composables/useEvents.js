@@ -23,4 +23,8 @@ export const Events = {
   ALERT_UPDATE: 'alert:update',
   LOG_LINE: 'log:line',
   METRICS_UPDATE: 'metrics:update',
+  AUTO_SUMMARY: 'agent:auto-summary',
+  AGENT_EVENT: 'agent:event',
+  TERMINAL_OUTPUT: 'terminal:output',
+  DEEP_LINK: 'deep-link',
 }

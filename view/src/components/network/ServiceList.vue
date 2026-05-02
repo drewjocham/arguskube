@@ -6,24 +6,16 @@ const props = defineProps({
   type: { type: String, default: 'services' }
 })
 
-const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
+const { result, detail, loading, error, detailLoading, listResources, getResourceDetail } = useResources()
 
 const resourceKind = props.type || 'services'
-
-const mockServices = [
-  { name: 'kubernetes', namespace: 'default', type: 'ClusterIP', clusterIP: '10.96.0.1', externalIP: '<none>', ports: '443/TCP', age: '145d' },
-  { name: 'web-app-svc', namespace: 'default', type: 'ClusterIP', clusterIP: '10.101.45.12', externalIP: '<none>', ports: '80/TCP', age: '14d' },
-  { name: 'kube-dns', namespace: 'kube-system', type: 'ClusterIP', clusterIP: '10.96.0.10', externalIP: '<none>', ports: '53/UDP, 53/TCP', age: '145d' },
-  { name: 'ingress-nginx-controller', namespace: 'kube-system', type: 'LoadBalancer', clusterIP: '10.104.12.88', externalIP: '192.168.1.100', ports: '80:31245/TCP, 443:32456/TCP', age: '145d' }
-]
 
 const services = ref([])
 const svcDetail = ref(null)
 const expandedSvc = ref(null)
 const notification = ref(null)
 
-onMounted(async () => {
-  await listResources(resourceKind, '')
+function mapItems() {
   if (result.value && result.value.items && result.value.items.length > 0) {
     services.value = result.value.items.map(item => ({
       name: item.name,
@@ -36,9 +28,16 @@ onMounted(async () => {
       age: item.age || '—'
     }))
   } else {
-    services.value = mockServices
+    services.value = []
   }
-})
+}
+
+async function refresh(force = false) {
+  await listResources(resourceKind, '', force)
+  mapItems()
+}
+
+onMounted(() => refresh())
 
 async function toggleExpand(svcName) {
   if (expandedSvc.value === svcName) {
@@ -60,8 +59,13 @@ async function toggleExpand(svcName) {
 <template>
   <div class="svc-view">
     <div class="header">
-      <div class="title">Services</div>
-      <div class="subtitle">Network abstractions exposing applications running on Pods</div>
+      <div class="header-row">
+        <div>
+          <div class="title">Services</div>
+          <div class="subtitle">Network abstractions exposing applications running on Pods</div>
+        </div>
+        <button class="refresh-btn" @click="refresh(true)" :disabled="loading">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
+      </div>
     </div>
     
     <div v-if="notification" class="agent-notification">
@@ -71,7 +75,11 @@ async function toggleExpand(svcName) {
       <div class="notif-text">{{ notification }}</div>
     </div>
 
-    <div class="svc-list">
+    <div v-if="loading && !services.length" class="state-box">Loading services…</div>
+    <div v-else-if="error" class="state-box state-error">{{ error }}</div>
+    <div v-else-if="!services.length" class="state-box">No services found in this cluster.</div>
+
+    <div v-else class="svc-list">
       <div class="svc-header-row">
         <div class="col-name">Name</div>
         <div class="col-ns">Namespace</div>
@@ -150,6 +158,12 @@ async function toggleExpand(svcName) {
 .svc-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; height: 100%; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
+.header-row { display: flex; justify-content: space-between; align-items: flex-start; }
+.refresh-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #b0b4ba; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+.refresh-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.state-box { padding: 40px; text-align: center; color: #8b8f96; font-size: 13px; background: #1e2023; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; }
+.state-error { color: #f05454; }
 
 .svc-list { background: #1e2023; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; overflow: hidden; }
 

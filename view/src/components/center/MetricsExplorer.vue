@@ -20,14 +20,8 @@ function toggleLive() {
   }
 }
 
-// Helper for generating fallback mock points if API fails
-const generateWave = (points, amp, freq, offset) => {
-  const res = []
-  for (let i = 0; i < points; i++) {
-    res.push(50 + Math.sin(i * freq + offset) * amp + (Math.random() * 10 - 5))
-  }
-  return res
-}
+// Empty data placeholder when backend returns nothing.
+const emptyData = (points) => new Array(points).fill(0)
 
 function pointsToPath(data, width, height) {
   if (!data.length) return ''
@@ -84,19 +78,19 @@ async function refreshPanelData(p, isBackground = false) {
   try {
     if (p.type === 'area' || p.type === 'line' || p.type === 'bar') {
       const data = await queryMetrics(p.query, timeRange.value)
-      p.data = data && data.length ? data : generateWave(100, 20, 0.1, 0)
+      p.data = data && data.length ? data : emptyData(100)
     } else if (p.type === 'network') {
       const rx = await queryMetrics(`sum(${p.query})`, timeRange.value)
       const tx = await queryMetrics(`sum(rate(container_network_transmit_bytes_total[5m]))`, timeRange.value)
-      p.rxData = rx && rx.length ? rx : generateWave(100, 30, 0.2, 1)
-      p.txData = tx && tx.length ? tx : generateWave(100, 15, 0.2, 1.5)
+      p.rxData = rx && rx.length ? rx : emptyData(100)
+      p.txData = tx && tx.length ? tx : emptyData(100)
     }
   } catch (err) {
     console.error(`Failed to fetch metrics for ${p.title}:`, err)
-    if (p.type === 'area' || p.type === 'line' || p.type === 'bar') p.data = generateWave(100, 20, 0.1, 0)
+    if (p.type === 'area' || p.type === 'line' || p.type === 'bar') p.data = emptyData(100)
     if (p.type === 'network') {
-      p.rxData = generateWave(100, 30, 0.2, 1)
-      p.txData = generateWave(100, 15, 0.2, 1.5)
+      p.rxData = emptyData(100)
+      p.txData = emptyData(100)
     }
   } finally {
     if (!isBackground) p.loading = false
@@ -124,7 +118,7 @@ function addPanel() {
     id: Date.now(), type: 'area', title: 'New Custom Metric', val: '0',
     query: 'rate(http_requests_total[5m])',
     color: 'var(--teal)', bg: 'rgba(45, 212, 191, 0.15)',
-    data: generateWave(100, 5, 0.1, 0), editing: true, span: 1, isNew: true
+    data: emptyData(100), editing: true, span: 1, isNew: true
   })
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -36,6 +37,27 @@ type Client struct {
 	logger  *slog.Logger
 }
 
+// kubeconfigLoadingRules builds the client-go loading rules from the given
+// config path, supporting colon-separated multi-file KUBECONFIG values
+// (e.g. "/path/a:/path/b"). When kubeconfigPath is empty, the standard
+// KUBECONFIG env var and ~/.kube/config are used automatically.
+func kubeconfigLoadingRules(kubeconfigPath string) *clientcmd.ClientConfigLoadingRules {
+	rules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if kubeconfigPath == "" {
+		return rules
+	}
+
+	// Multi-file: "/path/a:/path/b" — set Precedence so client-go merges them.
+	if strings.Contains(kubeconfigPath, ":") {
+		rules.Precedence = strings.Split(kubeconfigPath, ":")
+		return rules
+	}
+
+	// Single file.
+	rules.ExplicitPath = kubeconfigPath
+	return rules
+}
+
 func NewClient(cfg *config.OnlineDataConfig, logger *slog.Logger) (*Client, error) {
 	var restCfg *rest.Config
 	var err error
@@ -43,10 +65,7 @@ func NewClient(cfg *config.OnlineDataConfig, logger *slog.Logger) (*Client, erro
 	if cfg.Kubernetes.InCluster {
 		restCfg, err = rest.InClusterConfig()
 	} else {
-		rules := clientcmd.NewDefaultClientConfigLoadingRules()
-		if cfg.Kubernetes.Config != "" {
-			rules.ExplicitPath = cfg.Kubernetes.Config
-		}
+		rules := kubeconfigLoadingRules(cfg.Kubernetes.Config)
 		overrides := &clientcmd.ConfigOverrides{}
 		if cfg.Kubernetes.Context != "" {
 			overrides.CurrentContext = cfg.Kubernetes.Context
@@ -530,10 +549,7 @@ func (c *Client) ListContexts() ([]ContextInfo, error) {
 // cluster is unreachable. kubeconfigPath may be empty (uses default loading
 // rules). activeOverride, if non-empty, marks that context as active.
 func ListContextsFromKubeconfig(kubeconfigPath, activeOverride string) ([]ContextInfo, error) {
-	rules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if kubeconfigPath != "" {
-		rules.ExplicitPath = kubeconfigPath
-	}
+	rules := kubeconfigLoadingRules(kubeconfigPath)
 
 	rawCfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, &clientcmd.ConfigOverrides{}).RawConfig()
 	if err != nil {
@@ -567,10 +583,7 @@ func ListContextsFromKubeconfig(kubeconfigPath, activeOverride string) ([]Contex
 
 // SwitchContext reinitializes the client with a different kubeconfig context.
 func (c *Client) SwitchContext(contextName string) error {
-	rules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if c.cfg.Kubernetes.Config != "" {
-		rules.ExplicitPath = c.cfg.Kubernetes.Config
-	}
+	rules := kubeconfigLoadingRules(c.cfg.Kubernetes.Config)
 	overrides := &clientcmd.ConfigOverrides{CurrentContext: contextName}
 
 	restCfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides).ClientConfig()

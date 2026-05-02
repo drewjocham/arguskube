@@ -1,20 +1,60 @@
+
 import { ref, onMounted, onUnmounted } from 'vue'
+import * as backend from '../wailsjs/go/pkg/App'
 
 /**
  * Bridge to Wails Go bindings.
- * In dev mode (no window.go), falls back to mock data.
+ * In Wails mode uses direct Go bindings; otherwise falls back to REST API on :8080.
  */
-export const isWails = () => typeof window !== 'undefined' && window.go
+export const isWails = () => typeof window !== 'undefined' && !!window.go
+
+// ---------------------------------------------------------------------------
+// Global response cache — prevents redundant backend calls when switching
+// between views. Each entry is keyed by "method:arg1:arg2:..." and stores
+// { data, ts }. Composables call cachedCallGo() instead of callGo() for
+// read-only fetches.
+// ---------------------------------------------------------------------------
+const _cache = new Map()
+const DEFAULT_TTL = 30_000  // 30 seconds for most resources
+const FAST_TTL    = 5_000   // 5 seconds for metrics/alerts
+
+function _cacheKey(method, args) {
+  return args.length ? `${method}:${args.join(':')}` : method
+}
 
 /**
- * Calls a Go method via Wails bindings or falls back to an HTTP API for SaaS mode.
- * @param {string} method - Method name on the App struct (e.g., 'GetAlerts')
- * @param  {...any} args - Arguments to pass
+ * Cached version of callGo for read-only fetches.
+ * Returns cached data instantly if within TTL; fetches fresh otherwise.
+ * @param {number} ttl - cache TTL in ms
  */
+export async function cachedCallGo(method, args = [], ttl = DEFAULT_TTL) {
+  const key = _cacheKey(method, args)
+  const cached = _cache.get(key)
+  if (cached && (Date.now() - cached.ts) < ttl) {
+    return cached.data
+  }
+  const result = await callGo(method, ...args)
+  _cache.set(key, { data: result, ts: Date.now() })
+  return result
+}
+
+/** Invalidate a specific cache entry (e.g. after a write/mutation). */
+export function invalidateCache(method, ...args) {
+  const key = _cacheKey(method, args)
+  _cache.delete(key)
+}
+
+/** Invalidate all entries whose key starts with a prefix. */
+export function invalidateCachePrefix(prefix) {
+  for (const key of _cache.keys()) {
+    if (key.startsWith(prefix)) _cache.delete(key)
+  }
+}
+
 export async function callGo(method, ...args) {
   if (isWails()) {
     try {
-      return await window.go.api.pkg.App[method](...args)
+      return await backend[method](...args)
     } catch (err) {
       console.error(`[wails] ${method} failed:`, err)
       throw err
@@ -40,7 +80,7 @@ export async function callGo(method, ...args) {
     return data.result
   } catch (err) {
     console.warn(`[saas-api] ${method} fallback failed (is the backend running on :8080?):`, err)
-    // We let the components fall back to their local mock variables on failure
+    // Components handle empty state on failure
     throw err
   }
 }
@@ -73,18 +113,24 @@ export function useClusterInfo() {
   const error = ref(null)
 
   async function fetch() {
-    loading.value = true
+    loading.value = info.value === null // only show spinner on cold start
     try {
-      info.value = await callGo('GetClusterInfo')
+      info.value = await cachedCallGo('GetClusterInfo', [], DEFAULT_TTL)
     } catch (e) {
       error.value = e
+      info.value = null
     } finally {
       loading.value = false
     }
   }
 
+  async function hardRefresh() {
+    invalidateCache('GetClusterInfo')
+    return fetch()
+  }
+
   onMounted(fetch)
-  return { info, loading, error, refresh: fetch }
+  return { info, loading, error, refresh: hardRefresh }
 }
 
 /**
@@ -96,21 +142,15 @@ export function useContexts() {
   const switching = ref(false)
   const error = ref(null)
 
-  const mockContexts = [
-    { name: 'k3s-local', cluster: 'k3s-local', active: true },
-    { name: 'staging-eks', cluster: 'staging-eks', active: false },
-    { name: 'production-gke', cluster: 'production-gke', active: false },
-  ]
-
   async function listContexts() {
-    loading.value = true
+    loading.value = contexts.value.length === 0
     error.value = null
     try {
-      const result = await callGo('ListContexts')
-      contexts.value = result && result.length > 0 ? result : mockContexts
+      const result = await cachedCallGo('ListContexts', [], DEFAULT_TTL)
+      contexts.value = result || []
     } catch (e) {
       error.value = e?.message || String(e)
-      contexts.value = mockContexts
+      contexts.value = []
     } finally {
       loading.value = false
     }
@@ -121,6 +161,14 @@ export function useContexts() {
     error.value = null
     try {
       await callGo('SwitchContext', name)
+      // Invalidate caches that depend on the active context.
+      invalidateCachePrefix('ListContexts')
+      invalidateCachePrefix('GetClusterInfo')
+      invalidateCachePrefix('ListResources')
+      invalidateCachePrefix('GetMetrics')
+      invalidateCachePrefix('GetAlerts')
+      invalidateCachePrefix('EstimateCosts')
+      invalidateCachePrefix('GetTopology')
       // Mark the new active context locally.
       contexts.value = contexts.value.map(c => ({ ...c, active: c.name === name }))
     } catch (e) {
@@ -143,17 +191,24 @@ export function useMetrics(intervalMs = 5000) {
 
   async function fetch() {
     try {
-      metrics.value = await callGo('GetMetrics')
+      const result = await cachedCallGo('GetMetrics', [], FAST_TTL)
+      if (result) metrics.value = result
     } catch (e) {
-      console.error('[metrics]', e)
+      console.warn('[metrics] backend unavailable')
+      if (!metrics.value) metrics.value = null
     } finally {
       loading.value = false
     }
   }
 
+  async function hardFetch() {
+    invalidateCache('GetMetrics')
+    return fetch()
+  }
+
   onMounted(() => {
     fetch()
-    timer = setInterval(fetch, intervalMs)
+    timer = setInterval(hardFetch, intervalMs)
   })
 
   onUnmounted(() => {
@@ -197,25 +252,31 @@ export function useAlerts(intervalMs = 5000) {
 
   async function fetch() {
     try {
-      const result = await callGo('GetAlerts')
+      const result = await cachedCallGo('GetAlerts', [], FAST_TTL)
       if (result) alerts.value = result
     } catch (e) {
-      console.error('[alerts]', e)
+      console.warn('[alerts] backend unavailable')
+      if (alerts.value.length === 0) alerts.value = []
     } finally {
       loading.value = false
     }
   }
 
+  async function hardFetch() {
+    invalidateCache('GetAlerts')
+    return fetch()
+  }
+
   onMounted(() => {
     fetch()
-    timer = setInterval(fetch, intervalMs)
+    timer = setInterval(hardFetch, intervalMs)
   })
 
   onUnmounted(() => {
     if (timer) clearInterval(timer)
   })
 
-  return { alerts, loading, refresh: fetch }
+  return { alerts, loading, refresh: hardFetch }
 }
 
 /**
@@ -245,15 +306,38 @@ export function useDiagnostics() {
  * Composable for feature gate checks.
  */
 export function useFeatures() {
-  const features = ref({})
-  const tier = ref('free')
+  // Default: enable ALL features so the desktop app is fully functional
+  // even before the backend responds or if the call fails.
+  const defaultFeatures = {
+    alerts: true,
+    cluster_view: true,
+    log_stream: true,
+    topology: true,
+    cascade_correlation: true,
+    anomstack_anomaly: true,
+    ai_diagnostics: true,
+    runbook_automation: true,
+    decision_log_context: true,
+    multi_cluster: true,
+    extended_history: true,
+    custom_runbooks: true,
+    arguscd: true,
+  }
+
+  const features = ref({ ...defaultFeatures })
+  const tier = ref('pro')
 
   async function fetch() {
     try {
-      features.value = (await callGo('GetFeatures')) || {}
-      tier.value = (await callGo('GetTier')) || 'free'
+      const result = await cachedCallGo('GetFeatures', [], DEFAULT_TTL)
+      if (result && Object.keys(result).length > 0) {
+        features.value = result
+      }
+      const t = await cachedCallGo('GetTier', [], DEFAULT_TTL)
+      if (t) tier.value = t
     } catch (e) {
-      console.error('[features]', e)
+      console.warn('[features] backend unavailable, using default (all enabled):', e.message || e)
+      // Keep defaults — desktop app gets full access.
     }
   }
 
@@ -349,38 +433,17 @@ export function useArgusScan() {
   const loading = ref(false)
   const error = ref(null)
 
-  const mockReport = {
-    timestamp: new Date().toISOString(),
-    score: 72, grade: 'C', clusterName: 'demo-cluster', scanTimeMs: 1240,
-    totalOk: 48, totalInfo: 12, totalWarn: 9, totalError: 5,
-    findings: [
-      { id: 'pop-1', resource: 'pod', name: 'web-app-6d8f9b-xp2kl', namespace: 'default', severity: 'error', sevLevel: 3, message: '[POP-106] No resources requests/limits defined', explanation: 'This container has no CPU or memory resource requests/limits set. Without resource definitions, the scheduler cannot make informed placement decisions.', fix: 'Add resource requests and limits. Start with requests based on observed usage and set limits at 1.5-2x requests.', command: 'kubectl edit pod web-app-6d8f9b-xp2kl -n default' },
-      { id: 'pop-2', resource: 'pod', name: 'worker-7c4b2f-m9z3q', namespace: 'default', severity: 'error', sevLevel: 3, message: '[POP-301] No probes defined', explanation: 'This container has no liveness or readiness probes. Kubernetes cannot detect if the application is healthy or ready.', fix: 'Add liveness and readiness probes. Use httpGet for HTTP services or tcpSocket for TCP.', command: 'kubectl edit pod worker-7c4b2f-m9z3q -n default' },
-      { id: 'pop-3', resource: 'deploy', name: 'api-gateway', namespace: 'ingress', severity: 'error', sevLevel: 3, message: '[POP-107] Container uses image tag \':latest\'', explanation: 'Using :latest makes deployments non-reproducible. Different nodes may pull different versions.', fix: 'Pin the image to a specific version tag or SHA digest.', command: 'kubectl get deploy api-gateway -n ingress -o jsonpath=\'{.spec.template.spec.containers[*].image}\'' },
-      { id: 'pop-4', resource: 'pod', name: 'cache-redis-0', namespace: 'data', severity: 'warning', sevLevel: 2, message: '[POP-108] CPU limit not set', explanation: 'Without CPU limits, a single pod can monopolize node CPU, causing throttling for colocated workloads.', fix: 'Set appropriate CPU limits to ensure fair scheduling.', command: 'kubectl edit pod cache-redis-0 -n data' },
-      { id: 'pop-5', resource: 'deploy', name: 'payment-service', namespace: 'finance', severity: 'warning', sevLevel: 2, message: '[POP-500] Single replica detected', explanation: 'Running with only one replica creates a single point of failure.', fix: 'Increase replica count to at least 2 for production workloads. Configure a PodDisruptionBudget.', command: 'kubectl scale deploy payment-service -n finance --replicas=2' },
-      { id: 'pop-6', resource: 'pod', name: 'debug-shell-9x2f1', namespace: 'default', severity: 'error', sevLevel: 3, message: '[POP-306] Container runs as root', explanation: 'Running as root inside a container increases the blast radius of a container escape.', fix: 'Set runAsNonRoot: true, readOnlyRootFilesystem: true, and allowPrivilegeEscalation: false.', command: 'kubectl get pod debug-shell-9x2f1 -n default -o jsonpath=\'{.spec.template.spec.securityContext}\'' },
-      { id: 'pop-7', resource: 'sa', name: 'default', namespace: 'default', severity: 'warning', sevLevel: 2, message: '[POP-303] Pod uses default service account', explanation: 'Using the default service account may have broader permissions than needed.', fix: 'Create a dedicated service account with minimal RBAC permissions.', command: 'kubectl describe sa default -n default' },
-      { id: 'pop-8', resource: 'secret', name: 'old-tls-cert', namespace: 'kube-system', severity: 'warning', sevLevel: 2, message: '[POP-800] Secret appears unused', explanation: 'This resource exists but is not referenced by any workload. Unused resources add clutter and may hold exploitable secrets.', fix: 'Clean up resources that are no longer needed.', command: 'kubectl delete secret old-tls-cert -n kube-system' },
-      { id: 'pop-9', resource: 'svc', name: 'api-gateway', namespace: 'ingress', severity: 'info', sevLevel: 1, message: '[POP-700] Found no matching endpoints', explanation: 'This service resource passed the check or has a minor informational note.', fix: 'Review the Popeye documentation for detailed remediation guidance.', command: 'kubectl describe svc api-gateway -n ingress' },
-    ]
-  }
   async function runScan() {
     loading.value = true
     error.value = null
     try {
-      const result = await callGo('RunArgusScan')
-      report.value = result || generateDemoArgusScan()
+      report.value = await callGo('RunArgusScan')
     } catch (e) {
-      console.warn('[argusScan] backend unavailable, using demo report:', e)
-      report.value = generateDemoArgusScan()
+      error.value = e?.message || String(e)
+      report.value = null
     } finally {
       loading.value = false
     }
-  }
-
-  function generateDemoArgusScan() {
-    return mockReport
   }
 
   return { report, loading, error, runScan }
@@ -397,12 +460,13 @@ export function useResources() {
   const detailLoading = ref(false)
   const error = ref(null)
 
-  async function listResources(kind, namespace) {
-    loading.value = true
+  async function listResources(kind, namespace, force = false) {
+    const ns = namespace || '_all'
+    loading.value = result.value === null // only spinner on cold start
     error.value = null
     try {
-      // Default to '_all' (all namespaces) when no namespace is specified.
-      result.value = await callGo('ListResources', kind, namespace || '_all')
+      if (force) invalidateCache('ListResources', kind, ns)
+      result.value = await cachedCallGo('ListResources', [kind, ns], DEFAULT_TTL)
     } catch (e) {
       error.value = e?.message || String(e)
     } finally {
@@ -413,18 +477,18 @@ export function useResources() {
   async function getResourceDetail(kind, namespace, name) {
     detailLoading.value = true
     try {
-      detail.value = await callGo('GetResourceDetail', kind, namespace || '', name)
+      detail.value = await cachedCallGo('GetResourceDetail', [kind, namespace || '', name], DEFAULT_TTL)
     } catch (e) {
       console.error('[resource-detail]', e)
     } finally {
-      detailLoading.value = detailLoading.value = false
+      detailLoading.value = false
     }
   }
 
   async function listNamespaces() {
     try {
-      const result = await callGo('ListAllNamespaces')
-      if (result) namespaces.value = result
+      const res = await cachedCallGo('ListAllNamespaces', [], DEFAULT_TTL)
+      if (res) namespaces.value = res
     } catch (e) {
       console.error('[namespaces]', e)
     }
@@ -464,31 +528,9 @@ export function useTerminal() {
   return { startTerminal, sendInput, resizeTerminal }
 }
 
-/**
- * Mock notebook data for dev mode (no Go backend).
- */
-const mockNotebookFiles = [
-  { id: 'incidents', name: 'Incidents', path: 'incidents', type: 'folder', children: [
-    { id: 'incidents/2024-03-01_db_outage', name: '2024-03-01_db_outage.md', path: 'incidents/2024-03-01_db_outage.md', type: 'file', modified: '2024-03-01' },
-    { id: 'incidents/post_mortems', name: 'post_mortems.md', path: 'incidents/post_mortems.md', type: 'file', modified: '2024-02-15' },
-  ]},
-  { id: 'runbook-docs', name: 'Runbooks', path: 'runbook-docs', type: 'folder', children: [
-    { id: 'runbook-docs/redis_oom', name: 'redis_oom.md', path: 'runbook-docs/redis_oom.md', type: 'file', modified: '2024-01-20' },
-  ]},
-  { id: 'getting_started', name: 'getting_started.md', path: 'getting_started.md', type: 'file', modified: '2024-03-10' },
-  { id: 'architecture', name: 'architecture.md', path: 'architecture.md', type: 'file', modified: '2024-03-08' },
-]
-
-const mockNotebookContents = {
-  'getting_started.md': `# KubeWatcher Knowledge Base\n\nWelcome to your connected notebook.\n\nThis works like **Obsidian** or **Notion**. All files you create here are backed by the configured S3 bucket or stored locally. You can use this space to store incident post-mortems, custom runbook documentation, and team notes.\n\n## Quick Start\n1. Click the **+** icon to create a new file.\n2. Create folders to organize your knowledge.\n3. Everything auto-saves!\n\n## Features\n- **Rich Markdown editing** with syntax highlighting\n- **S3 sync** for team-wide access\n- **Local cache** for offline use`,
-  'architecture.md': `# Architecture\n\nOur SaaS runs in a hybrid model.\n\n## Components\n- **Local Desktop:** Stores config locally, connects to cluster\n- **Agent Pod:** In-cluster DaemonSet for edge ML inference\n- **S3 Notebooks:** Persistent markdown storage\n\n## Data Flow\n1. Desktop client connects to cluster via kubeconfig\n2. Agent scrapes metrics from Kubelet and Metrics Server\n3. Desktop port-forwards to agent pod for live data`,
-  'incidents/2024-03-01_db_outage.md': `# DB Outage — March 1, 2024\n\n## Summary\nThe primary PostgreSQL replica went OOM at 03:42 UTC causing a 12-minute read outage.\n\n## Timeline\n- **03:42** — Alert fires: \`db-primary-oom\`\n- **03:44** — On-call acknowledges\n- **03:48** — Root cause identified: batch job consumed 8GB\n- **03:54** — Pod restarted, reads restored\n\n## Root Cause\nA nightly analytics batch job ran without memory limits.`,
-  'incidents/post_mortems.md': `# Post-Mortem Template\n\n## Incident Summary\n_What happened?_\n\n## Impact\n_Who was affected and for how long?_\n\n## Timeline\n_Chronological events_\n\n## Root Cause\n_Why did this happen?_\n\n## Action Items\n1. _Fix to prevent recurrence_\n2. _Monitoring improvements_`,
-  'runbook-docs/redis_oom.md': `# Redis OOM Runbook\n\n## Trigger\nAlert: \`redis-oom-killed\`\n\n## Steps\n1. **Check memory usage:** \`kubectl top pod -l app=redis\`\n2. **Review eviction policy:** \`redis-cli CONFIG GET maxmemory-policy\`\n3. **Flush stale keys:** \`redis-cli --scan --pattern 'cache:expired:*' | xargs redis-cli DEL\`\n4. **Increase limits if needed:** Update the StatefulSet resource limits\n5. **Verify:** Confirm memory usage stabilized`,
-}
 
 /**
- * Composable for S3-backed notebooks (with dev-mode mock fallback).
+ * Composable for S3-backed notebooks.
  */
 export function useNotebooks() {
   const files = ref([])
@@ -497,24 +539,16 @@ export function useNotebooks() {
   const synced = ref(false)
   const error = ref(null)
 
-  // In-memory content store for dev mode.
-  const localContents = ref({ ...mockNotebookContents })
-
   async function listFiles() {
     loading.value = true
     error.value = null
     try {
       const result = await callGo('ListNotebooks')
-      if (result && result.length > 0) {
-        files.value = result
-      } else {
-        // Backend returned empty or null — use mock data.
-        files.value = mockNotebookFiles
-      }
+      files.value = result || []
       synced.value = true
     } catch (e) {
       error.value = e?.message || String(e)
-      files.value = mockNotebookFiles
+      files.value = []
     } finally {
       loading.value = false
     }
@@ -522,50 +556,41 @@ export function useNotebooks() {
 
   async function getFile(path) {
     try {
-      const result = await callGo('GetNotebook', path)
-      if (result != null) return result
+      return (await callGo('GetNotebook', path)) || ''
     } catch (e) {
-      // Fall through to local.
+      console.error('[notebooks] getFile failed:', e)
+      return ''
     }
-    // Local / mock fallback.
-    return localContents.value[path] || ''
   }
 
   async function saveFile(path, content) {
     saving.value = true
-    localContents.value[path] = content
     try {
       await callGo('SaveNotebook', path, content)
       synced.value = true
     } catch (e) {
-      // Still saved locally in-memory.
       synced.value = false
+      console.error('[notebooks] saveFile failed:', e)
     } finally {
       saving.value = false
     }
   }
 
   async function deleteFile(path) {
-    delete localContents.value[path]
     try {
       await callGo('DeleteNotebook', path)
     } catch (e) {
       console.error('[notebooks] deleteFile failed:', e)
     }
-    // Rebuild file list: remove the deleted entry.
     files.value = removeFromTree(files.value, path)
   }
 
   async function createFolder(path) {
     try {
       await callGo('CreateNotebookFolder', path)
+      await listFiles()
     } catch (e) {
-      // Dev mode — add folder to local tree.
-    }
-    // Add folder to tree if not already present.
-    const exists = files.value.some(f => f.path === path)
-    if (!exists) {
-      files.value = [...files.value, { id: path, name: path, path, type: 'folder', children: [] }]
+      console.error('[notebooks] createFolder failed:', e)
     }
   }
 
@@ -579,37 +604,19 @@ export function useNotebooks() {
   }
 
   /**
-   * Add a new file entry to the tree (for create-file in dev mode).
+   * Add a new file entry to the tree — refreshes from backend.
    */
   function addFileToTree(path, name) {
-    const parts = path.split('/')
-    if (parts.length === 1) {
-      // Root-level file.
-      const exists = files.value.some(f => f.path === path)
-      if (!exists) {
-        files.value = [...files.value, { id: path.replace('.md', ''), name, path, type: 'file', modified: new Date().toISOString() }]
-      }
-    } else {
-      // Nested — just refresh the whole list.
-      listFiles()
-    }
+    listFiles()
   }
 
   async function moveFile(oldPath, newPath) {
-    // Update local content store.
-    if (localContents.value[oldPath]) {
-      localContents.value[newPath] = localContents.value[oldPath]
-      delete localContents.value[oldPath]
-    }
     try {
       await callGo('MoveNotebook', oldPath, newPath)
+      await listFiles()
     } catch (e) {
-      // Dev mode — just update the tree locally.
+      console.error('[notebooks] moveFile failed:', e)
     }
-    // Rebuild tree: remove from old location, add to new.
-    files.value = removeFromTree(files.value, oldPath)
-    const fileName = newPath.split('/').pop()
-    addFileToTree(newPath, fileName)
   }
 
   return { files, loading, saving, synced, error, listFiles, getFile, saveFile, deleteFile, createFolder, testConnection, addFileToTree, moveFile }
@@ -629,24 +636,6 @@ function removeFromTree(tree, path) {
     })
 }
 
-/**
- * Mock runbook data for dev mode.
- */
-const mockRunbooks = [
-  { id: 'oomkilled-response', name: 'OOMKilled Response', trigger: 'OOMKilled alert', status: 'ready', steps: 4, lastRun: '2h ago', path: 'oomkilled-response.md' },
-  { id: 'crashloop-triage', name: 'CrashLoop Triage', trigger: 'CrashLoopBackOff', status: 'ready', steps: 5, lastRun: '6h ago', path: 'crashloop-triage.md' },
-  { id: 'node-pressure-remediation', name: 'Node Pressure Remediation', trigger: 'DiskPressure / MemoryPressure', status: 'ready', steps: 6, lastRun: '1d ago', path: 'node-pressure-remediation.md' },
-  { id: 'deploy-rollback', name: 'Deploy Rollback', trigger: 'Manual / Error rate spike', status: 'draft', steps: 3, lastRun: 'Never', path: 'deploy-rollback.md' },
-  { id: 'certificate-renewal', name: 'Certificate Renewal', trigger: 'cert-manager warning', status: 'ready', steps: 4, lastRun: '14d ago', path: 'certificate-renewal.md' },
-]
-
-const mockRunbookContents = {
-  'oomkilled-response': `---\nname: OOMKilled Response\ntrigger: OOMKilled alert\nstatus: ready\n---\n\n# OOMKilled Response\n\n## Trigger\nOOMKilled alert fires on any pod.\n\n## Steps\n1. **Identify the pod:** \`kubectl get pods --field-selector=status.phase=Failed\`\n2. **Check memory usage:** \`kubectl top pod <name>\`\n3. **Review limits:** \`kubectl describe pod <name> | grep -A5 Limits\`\n4. **Increase limits or fix the leak:** Update the Deployment resource spec\n\n## Notes\nCheck if the OOM is a one-time spike or a memory leak pattern.`,
-  'crashloop-triage': `---\nname: CrashLoop Triage\ntrigger: CrashLoopBackOff\nstatus: ready\n---\n\n# CrashLoop Triage\n\n## Trigger\nPod enters CrashLoopBackOff state.\n\n## Steps\n1. **Get pod status:** \`kubectl describe pod <name>\`\n2. **Check logs:** \`kubectl logs <name> --previous\`\n3. **Check events:** \`kubectl get events --sort-by=.lastTimestamp\`\n4. **Check image:** Verify the image tag is correct and pullable\n5. **Restart or rollback:** \`kubectl rollout undo deployment/<name>\``,
-  'node-pressure-remediation': `---\nname: Node Pressure Remediation\ntrigger: DiskPressure / MemoryPressure\nstatus: ready\n---\n\n# Node Pressure Remediation\n\n## Trigger\nNode condition shows DiskPressure or MemoryPressure.\n\n## Steps\n1. **Identify node:** \`kubectl get nodes\` — look for NotReady or pressure conditions\n2. **Check disk usage:** \`kubectl describe node <name> | grep -A10 Conditions\`\n3. **Evict non-critical pods:** \`kubectl drain <node> --ignore-daemonsets\`\n4. **Clean up images:** \`docker system prune\` on the node\n5. **Clean up logs:** Rotate and compress old container logs\n6. **Uncordon:** \`kubectl uncordon <node>\``,
-  'deploy-rollback': `---\nname: Deploy Rollback\ntrigger: Manual / Error rate spike\nstatus: draft\n---\n\n# Deploy Rollback\n\n## Trigger\nManual trigger or automated error rate spike detection.\n\n## Steps\n1. **Check rollout history:** \`kubectl rollout history deployment/<name>\`\n2. **Rollback:** \`kubectl rollout undo deployment/<name>\`\n3. **Verify:** \`kubectl rollout status deployment/<name>\``,
-  'certificate-renewal': `---\nname: Certificate Renewal\ntrigger: cert-manager warning\nstatus: ready\n---\n\n# Certificate Renewal\n\n## Trigger\ncert-manager warning about expiring certificate.\n\n## Steps\n1. **Check certificate status:** \`kubectl get certificates\`\n2. **Check cert-manager logs:** \`kubectl logs -n cert-manager deploy/cert-manager\`\n3. **Force renewal:** \`kubectl delete secret <tls-secret>\`\n4. **Verify new cert:** \`kubectl describe certificate <name>\``,
-}
 
 /**
  * Composable for runbook CRUD.
@@ -656,21 +645,15 @@ export function useRunbooks() {
   const loading = ref(false)
   const saving = ref(false)
   const error = ref(null)
-  const localContents = ref({ ...mockRunbookContents })
-
   async function listRunbooks() {
-    loading.value = true
+    loading.value = runbooks.value.length === 0
     error.value = null
     try {
-      const result = await callGo('ListRunbooks')
-      if (result && result.length > 0) {
-        runbooks.value = result
-      } else {
-        runbooks.value = mockRunbooks
-      }
+      const result = await cachedCallGo('ListRunbooks', [], DEFAULT_TTL)
+      runbooks.value = result || []
     } catch (e) {
       error.value = e?.message || String(e)
-      runbooks.value = mockRunbooks
+      runbooks.value = []
     } finally {
       loading.value = false
     }
@@ -678,19 +661,19 @@ export function useRunbooks() {
 
   async function getRunbook(id) {
     try {
-      const result = await callGo('GetRunbook', id)
-      if (result != null) return result
+      return (await cachedCallGo('GetRunbook', [id], DEFAULT_TTL)) || ''
     } catch (e) {
-      // Fall through to local.
+      console.error('[runbooks] getRunbook failed:', e)
+      return ''
     }
-    return localContents.value[id] || `# ${id}\n\n_No content yet._`
   }
 
   async function saveRunbook(id, content) {
     saving.value = true
-    localContents.value[id] = content
     try {
       await callGo('SaveRunbook', id, content)
+      invalidateCachePrefix('ListRunbooks')
+      invalidateCache('GetRunbook', id)
     } catch (e) {
       console.error('[runbooks] saveRunbook failed:', e)
     } finally {
@@ -699,34 +682,27 @@ export function useRunbooks() {
   }
 
   async function deleteRunbook(id) {
-    delete localContents.value[id]
     try {
       await callGo('DeleteRunbook', id)
+      invalidateCachePrefix('ListRunbooks')
     } catch (e) {
-      // Dev mode — just remove from local list.
+      console.error('[runbooks] deleteRunbook failed:', e)
     }
     runbooks.value = runbooks.value.filter(rb => rb.id !== id)
   }
 
   async function createRunbook(name, trigger) {
-    let rb = null
     try {
-      rb = await callGo('CreateRunbook', name, trigger)
+      const rb = await callGo('CreateRunbook', name, trigger)
+      if (rb) {
+        invalidateCachePrefix('ListRunbooks')
+        runbooks.value = [...runbooks.value, rb]
+        return rb
+      }
     } catch (e) {
-      // Dev mode fallback.
+      console.error('[runbooks] createRunbook failed:', e)
     }
-
-    if (!rb) {
-      // Build a local mock runbook.
-      const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
-      rb = { id, name, trigger: trigger || '', status: 'draft', steps: 4, lastRun: 'Never', path: id + '.md' }
-      const content = `---\nname: ${name}\ntrigger: ${trigger || ''}\nstatus: draft\n---\n\n# ${name}\n\n## Trigger\n${trigger || '_Define trigger_'}\n\n## Steps\n1. **Assess** — Verify the alert is legitimate.\n2. **Investigate** — Check logs and metrics.\n3. **Remediate** — Apply the fix.\n4. **Verify** — Confirm resolution.\n\n## Notes\n_Add notes here._`
-      localContents.value[id] = content
-    }
-
-    // Add to the list.
-    runbooks.value = [...runbooks.value, rb]
-    return rb
+    return null
   }
 
   return { runbooks, loading, saving, error, listRunbooks, getRunbook, saveRunbook, deleteRunbook, createRunbook }
@@ -740,22 +716,14 @@ export function useSetup() {
   const loading = ref(false)
   const actionLoading = ref(null) // which tool is being installed
 
-  const mockTools = [
-    { name: 'kubectl', installed: true, version: 'v1.30.2', via: 'binary', message: 'kubectl available' },
-    { name: 'docker', installed: true, version: '27.0.3', via: 'binary', message: 'Docker available' },
-    { name: 'helm', installed: false, message: 'Helm not found' },
-    { name: 'argusScan', installed: false, message: 'Argus Scan not found. Install via binary or Docker.' },
-    { name: 'kubewatcher-agent', installed: false, message: 'Agent not deployed to cluster' },
-  ]
-
   async function checkTools() {
-    loading.value = true
+    loading.value = tools.value.length === 0
     try {
-      const result = await callGo('CheckToolStatus')
-      tools.value = result && result.length > 0 ? result : mockTools
+      const result = await cachedCallGo('CheckToolStatus', [], DEFAULT_TTL)
+      tools.value = result || []
     } catch (e) {
       console.error('[setup]', e)
-      tools.value = mockTools
+      tools.value = []
     } finally {
       loading.value = false
     }
@@ -811,6 +779,9 @@ export function useSetup() {
  */
 export function useAnomaly() {
   const anomalies = ref([])
+  const settings = ref(null)
+  const rules = ref([])
+  const jobs = ref([])
   const loading = ref(false)
   const error = ref(null)
 
@@ -818,15 +789,85 @@ export function useAnomaly() {
     loading.value = true
     error.value = null
     try {
-      anomalies.value = await callGo('ConnectToAgent', namespace)
+      const result = await callGo('ConnectToAgent', namespace)
+      anomalies.value = result || []
     } catch (e) {
-      error.value = e.message || 'Failed to connect to agent'
+      error.value = e?.message || String(e)
+      anomalies.value = []
     } finally {
       loading.value = false
     }
   }
 
-  return { anomalies, loading, error, connectAgent }
+  async function getSettings() {
+    try {
+      settings.value = await cachedCallGo('GetAnomalySettings', [], 30_000)
+    } catch (e) {
+      error.value = e?.message || String(e)
+    }
+  }
+
+  async function saveSettings(s) {
+    try {
+      await callGo('SaveAnomalySettings', s)
+      settings.value = s
+    } catch (e) {
+      error.value = e?.message || String(e)
+      throw e
+    }
+  }
+
+  async function getRules() {
+    try {
+      rules.value = (await callGo('GetAnomalyRules')) || []
+    } catch (e) {
+      error.value = e?.message || String(e)
+    }
+  }
+
+  async function saveRule(rule) {
+    try {
+      await callGo('SaveAnomalyRule', rule)
+      await getRules()
+    } catch (e) {
+      error.value = e?.message || String(e)
+      throw e
+    }
+  }
+
+  async function toggleRule(id) {
+    try {
+      const newState = await callGo('ToggleAnomalyRule', id)
+      const r = rules.value.find(r => r.id === id)
+      if (r) r.enabled = newState
+    } catch (e) {
+      error.value = e?.message || String(e)
+    }
+  }
+
+  async function deleteRule(id) {
+    try {
+      await callGo('DeleteAnomalyRule', id)
+      rules.value = rules.value.filter(r => r.id !== id)
+    } catch (e) {
+      error.value = e?.message || String(e)
+    }
+  }
+
+  async function getJobs() {
+    try {
+      jobs.value = (await callGo('GetAnomalyJobs')) || []
+    } catch (e) {
+      // Swallow — might be pro-only or detector not configured.
+      jobs.value = []
+    }
+  }
+
+  return {
+    anomalies, settings, rules, jobs, loading, error,
+    connectAgent, getSettings, saveSettings,
+    getRules, saveRule, toggleRule, deleteRule, getJobs,
+  }
 }
 
 /**
@@ -873,21 +914,15 @@ export function useIncidents() {
   const loading = ref(false)
   const error = ref(null)
 
-  const mockIncidents = [
-    { id: 'inc-1', title: 'OOMKilled: payment-api', severity: 'critical', status: 'resolved', type: 'alert', description: 'Payment API pod OOMKilled at 03:42 UTC', namespace: 'finance', createdAt: new Date(Date.now() - 3600000).toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'inc-2', title: 'High memory usage on node-3', severity: 'warning', status: 'investigating', type: 'investigation', description: 'Node showing MemoryPressure condition', namespace: 'infra', createdAt: new Date(Date.now() - 7200000).toISOString(), updatedAt: new Date().toISOString() },
-    { id: 'inc-3', title: 'CrashLoopBackOff: worker', severity: 'critical', status: 'open', type: 'alert', description: 'Worker pod crashing after latest deploy', namespace: 'default', createdAt: new Date(Date.now() - 1800000).toISOString(), updatedAt: new Date().toISOString() },
-  ]
-
   async function listIncidents() {
-    loading.value = true
+    loading.value = incidents.value.length === 0
     error.value = null
     try {
-      const result = await callGo('ListIncidents')
-      incidents.value = result && result.length > 0 ? result : mockIncidents
+      const result = await cachedCallGo('ListIncidents', [], DEFAULT_TTL)
+      incidents.value = result || []
     } catch (e) {
       error.value = e?.message || String(e)
-      incidents.value = mockIncidents
+      incidents.value = []
     } finally {
       loading.value = false
     }
@@ -897,40 +932,33 @@ export function useIncidents() {
     try {
       const inc = await callGo('CreateIncident', title, severity || 'info', type || 'alert', description || '', namespace || '')
       if (inc) {
+        invalidateCachePrefix('ListIncidents')
         incidents.value = [inc, ...incidents.value]
         return inc
       }
     } catch (e) {
       console.error('[incidents] create:', e)
     }
-    // Dev mode fallback.
-    const mock = { id: 'inc-' + Date.now(), title, severity: severity || 'info', status: 'open', type: type || 'alert', description: description || '', namespace: namespace || '', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
-    incidents.value = [mock, ...incidents.value]
-    return mock
+    return null
   }
 
   async function updateIncident(id, status, description) {
     try {
       const updated = await callGo('UpdateIncident', id, status || '', description || '')
       if (updated) {
+        invalidateCachePrefix('ListIncidents')
         incidents.value = incidents.value.map(i => i.id === id ? updated : i)
         return updated
       }
     } catch (e) {
       console.error('[incidents] update:', e)
     }
-    // Local fallback.
-    incidents.value = incidents.value.map(i => {
-      if (i.id === id) {
-        return { ...i, status: status || i.status, description: description || i.description, updatedAt: new Date().toISOString() }
-      }
-      return i
-    })
   }
 
   async function deleteIncident(id) {
     try {
       await callGo('DeleteIncident', id)
+      invalidateCachePrefix('ListIncidents')
     } catch (e) {
       console.error('[incidents] delete:', e)
     }
@@ -949,12 +977,13 @@ export function useTopology() {
   const error = ref(null)
 
   async function fetchTopology(namespace = '') {
-    loading.value = true
+    loading.value = topology.value === null
     error.value = null
     try {
-      topology.value = await callGo('GetTopology', namespace)
+      topology.value = await cachedCallGo('GetTopology', [namespace], DEFAULT_TTL)
     } catch (e) {
-      error.value = e?.message || String(e)
+      console.warn('[topology] backend unavailable')
+      topology.value = null
     } finally {
       loading.value = false
     }
@@ -964,40 +993,124 @@ export function useTopology() {
 }
 
 /**
- * Composable for ArgoCD-like applications (backed by deployments).
+ * Composable for ArgusCD — real Argo CD integration with k8s deployment fallback.
  */
-export function useApplications() {
-  const applications = ref([])
+export function useArgusCD() {
+  const apps = ref([])
+  const selectedApp = ref(null)
+  const resources = ref([])
+  const diffs = ref([])
+  const status = ref(null)
   const loading = ref(false)
   const error = ref(null)
 
-  async function listApplications(namespace = '') {
-    loading.value = true
+  async function fetchStatus() {
+    try {
+      status.value = await cachedCallGo('GetArgusCDStatus', [], DEFAULT_TTL)
+    } catch (e) {
+      status.value = { connected: false, message: e?.message || 'Failed to check status' }
+    }
+  }
+
+  async function listApps(project = '') {
+    loading.value = apps.value.length === 0
     error.value = null
     try {
-      const result = await callGo('ListApplications', namespace)
-      if (result && result.length > 0) {
-        applications.value = result
-      }
+      const result = await cachedCallGo('ListArgusCDApps', [project], DEFAULT_TTL)
+      apps.value = result || []
     } catch (e) {
       error.value = e?.message || String(e)
+      apps.value = []
     } finally {
       loading.value = false
     }
   }
 
-  async function syncApplication(namespace, name) {
+  async function getApp(name) {
     try {
-      await callGo('SyncApplication', namespace, name)
-      // Refresh after sync.
-      await listApplications(namespace)
+      selectedApp.value = await cachedCallGo('GetArgusCDApp', [name], DEFAULT_TTL)
     } catch (e) {
-      console.error('[applications] sync:', e)
+      console.warn('[arguscd] getApp fallback — using list data')
+      selectedApp.value = apps.value.find(a => a.name === name) || null
+    }
+  }
+
+  async function getResources(name) {
+    try {
+      resources.value = await cachedCallGo('GetArgusCDResources', [name], DEFAULT_TTL)
+    } catch (e) {
+      resources.value = []
+    }
+  }
+
+  async function getDiffs(name) {
+    try {
+      diffs.value = await cachedCallGo('GetArgusCDDiffs', [name], DEFAULT_TTL)
+    } catch (e) {
+      diffs.value = []
+    }
+  }
+
+  async function syncApp(name) {
+    try {
+      const result = await callGo('SyncArgusCDApp', name)
+      invalidateCachePrefix('ListArgusCDApps')
+      invalidateCachePrefix('GetArgusCDApp')
+      await listApps()
+      return result
+    } catch (e) {
+      console.error('[arguscd] sync:', e)
       throw e
     }
   }
 
-  return { applications, loading, error, listApplications, syncApplication }
+  async function refreshApp(name, hard = false) {
+    try {
+      await callGo('RefreshArgusCDApp', name, hard)
+      invalidateCachePrefix('ListArgusCDApps')
+      invalidateCachePrefix('GetArgusCDApp')
+      await listApps()
+    } catch (e) {
+      console.error('[arguscd] refresh:', e)
+    }
+  }
+
+  async function rollbackApp(name, revisionID) {
+    try {
+      await callGo('RollbackArgusCDApp', name, revisionID)
+      invalidateCachePrefix('ListArgusCDApps')
+      invalidateCachePrefix('GetArgusCDApp')
+      await listApps()
+    } catch (e) {
+      console.error('[arguscd] rollback:', e)
+      throw e
+    }
+  }
+
+  async function testConnection() {
+    try {
+      await callGo('TestArgusCDConnection')
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e?.message || String(e) }
+    }
+  }
+
+  return {
+    apps, selectedApp, resources, diffs, status, loading, error,
+    fetchStatus, listApps, getApp, getResources, getDiffs,
+    syncApp, refreshApp, rollbackApp, testConnection,
+  }
+}
+
+// Legacy alias for backward compat.
+export function useApplications() {
+  const { apps: applications, loading, error, listApps, syncApp } = useArgusCD()
+  return {
+    applications, loading, error,
+    listApplications: listApps,
+    syncApplication: (ns, name) => syncApp(name),
+  }
 }
 
 /**
@@ -1008,49 +1121,15 @@ export function useVulnerabilities() {
   const loading = ref(false)
   const error = ref(null)
 
-  const mockVulnerabilities = [
-    { 
-      id: 'img-1', name: 'web-app:v1.2.4', namespace: 'default', lastScan: '10m ago', 
-      critical: 2, high: 5, medium: 12, low: 24, status: 'Vulnerable',
-      cves: [
-        { id: 'CVE-2023-38545', pkg: 'curl', severity: 'Critical', desc: 'Heap based buffer overflow in SOCKS5 proxy handshake.', fix: 'Upgrade to curl 8.4.0' },
-        { id: 'CVE-2023-4911', pkg: 'glibc', severity: 'Critical', desc: 'Buffer overflow in ld.so (Looney Tunables).', fix: 'Update glibc to 2.38-r1' }
-      ],
-      aiOpt: { issue: 'Base image is using debian:bullseye which has numerous unpatched CVEs.', fix: 'Rebuild image using distroless/cc-debian12 to reduce attack surface and drop 85% of these vulnerabilities.' }
-    },
-    { 
-      id: 'img-2', name: 'worker:latest', namespace: 'default', lastScan: '1h ago', 
-      critical: 0, high: 1, medium: 4, low: 8, status: 'Warning',
-      cves: [
-        { id: 'CVE-2023-5363', pkg: 'openssl', severity: 'High', desc: 'Incorrect cipher key & IV length processing.', fix: 'Upgrade to openssl 3.0.12' }
-      ],
-      aiOpt: { issue: 'Using "latest" tag is an anti-pattern and masks underlying OS updates.', fix: 'Pin to a specific SHA digest or immutable tag.' }
-    },
-    { 
-      id: 'img-3', name: 'payment:v2.0', namespace: 'finance', lastScan: '2m ago', 
-      critical: 0, high: 0, medium: 0, low: 0, status: 'Clean',
-      cves: [],
-      aiOpt: { issue: 'None', fix: 'Image is optimal and following least-privilege principles.' }
-    },
-    { 
-      id: 'img-4', name: 'ingress-nginx:v1.9.0', namespace: 'kube-system', lastScan: '1d ago', 
-      critical: 1, high: 3, medium: 15, low: 40, status: 'Vulnerable',
-      cves: [
-        { id: 'CVE-2023-44487', pkg: 'nginx', severity: 'Critical', desc: 'HTTP/2 Rapid Reset Attack.', fix: 'Upgrade to ingress-nginx v1.9.3+' }
-      ],
-      aiOpt: { issue: 'Nginx ingress controller is exposed to HTTP/2 Rapid Reset DOS.', fix: 'Patch controller deployment and enable global rate limiting.' }
-    }
-  ]
-
   async function listVulnerabilities() {
-    loading.value = true
+    loading.value = images.value.length === 0
     error.value = null
     try {
-      const result = await callGo('ListVulnerabilities')
-      images.value = result && result.length > 0 ? result : mockVulnerabilities
+      const result = await cachedCallGo('ListVulnerabilities', [], DEFAULT_TTL)
+      images.value = result || []
     } catch (e) {
       error.value = e?.message || String(e)
-      images.value = mockVulnerabilities
+      images.value = []
     } finally {
       loading.value = false
     }
@@ -1059,7 +1138,7 @@ export function useVulnerabilities() {
   async function scanImage(image, engine) {
     try {
       const result = await callGo('ScanImage', image, engine)
-      // Refresh the list after scanning a single image.
+      invalidateCachePrefix('ListVulnerabilities')
       await listVulnerabilities()
       return result
     } catch (e) {
@@ -1073,10 +1152,10 @@ export function useVulnerabilities() {
     error.value = null
     try {
       const result = await callGo('ScanAllImages', namespace)
-      images.value = result && result.length > 0 ? result : mockVulnerabilities
+      invalidateCachePrefix('ListVulnerabilities')
+      images.value = result || []
       return result
     } catch (e) {
-      console.warn('[vulnerabilities] scanAll failed, keeping cached data:', e)
       error.value = e?.message || String(e)
       return null
     } finally {
@@ -1156,10 +1235,10 @@ export function useVPARecommendations() {
   const error = ref(null)
 
   async function fetchVPAs(namespace = '') {
-    loading.value = true
+    loading.value = vpas.value.length === 0
     error.value = null
     try {
-      const result = await callGo('GetVPARecommendations', namespace)
+      const result = await cachedCallGo('GetVPARecommendations', [namespace], DEFAULT_TTL)
       vpas.value = result && Array.isArray(result) ? result : []
     } catch (e) {
       error.value = e?.message || String(e)
@@ -1174,27 +1253,30 @@ export function useVPARecommendations() {
 
 /**
  * Composable for FinOps cost estimation based on pod resource requests.
+ * Supports multi-provider pricing (aws, gcp, azure, digitalocean).
  */
 export function useCostEstimate() {
   const report = ref(null)
   const loading = ref(false)
   const error = ref(null)
+  const provider = ref('aws')
 
-  async function fetchCosts() {
-    loading.value = true
+  async function fetchCosts(providerOverride) {
+    const p = providerOverride || provider.value
+    loading.value = report.value === null
     error.value = null
     try {
-      const result = await callGo('EstimateCosts')
+      const result = await cachedCallGo('EstimateCosts', [p], DEFAULT_TTL)
       report.value = result || null
     } catch (e) {
-      error.value = e?.message || String(e)
+      console.warn('[finops] backend unavailable')
       report.value = null
     } finally {
       loading.value = false
     }
   }
 
-  return { report, loading, error, fetchCosts }
+  return { report, loading, error, provider, fetchCosts }
 }
 
 /**
@@ -1207,13 +1289,13 @@ export function useNodeLogs() {
   const error = ref(null)
 
   async function fetchNodeLogs(nodeName, tailLines = 100) {
-    loading.value = true
+    loading.value = logs.value.length === 0
     error.value = null
     try {
-      const result = await callGo('GetNodeLogs', nodeName, tailLines)
+      const result = await cachedCallGo('GetNodeLogs', [nodeName, tailLines], DEFAULT_TTL)
       logs.value = result && Array.isArray(result) ? result : []
     } catch (e) {
-      error.value = e?.message || String(e)
+      console.warn('[node-logs] backend unavailable')
       logs.value = []
     } finally {
       loading.value = false

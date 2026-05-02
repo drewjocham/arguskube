@@ -7,9 +7,12 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
+
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 
 type SeverityLevel int
 
@@ -318,9 +321,16 @@ func (r *Runner) execPopeye(ctx context.Context) ([]byte, error) {
 }
 
 func (r *Runner) execBinary(ctx context.Context) ([]byte, error) {
-	args := []string{"--out", "json", "--force-exit-zero"}
+	args := []string{"--out", "json", "--force-exit-zero", "--no-color"}
+	// Multi-file kubeconfig (colon-separated) can't be passed via --kubeconfig flag.
+	// Set the KUBECONFIG env var instead and only use --kubeconfig for single files.
+	var envKubeconfig string
 	if r.kubeconfig != "" {
-		args = append(args, "--kubeconfig", r.kubeconfig)
+		if strings.Contains(r.kubeconfig, ":") {
+			envKubeconfig = r.kubeconfig
+		} else {
+			args = append(args, "--kubeconfig", r.kubeconfig)
+		}
 	}
 	if r.context != "" {
 		args = append(args, "--context", r.context)
@@ -335,10 +345,15 @@ func (r *Runner) execBinary(ctx context.Context) ([]byte, error) {
 	)
 
 	cmd := exec.CommandContext(ctx, r.binary, args...)
+	if envKubeconfig != "" {
+		cmd.Env = append(os.Environ(), "KUBECONFIG="+envKubeconfig)
+	}
 	output, err := cmd.Output()
 	if err != nil && len(output) == 0 {
 		return nil, fmt.Errorf("popeye exec: %w", err)
 	}
+	// Strip any ANSI escape codes that leak through despite --no-color.
+	output = stripANSI(output)
 	return output, nil
 }
 
@@ -413,6 +428,10 @@ func singularResource(plural string) string {
 		return s
 	}
 	return plural
+}
+
+func stripANSI(b []byte) []byte {
+	return ansiRE.ReplaceAll(b, nil)
 }
 
 func truncateBytes(b []byte, max int) string {

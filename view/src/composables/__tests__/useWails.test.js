@@ -25,11 +25,9 @@ describe('callGo', () => {
     it('calls the Wails binding with correct method and args', async () => {
       const mockMethod = vi.fn().mockResolvedValue({ success: true })
       vi.stubGlobal('go', {
-        api: {
-          pkg: {
-            App: {
-              GetAlerts: mockMethod,
-            },
+        pkg: {
+          App: {
+            GetAlerts: mockMethod,
           },
         },
       })
@@ -43,11 +41,9 @@ describe('callGo', () => {
     it('passes multiple arguments to Wails binding', async () => {
       const mockMethod = vi.fn().mockResolvedValue('ok')
       vi.stubGlobal('go', {
-        api: {
-          pkg: {
-            App: {
-              SwitchContext: mockMethod,
-            },
+        pkg: {
+          App: {
+            SwitchContext: mockMethod,
           },
         },
       })
@@ -61,11 +57,9 @@ describe('callGo', () => {
       const testError = new Error('Wails binding failed')
       const mockMethod = vi.fn().mockRejectedValue(testError)
       vi.stubGlobal('go', {
-        api: {
-          pkg: {
-            App: {
-              GetMetrics: mockMethod,
-            },
+        pkg: {
+          App: {
+            GetMetrics: mockMethod,
           },
         },
       })

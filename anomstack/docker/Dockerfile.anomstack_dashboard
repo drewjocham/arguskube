@@ -1,0 +1,50 @@
+FROM python:3.12-slim
+
+# Install essential runtime dependencies and build tools (needed for libsql-experimental)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    build-essential \
+    cmake \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/dagster/app
+
+# Use lightweight dashboard-specific requirements
+COPY ../requirements-dashboard.txt /opt/dagster/app/requirements-dashboard.txt
+
+RUN pip install --no-cache-dir -r requirements-dashboard.txt
+
+# Only copy what the dashboard actually needs
+COPY dashboard /opt/dagster/app/dashboard
+
+# Copy minimal anomstack components needed for dashboard
+COPY anomstack/__init__.py /opt/dagster/app/anomstack/
+COPY anomstack/config.py /opt/dagster/app/anomstack/
+COPY anomstack/version.py /opt/dagster/app/anomstack/
+COPY anomstack/external /opt/dagster/app/anomstack/external
+COPY anomstack/jinja /opt/dagster/app/anomstack/jinja
+COPY anomstack/sql /opt/dagster/app/anomstack/sql
+COPY anomstack/df /opt/dagster/app/anomstack/df
+COPY anomstack/validate /opt/dagster/app/anomstack/validate
+
+# Copy maintenance scripts for operational use
+COPY scripts/maintenance /opt/dagster/app/scripts/maintenance
+
+# Add current directory to Python path for anomstack imports
+ENV PYTHONPATH=/opt/dagster/app:$PYTHONPATH
+
+# Add build information
+ARG ANOMSTACK_BUILD_HASH="unknown"
+ARG ANOMSTACK_BUILD_TIME="unknown"
+ENV ANOMSTACK_BUILD_HASH=$ANOMSTACK_BUILD_HASH
+ENV ANOMSTACK_BUILD_TIME=$ANOMSTACK_BUILD_TIME
+
+COPY .example.env .env
+
+EXPOSE 8080
+
+# Health check for the web server
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# No ENTRYPOINT - let Docker Compose handle the command

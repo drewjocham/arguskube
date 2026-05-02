@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
+	"sync/atomic"
 
 	"github.com/argues/kube-watcher/internal/agentconn"
+	"github.com/argues/kube-watcher/internal/argocd"
 	"github.com/argues/kube-watcher/internal/ai"
 	"github.com/argues/kube-watcher/internal/alerts"
 	"github.com/argues/kube-watcher/internal/anomaly"
@@ -30,10 +33,12 @@ type AppConfig struct {
 	K8sClient *k8s.Client
 	Gate      *features.Gate
 	Assembler *ctxassembly.Assembler
-	Detector  anomaly.Detector
-	Agent     *ai.Agent
+	Detector        anomaly.Detector
+	AnomalySettings *anomaly.SettingsStore
+	Agent           *ai.Agent
 	Popeye    *popeye.Runner
 	Scanner   *vulnscan.Scanner
+	ArgoCD    *argocd.Client
 	Notebooks *notebooks.Store
 	Runbooks  *runbooks.Store
 	Setup     *setup.Manager
@@ -50,10 +55,12 @@ type App struct {
 	k8s       *k8s.Client
 	gate      *features.Gate
 	assembler *ctxassembly.Assembler
-	detector  anomaly.Detector
-	agent     *ai.Agent
+	detector       anomaly.Detector
+	anomalySettings *anomaly.SettingsStore
+	agent          *ai.Agent
 	popeye    *popeye.Runner
 	scanner   *vulnscan.Scanner
+	argoCD    *argocd.Client
 	notebooks *notebooks.Store
 	runbooks  *runbooks.Store
 	agentConn *agentconn.Connector
@@ -65,8 +72,15 @@ type App struct {
 
 	appMode string
 
+	// paused stops background polling when the window is hidden/minimized.
+	paused atomic.Bool
+
 	// cachedMetrics holds the latest metrics for agent context.
 	cachedMetrics *alerts.ClusterMetrics
+
+	// webhookAlerts stores alerts received via the /webhooks/anomstack endpoint.
+	webhookAlerts []alerts.Alert
+	webhookMu     sync.RWMutex
 }
 
 // NewApp constructs and initializes the main application.
@@ -78,10 +92,12 @@ func NewApp(ac AppConfig) *App {
 		k8s:       ac.K8sClient,
 		gate:      features.NewGate(ac.Config),
 		assembler: ac.Assembler,
-		detector:  ac.Detector,
-		agent:     ac.Agent,
+		detector:        ac.Detector,
+		anomalySettings: ac.AnomalySettings,
+		agent:           ac.Agent,
 		popeye:    ac.Popeye,
 		scanner:   ac.Scanner,
+		argoCD:    ac.ArgoCD,
 		notebooks: ac.Notebooks,
 		runbooks:  ac.Runbooks,
 		term:      terminal.New(ac.Logger),
@@ -135,6 +151,17 @@ func (a *App) Startup(ctx context.Context) {
 func (a *App) Shutdown(ctx context.Context) {
 	a.term.Close()
 	a.logger.InfoContext(ctx, "kubewatcher shutting down")
+}
+
+// SetPaused pauses or resumes background polling (alerts, metrics, logs).
+// Called from the frontend when the window visibility changes.
+func (a *App) SetPaused(paused bool) {
+	a.paused.Store(paused)
+	if paused {
+		a.logger.Info("event loop paused (window hidden)")
+	} else {
+		a.logger.Info("event loop resumed (window visible)")
+	}
 }
 
 var errNoCluster = fmt.Errorf("no cluster connected — check kubeconfig")

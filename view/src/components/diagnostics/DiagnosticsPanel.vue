@@ -17,6 +17,15 @@ const question = ref('')
 const chatScrollEl = ref(null)
 const activeTab = ref('diagnostics')
 
+// Collapsible diagnostics sections.
+const collapsedBlocks = ref(new Set())
+function toggleBlock(key) {
+  const s = new Set(collapsedBlocks.value)
+  s.has(key) ? s.delete(key) : s.add(key)
+  collapsedBlocks.value = s
+}
+function isBlockOpen(key) { return !collapsedBlocks.value.has(key) }
+
 const { history, sending, autoSummary, eventLog, sendMessage, refreshHistory, fetchAutoSummary, fetchEventLog } = useChat()
 
 // When selected alert changes, fetch auto-summary and chat history.
@@ -175,41 +184,52 @@ function eventTypeColor(type_) {
         </div>
 
         <div class="ai-context-block">
-          <div class="ai-block-label">
+          <div class="ai-block-label collapsible" @click="toggleBlock('context')">
             <div class="ai-block-dot" style="background: var(--red);"></div>
             Alert Context
+            <svg class="section-chevron" :class="{ collapsed: !isBlockOpen('context') }" width="10" height="10" viewBox="0 0 10 10"><path d="M2.5 3.5L5 6.5L7.5 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
           </div>
-          <pre class="ai-code">{{ formatContext(selectedAlert) }}</pre>
+          <pre v-show="isBlockOpen('context')" class="ai-code">{{ formatContext(selectedAlert) }}</pre>
         </div>
 
         <div v-if="bundle?.diagnosis" class="ai-insight">
-          <div class="ai-insight-title">Root Cause Hypothesis</div>
-          <div class="ai-insight-body">{{ bundle.diagnosis.hypothesis }}</div>
+          <div class="ai-insight-title collapsible" @click="toggleBlock('hypothesis')">
+            Root Cause Hypothesis
+            <svg class="section-chevron" :class="{ collapsed: !isBlockOpen('hypothesis') }" width="10" height="10" viewBox="0 0 10 10"><path d="M2.5 3.5L5 6.5L7.5 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          </div>
+          <div v-show="isBlockOpen('hypothesis')" class="ai-insight-body">{{ bundle.diagnosis.hypothesis }}</div>
         </div>
 
         <div v-if="bundle?.cascadeAlerts?.length" class="ai-insight cascade-insight">
-          <div class="ai-insight-title cascade-title">Cascade Alert</div>
-          <div class="ai-insight-body">
+          <div class="ai-insight-title cascade-title collapsible" @click="toggleBlock('cascade')">
+            Cascade Alert
+            <svg class="section-chevron" :class="{ collapsed: !isBlockOpen('cascade') }" width="10" height="10" viewBox="0 0 10 10"><path d="M2.5 3.5L5 6.5L7.5 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          </div>
+          <div v-show="isBlockOpen('cascade')" class="ai-insight-body">
             Related alerts detected: {{ bundle.cascadeAlerts.map(a => a.name).join(', ') }}
           </div>
         </div>
 
         <div v-if="bundle?.anomalyResults?.length" class="ai-context-block">
-          <div class="ai-block-label">
+          <div class="ai-block-label collapsible" @click="toggleBlock('anomaly')">
             <div class="ai-block-dot" style="background: var(--teal);"></div>
             Anomstack Anomaly Detection
+            <svg class="section-chevron" :class="{ collapsed: !isBlockOpen('anomaly') }" width="10" height="10" viewBox="0 0 10 10"><path d="M2.5 3.5L5 6.5L7.5 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
           </div>
-          <div v-for="(ar, i) in bundle.anomalyResults" :key="i" class="ai-code">
-            {{ ar.metricName }}: {{ ar.isAnomaly ? 'ANOMALY' : 'normal' }} (score: {{ ar.score?.toFixed(2) }}, model: {{ ar.modelUsed }})
-          </div>
+          <template v-if="isBlockOpen('anomaly')">
+            <div v-for="(ar, i) in bundle.anomalyResults" :key="i" class="ai-code">
+              {{ ar.metricName }}: {{ ar.isAnomaly ? 'ANOMALY' : 'normal' }} (score: {{ ar.score?.toFixed(2) }}, model: {{ ar.modelUsed }})
+            </div>
+          </template>
         </div>
 
         <div v-if="bundle?.diagnosis?.steps?.length">
-          <div class="ai-block-label">
+          <div class="ai-block-label collapsible" @click="toggleBlock('actions')">
             <div class="ai-block-dot" style="background: var(--accent);"></div>
             Recommended Actions
+            <svg class="section-chevron" :class="{ collapsed: !isBlockOpen('actions') }" width="10" height="10" viewBox="0 0 10 10"><path d="M2.5 3.5L5 6.5L7.5 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
           </div>
-          <div class="ai-steps">
+          <div v-show="isBlockOpen('actions')" class="ai-steps">
             <div v-for="step in bundle.diagnosis.steps" :key="step.number" class="ai-step">
               <div class="step-num">{{ step.number }}</div>
               <div class="step-text">
@@ -221,13 +241,16 @@ function eventTypeColor(type_) {
         </div>
 
         <div v-if="bundle?.decisionLog?.length" class="ai-context-block">
-          <div class="ai-block-label">
+          <div class="ai-block-label collapsible" @click="toggleBlock('decisions')">
             <div class="ai-block-dot" style="background: var(--purple);"></div>
             From DECISION_LOG.md
+            <svg class="section-chevron" :class="{ collapsed: !isBlockOpen('decisions') }" width="10" height="10" viewBox="0 0 10 10"><path d="M2.5 3.5L5 6.5L7.5 3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
           </div>
-          <pre v-for="(entry, i) in bundle.decisionLog" :key="i" class="ai-code">
+          <template v-if="isBlockOpen('decisions')">
+            <pre v-for="(entry, i) in bundle.decisionLog" :key="i" class="ai-code">
 # {{ entry.date }}
 {{ entry.content }}</pre>
+          </template>
         </div>
       </template>
     </div>
@@ -340,6 +363,10 @@ function eventTypeColor(type_) {
 
 .ai-context-block { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r2); padding: 10px 12px; }
 .ai-block-label { font-size: 10px; font-weight: 600; letter-spacing: 0.07em; color: var(--text3); text-transform: uppercase; margin-bottom: 7px; display: flex; align-items: center; gap: 5px; }
+.ai-block-label.collapsible, .ai-insight-title.collapsible { cursor: pointer; user-select: none; }
+.ai-block-label.collapsible:hover, .ai-insight-title.collapsible:hover { color: var(--text2); }
+.section-chevron { margin-left: auto; flex-shrink: 0; transition: transform 0.15s ease; }
+.section-chevron.collapsed { transform: rotate(-90deg); }
 .ai-block-dot { width: 5px; height: 5px; border-radius: 50%; }
 .ai-code { font-family: var(--mono); font-size: 11px; color: var(--text2); line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
 

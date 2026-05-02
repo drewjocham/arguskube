@@ -2,21 +2,13 @@
 import { ref, onMounted } from 'vue'
 import { useResources } from '../../composables/useWails'
 
-const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
-
-const mockNamespaces = [
-  { name: 'default', status: 'Active', labels: '3 labels', age: '145d' },
-  { name: 'kube-system', status: 'Active', labels: '2 labels', age: '145d' },
-  { name: 'monitoring', status: 'Active', labels: '4 labels', age: '42d' },
-  { name: 'ingress-nginx', status: 'Active', labels: '2 labels', age: '145d' },
-  { name: 'test-env', status: 'Terminating', labels: '1 labels', age: '2d' }
-]
+const { result, detail, loading, error, detailLoading, listResources, getResourceDetail } = useResources()
 
 const namespaces = ref([])
 const expandedNs = ref(null)
 
-async function fetchNamespaces() {
-  await listResources('namespaces', '')
+async function fetchNamespaces(force = false) {
+  await listResources('namespaces', '', force)
   if (result.value && result.value.items && result.value.items.length > 0) {
     namespaces.value = result.value.items.map(item => ({
       name: item.name,
@@ -28,10 +20,7 @@ async function fetchNamespaces() {
       ingress: [], egress: [], defaultDeny: false
     }))
   } else {
-    namespaces.value = mockNamespaces.map(ns => ({
-      ...ns, pods: '—', cpuLimits: '—', memLimits: '—',
-      ingress: [], egress: [], defaultDeny: false
-    }))
+    namespaces.value = []
   }
 }
 
@@ -60,13 +49,17 @@ async function toggleExpand(nsName) {
         <div class="title">Namespaces</div>
         <div class="subtitle">Logical partitions of your cluster resources</div>
       </div>
-      <button class="refresh-btn" @click="fetchNamespaces" :disabled="loading">
+      <button class="refresh-btn" @click="fetchNamespaces(true)" :disabled="loading">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
         Refresh
       </button>
     </div>
 
-    <div class="ns-list">
+    <div v-if="loading && !namespaces.length" class="state-box">Loading namespaces…</div>
+    <div v-else-if="error" class="state-box state-error">{{ error }}</div>
+    <div v-else-if="!namespaces.length" class="state-box">No namespaces found.</div>
+
+    <div v-else class="ns-list">
       <div class="ns-header-row">
         <div class="ns-col">Name</div>
         <div class="ns-col">Status</div>
@@ -180,6 +173,9 @@ async function toggleExpand(nsName) {
 </template>
 
 <style scoped>
+.state-box { padding: 40px; text-align: center; color: #8b8f96; font-size: 13px; background: #1e2023; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; }
+.state-error { color: #f05454; }
+
 .ns-view {
   padding: 24px;
   display: flex;

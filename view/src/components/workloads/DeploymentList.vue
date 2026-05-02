@@ -5,12 +5,6 @@ import { useResources, useDeploymentRevisions } from '../../composables/useWails
 const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
 const { revisions, loading: revisionsLoading, error: revisionsError, fetchRevisions } = useDeploymentRevisions()
 
-const mockDeployments = [
-  { name: 'web-app', namespace: 'default', ready: 3, desired: 3, upToDate: 3, available: 3, image: 'web-app:v1.2.4', age: '14d' },
-  { name: 'worker', namespace: 'default', ready: 5, desired: 5, upToDate: 5, available: 5, image: 'worker:latest', age: '14d' },
-  { name: 'payment-service', namespace: 'finance', ready: 1, desired: 2, upToDate: 2, available: 1, image: 'payment:v2.0', age: '2h' },
-  { name: 'nginx-ingress', namespace: 'kube-system', ready: 2, desired: 2, upToDate: 2, available: 2, image: 'ingress-nginx:v1.9.0', age: '145d' }
-]
 
 const deployments = ref([])
 const depDetail = ref(null)
@@ -36,7 +30,7 @@ onMounted(async () => {
       }
     })
   } else {
-    deployments.value = mockDeployments
+    deployments.value = []
   }
 })
 

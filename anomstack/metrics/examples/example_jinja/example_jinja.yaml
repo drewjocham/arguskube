@@ -1,0 +1,18 @@
+# this shows a jinja based template example
+disable_batch: True
+disable_dashboard: True
+metric_batch: "example_jinja"
+ingest_sql: >
+  {% set metrics = ['metric_1', 'metric_2', 'metric_3'] %}
+  select
+    *
+  from
+  (
+  {% for metric in metrics %}
+  select
+    get_current_timestamp() as metric_timestamp,
+    '{{ metric }}' as metric_name,
+    random() as metric_value
+  {% if not loop.last %}union all{% endif %}
+  {% endfor %}
+  );

@@ -1,48 +1,22 @@
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 
 const props = defineProps({
   alerts: { type: Array, default: () => [] },
   externalLines: { type: Array, default: () => [] },
 })
 
-const localLines = ref([])
 const logEl = ref(null)
-let interval = null
 
-// Use external lines from Wails events if available, otherwise generate locally.
+// Map external Wails log events into display format.
 const logLines = computed(() => {
-  if (props.externalLines.length > 0) {
-    return props.externalLines.map(l => ({
-      time: new Date(l.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      level: l.level,
-      source: l.source,
-      message: l.message,
-    }))
-  }
-  return localLines.value
+  return (props.externalLines || []).map(l => ({
+    time: new Date(l.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    level: l.level,
+    source: l.source,
+    message: l.message,
+  }))
 })
-
-// simulate log lines when not connected to Wails
-function generateLogLine() {
-  if (props.externalLines.length > 0 || props.alerts.length === 0) return
-
-  const alert = props.alerts[Math.floor(Math.random() * props.alerts.length)]
-  const now = new Date()
-  const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-  const level = alert.severity === 'critical' ? 'error' : alert.severity === 'warning' ? 'warn' : 'info'
-
-  localLines.value.push({
-    time,
-    level,
-    source: `[${alert.podName || alert.nodeName || 'unknown'}]`,
-    message: alert.description?.slice(0, 80) || 'event'
-  })
-
-  if (localLines.value.length > 50) {
-    localLines.value = localLines.value.slice(-50)
-  }
-}
 
 // Auto-scroll to bottom on new lines.
 watch(logLines, async () => {
@@ -51,14 +25,6 @@ watch(logLines, async () => {
     logEl.value.scrollTop = logEl.value.scrollHeight
   }
 }, { deep: true })
-
-onMounted(() => {
-  interval = setInterval(generateLogLine, 2800)
-})
-
-onUnmounted(() => {
-  if (interval) clearInterval(interval)
-})
 
 function levelClass(level) {
   switch (level) {

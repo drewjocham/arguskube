@@ -499,6 +499,168 @@ export namespace anomaly {
 	        this.status = source["status"];
 	    }
 	}
+	export class Rule {
+	    id: string;
+	    name: string;
+	    enabled: boolean;
+	    severity: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Rule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.enabled = source["enabled"];
+	        this.severity = source["severity"];
+	    }
+	}
+	export class Settings {
+	    sensitivity: number;
+	    baselineWindow: number;
+	    metricType: string;
+	    algorithm: string;
+	    threshold: number;
+	    targetScope: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Settings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sensitivity = source["sensitivity"];
+	        this.baselineWindow = source["baselineWindow"];
+	        this.metricType = source["metricType"];
+	        this.algorithm = source["algorithm"];
+	        this.threshold = source["threshold"];
+	        this.targetScope = source["targetScope"];
+	    }
+	}
+
+}
+
+export namespace argocd {
+	
+	export class AppResource {
+	    kind: string;
+	    name: string;
+	    namespace: string;
+	    status: string;
+	    health: string;
+	    group: string;
+	    version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppResource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.name = source["name"];
+	        this.namespace = source["namespace"];
+	        this.status = source["status"];
+	        this.health = source["health"];
+	        this.group = source["group"];
+	        this.version = source["version"];
+	    }
+	}
+	export class App {
+	    name: string;
+	    namespace: string;
+	    project: string;
+	    syncStatus: string;
+	    healthStatus: string;
+	    replicas: number;
+	    readyReplicas: number;
+	    image: string;
+	    lastSync: string;
+	    repoUrl: string;
+	    path: string;
+	    targetRevision: string;
+	    destServer: string;
+	    destNamespace: string;
+	    createdAt: string;
+	    resources?: AppResource[];
+	
+	    static createFrom(source: any = {}) {
+	        return new App(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.namespace = source["namespace"];
+	        this.project = source["project"];
+	        this.syncStatus = source["syncStatus"];
+	        this.healthStatus = source["healthStatus"];
+	        this.replicas = source["replicas"];
+	        this.readyReplicas = source["readyReplicas"];
+	        this.image = source["image"];
+	        this.lastSync = source["lastSync"];
+	        this.repoUrl = source["repoUrl"];
+	        this.path = source["path"];
+	        this.targetRevision = source["targetRevision"];
+	        this.destServer = source["destServer"];
+	        this.destNamespace = source["destNamespace"];
+	        this.createdAt = source["createdAt"];
+	        this.resources = this.convertValues(source["resources"], AppResource);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class AppDiff {
+	    resource: string;
+	    live: string;
+	    target: string;
+	    diff: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppDiff(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.resource = source["resource"];
+	        this.live = source["live"];
+	        this.target = source["target"];
+	        this.diff = source["diff"];
+	    }
+	}
+	
+	export class SyncResult {
+	    phase: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SyncResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.phase = source["phase"];
+	        this.message = source["message"];
+	    }
+	}
 
 }
 
@@ -776,6 +938,122 @@ export namespace k8s {
 	        this.lastSync = source["lastSync"];
 	    }
 	}
+	export class DailyCost {
+	    date: string;
+	    costDay: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DailyCost(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.costDay = source["costDay"];
+	    }
+	}
+	export class CostCategory {
+	    name: string;
+	    costMo: number;
+	    percentage: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CostCategory(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.costMo = source["costMo"];
+	        this.percentage = source["percentage"];
+	    }
+	}
+	export class CostBreakdown {
+	    name: string;
+	    namespace?: string;
+	    kind: string;
+	    cpuCores: number;
+	    memoryGB: number;
+	    cpuCostHr: number;
+	    memCostHr: number;
+	    totalCostHr: number;
+	    totalCostDay: number;
+	    totalCostMo: number;
+	    podCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CostBreakdown(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.namespace = source["namespace"];
+	        this.kind = source["kind"];
+	        this.cpuCores = source["cpuCores"];
+	        this.memoryGB = source["memoryGB"];
+	        this.cpuCostHr = source["cpuCostHr"];
+	        this.memCostHr = source["memCostHr"];
+	        this.totalCostHr = source["totalCostHr"];
+	        this.totalCostDay = source["totalCostDay"];
+	        this.totalCostMo = source["totalCostMo"];
+	        this.podCount = source["podCount"];
+	    }
+	}
+	export class ClusterCostReport {
+	    provider: string;
+	    providerLabel: string;
+	    namespaces: CostBreakdown[];
+	    topDeployments: CostBreakdown[];
+	    costCategories: CostCategory[];
+	    dailyHistory: DailyCost[];
+	    totalCostHr: number;
+	    totalCostDay: number;
+	    totalCostMo: number;
+	    totalCostYear: number;
+	    totalCpu: number;
+	    totalMemGb: number;
+	    podCount: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ClusterCostReport(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.providerLabel = source["providerLabel"];
+	        this.namespaces = this.convertValues(source["namespaces"], CostBreakdown);
+	        this.topDeployments = this.convertValues(source["topDeployments"], CostBreakdown);
+	        this.costCategories = this.convertValues(source["costCategories"], CostCategory);
+	        this.dailyHistory = this.convertValues(source["dailyHistory"], DailyCost);
+	        this.totalCostHr = source["totalCostHr"];
+	        this.totalCostDay = source["totalCostDay"];
+	        this.totalCostMo = source["totalCostMo"];
+	        this.totalCostYear = source["totalCostYear"];
+	        this.totalCpu = source["totalCpu"];
+	        this.totalMemGb = source["totalMemGb"];
+	        this.podCount = source["podCount"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ClusterInfo {
 	    name: string;
 	    nodeCount: number;
@@ -808,6 +1086,9 @@ export namespace k8s {
 	        this.active = source["active"];
 	    }
 	}
+	
+	
+	
 	export class DeploymentRevision {
 	    revision: string;
 	    replicaSet: string;
@@ -924,6 +1205,24 @@ export namespace k8s {
 		    }
 		    return a;
 		}
+	}
+	export class NodeLogEntry {
+	    time: string;
+	    level: string;
+	    service: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NodeLogEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.time = source["time"];
+	        this.level = source["level"];
+	        this.service = source["service"];
+	        this.message = source["message"];
+	    }
 	}
 	export class ResourceColumn {
 	    key: string;
@@ -1373,6 +1672,65 @@ export namespace notebooks {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace pkg {
+	
+	export class ArgusCDStatus {
+	    connected: boolean;
+	    url: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ArgusCDStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.connected = source["connected"];
+	        this.url = source["url"];
+	        this.message = source["message"];
+	    }
+	}
+	export class SettingsPayload {
+	    kubeconfigPath: string;
+	    currentContext: string;
+	    namespace: string;
+	    deepseekApiKey: string;
+	    anomstackUrl: string;
+	    prometheusUrl: string;
+	    argocdUrl: string;
+	    argocdToken: string;
+	    argocdInsecure: boolean;
+	    snykToken: string;
+	    trivyBinary: string;
+	    falcoUrl: string;
+	    tier: string;
+	    logLevel: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SettingsPayload(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kubeconfigPath = source["kubeconfigPath"];
+	        this.currentContext = source["currentContext"];
+	        this.namespace = source["namespace"];
+	        this.deepseekApiKey = source["deepseekApiKey"];
+	        this.anomstackUrl = source["anomstackUrl"];
+	        this.prometheusUrl = source["prometheusUrl"];
+	        this.argocdUrl = source["argocdUrl"];
+	        this.argocdToken = source["argocdToken"];
+	        this.argocdInsecure = source["argocdInsecure"];
+	        this.snykToken = source["snykToken"];
+	        this.trivyBinary = source["trivyBinary"];
+	        this.falcoUrl = source["falcoUrl"];
+	        this.tier = source["tier"];
+	        this.logLevel = source["logLevel"];
+	    }
 	}
 
 }

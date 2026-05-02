@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -77,16 +78,13 @@ func (c *Client) QueryLogs(ctx context.Context, query, namespace string, limit i
 			allEntries = append(allEntries, entries...)
 		}
 
-		// Stop early if we have enough.
 		if len(allEntries) >= limit*2 {
 			break
 		}
 	}
 
-	// Sort by timestamp descending (newest first).
 	sortLogEntries(allEntries)
 
-	// Trim to limit.
 	if len(allEntries) > limit {
 		allEntries = allEntries[:limit]
 	}
@@ -282,12 +280,11 @@ func (c *Client) fetchNodeServiceLogs(ctx context.Context, nodeName, service str
 		Name(nodeName).
 		SubResource("proxy", "logs", "journal").
 		Param("unit", service).
-		Param("boot", "0"). // Current boot only.
+		Param("boot", "0"). 
 		Do(ctx).
 		Raw()
 
 	if err != nil {
-		// Fallback to plain log file access (/var/log/{service}.log).
 		body, err = c.cs.CoreV1().RESTClient().Get().
 			Resource("nodes").
 			Name(nodeName).

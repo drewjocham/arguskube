@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -412,6 +410,147 @@ func (c *Client) getIngressDetail(ctx context.Context, ns, name string) (*Resour
 		Labels:      ing.Labels,
 		Annotations: ing.Annotations,
 		Properties:  props,
+		Events:      events,
+	}, nil
+}
+
+func (c *Client) getStatefulSetDetail(ctx context.Context, ns, name string) (*ResourceDetailResult, error) {
+	ss, err := c.cs.AppsV1().StatefulSets(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	// Determine status.
+	desired := ptrInt32(ss.Spec.Replicas)
+	status := "Available"
+	if ss.Status.ReadyReplicas < desired {
+		status = "Progressing"
+	}
+	if ss.Status.ReadyReplicas == 0 && desired > 0 {
+		status = "Unavailable"
+	}
+
+	updateStrategy := string(ss.Spec.UpdateStrategy.Type)
+	if ss.Spec.UpdateStrategy.RollingUpdate != nil && ss.Spec.UpdateStrategy.RollingUpdate.Partition != nil {
+		updateStrategy += fmt.Sprintf(" (partition=%d)", *ss.Spec.UpdateStrategy.RollingUpdate.Partition)
+	}
+
+	props := []KeyValue{
+		{Key: "Status", Value: status},
+		{Key: "Replicas", Value: fmt.Sprintf("%d desired / %d ready / %d current / %d updated",
+			desired, ss.Status.ReadyReplicas, ss.Status.CurrentReplicas, ss.Status.UpdatedReplicas)},
+		{Key: "Service Name", Value: orDash(ss.Spec.ServiceName)},
+		{Key: "Pod Management Policy", Value: string(ss.Spec.PodManagementPolicy)},
+		{Key: "Update Strategy", Value: updateStrategy},
+		{Key: "Selector", Value: fmtMapSlice(ss.Spec.Selector.MatchLabels)},
+		{Key: "Revision", Value: ss.Status.CurrentRevision},
+	}
+
+	if ss.Status.CurrentRevision != ss.Status.UpdateRevision {
+		props = append(props, KeyValue{Key: "Update Revision", Value: ss.Status.UpdateRevision})
+	}
+
+	// Volume claim templates.
+	for _, pvc := range ss.Spec.VolumeClaimTemplates {
+		capacity := "—"
+		if req, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]; ok {
+			capacity = req.String()
+		}
+		sc := "default"
+		if pvc.Spec.StorageClassName != nil {
+			sc = *pvc.Spec.StorageClassName
+		}
+		props = append(props, KeyValue{
+			Key:   "VolumeClaimTemplate: " + pvc.Name,
+			Value: fmt.Sprintf("%s, StorageClass=%s, %s", capacity, sc, fmtAccessModes(pvc.Spec.AccessModes)),
+		})
+	}
+
+	// Container images.
+	for _, ctr := range ss.Spec.Template.Spec.Containers {
+		props = append(props, KeyValue{Key: "Container: " + ctr.Name, Value: ctr.Image})
+	}
+
+	conditions := make([]ResourceCondition, 0)
+	for _, cond := range ss.Status.Conditions {
+		conditions = append(conditions, ResourceCondition{
+			Type:    string(cond.Type),
+			Status:  string(cond.Status),
+			Reason:  orDash(cond.Reason),
+			Message: orDash(cond.Message),
+			Age:     fmtAge(cond.LastTransitionTime.Time),
+		})
+	}
+
+	events := c.getResourceEvents(ctx, ns, "StatefulSet", name)
+
+	return &ResourceDetailResult{
+		Kind:        "StatefulSet",
+		Name:        ss.Name,
+		Namespace:   ss.Namespace,
+		Created:     fmtTimestamp(ss.CreationTimestamp.Time),
+		Labels:      ss.Labels,
+		Annotations: ss.Annotations,
+		Properties:  props,
+		Conditions:  conditions,
+		Events:      events,
+	}, nil
+}
+
+func (c *Client) getDaemonSetDetail(ctx context.Context, ns, name string) (*ResourceDetailResult, error) {
+	ds, err := c.cs.AppsV1().DaemonSets(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	status := "Available"
+	if ds.Status.NumberReady < ds.Status.DesiredNumberScheduled {
+		status = "Progressing"
+	}
+	if ds.Status.NumberReady == 0 && ds.Status.DesiredNumberScheduled > 0 {
+		status = "Unavailable"
+	}
+
+	updateStrategy := string(ds.Spec.UpdateStrategy.Type)
+	if ds.Spec.UpdateStrategy.RollingUpdate != nil && ds.Spec.UpdateStrategy.RollingUpdate.MaxUnavailable != nil {
+		updateStrategy += fmt.Sprintf(" (maxUnavailable=%s)", ds.Spec.UpdateStrategy.RollingUpdate.MaxUnavailable.String())
+	}
+
+	props := []KeyValue{
+		{Key: "Status", Value: status},
+		{Key: "Desired", Value: fmt.Sprintf("%d scheduled / %d ready / %d available / %d updated",
+			ds.Status.DesiredNumberScheduled, ds.Status.NumberReady, ds.Status.NumberAvailable, ds.Status.UpdatedNumberScheduled)},
+		{Key: "Update Strategy", Value: updateStrategy},
+		{Key: "Selector", Value: fmtMapSlice(ds.Spec.Selector.MatchLabels)},
+		{Key: "Node Selector", Value: fmtMapSlice(ds.Spec.Template.Spec.NodeSelector)},
+	}
+
+	for _, ctr := range ds.Spec.Template.Spec.Containers {
+		props = append(props, KeyValue{Key: "Container: " + ctr.Name, Value: ctr.Image})
+	}
+
+	conditions := make([]ResourceCondition, 0)
+	for _, cond := range ds.Status.Conditions {
+		conditions = append(conditions, ResourceCondition{
+			Type:    string(cond.Type),
+			Status:  string(cond.Status),
+			Reason:  orDash(cond.Reason),
+			Message: orDash(cond.Message),
+			Age:     fmtAge(cond.LastTransitionTime.Time),
+		})
+	}
+
+	events := c.getResourceEvents(ctx, ns, "DaemonSet", name)
+
+	return &ResourceDetailResult{
+		Kind:        "DaemonSet",
+		Name:        ds.Name,
+		Namespace:   ds.Namespace,
+		Created:     fmtTimestamp(ds.CreationTimestamp.Time),
+		Labels:      ds.Labels,
+		Annotations: ds.Annotations,
+		Properties:  props,
+		Conditions:  conditions,
 		Events:      events,
 	}, nil
 }

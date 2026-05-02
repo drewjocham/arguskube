@@ -12,6 +12,7 @@ import (
 
 	"github.com/argues/kube-watcher/api/pkg"
 	"github.com/argues/kube-watcher/internal/ai"
+	"github.com/argues/kube-watcher/internal/argocd"
 	"github.com/argues/kube-watcher/internal/anomaly"
 	"github.com/argues/kube-watcher/internal/config"
 	ctxassembly "github.com/argues/kube-watcher/internal/context"
@@ -90,6 +91,18 @@ func run() error {
 		scanner = vulnscan.New(k8sClient.GetClientset(), logger)
 	}
 
+	// Argo CD client — nil if not configured.
+	argoCDClient := argocd.New(argocd.Config{
+		URL:      cfg.ArgoCD.URL,
+		Token:    cfg.ArgoCD.Token,
+		Insecure: cfg.ArgoCD.Insecure,
+	}, logger)
+	if argoCDClient != nil {
+		logger.Info("ArgoCD client initialized", slog.String("url", cfg.ArgoCD.URL))
+	} else {
+		logger.Info("ArgoCD not configured — set ARGOCD_URL and ARGOCD_TOKEN to enable")
+	}
+
 	notebooksStore, err := notebooks.New(cfg, logger)
 	if err != nil {
 		logger.Warn("notebooks store initialization failed",
@@ -118,6 +131,11 @@ func run() error {
 		logger.Warn("workflow store initialization failed", slog.String("error", err.Error()))
 	}
 
+	anomalySettings, err := anomaly.NewSettingsStore(db.DB, logger)
+	if err != nil {
+		logger.Warn("anomaly settings store initialization failed", slog.String("error", err.Error()))
+	}
+
 	setupMgr := setup.NewManager(
 		cfg.Kubernetes.Config,
 		cfg.Kubernetes.Context,
@@ -131,10 +149,12 @@ func run() error {
 		K8sClient: k8sClient,
 		Gate:      gate,
 		Assembler: assembler,
-		Detector:  detector,
-		Agent:     agent,
+		Detector:        detector,
+		AnomalySettings: anomalySettings,
+		Agent:           agent,
 		Popeye:    popeyeRunner,
 		Scanner:   scanner,
+		ArgoCD:    argoCDClient,
 		Notebooks: notebooksStore,
 		Runbooks:  runbooksStore,
 		Incidents: incidentStore,

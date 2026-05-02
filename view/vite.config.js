@@ -9,4 +9,9 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  build: {
+    // Output to the Go embed directory so `wails build` picks up the assets.
+    outDir: resolve(__dirname, '../backend/view/dist'),
+    emptyOutDir: true,
+  },
 })

@@ -28,8 +28,8 @@ watch([() => props.resourceKind, selectedNs], () => {
   refresh()
 })
 
-async function refresh() {
-  await listResources(props.resourceKind, selectedNs.value)
+async function refresh(force = false) {
+  await listResources(props.resourceKind, selectedNs.value, force)
 }
 
 // Filter + sort items.
@@ -126,7 +126,7 @@ function statusDotColor(color) {
           </svg>
           <input v-model="search" type="text" :placeholder="`Search ${kindLabel}...`" class="search-input" />
         </div>
-        <button class="refresh-btn" @click="refresh" :disabled="loading">
+        <button class="refresh-btn" @click="refresh(true)" :disabled="loading">
           <svg :class="{ spinning: loading }" width="13" height="13" viewBox="0 0 13 13">
             <path d="M11 6.5a4.5 4.5 0 11-1.5-3.4" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/>
             <path d="M11 2v2h-2" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>

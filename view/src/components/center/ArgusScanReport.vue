@@ -16,6 +16,7 @@ const { addToast } = useToast()
 
 const showScheduler = ref(false)
 const scheduleFreq = ref('none')
+const collapsedSections = ref({})
 
 function saveSchedule() {
   showScheduler.value = false
@@ -85,6 +86,14 @@ function sevBg(sev) {
     case 'info': return 'rgba(79,142,247,0.08)'
     default: return 'rgba(62,207,142,0.06)'
   }
+}
+
+function toggleSection(key) {
+  collapsedSections.value[key] = !collapsedSections.value[key]
+}
+
+function isSectionOpen(key) {
+  return collapsedSections.value[key] !== true
 }
 
 function fixWithAgent(finding) {
@@ -222,23 +231,35 @@ function fixWithAgent(finding) {
         </div>
 
         <div class="detail-section">
-          <div class="detail-label">Finding</div>
-          <div class="detail-text">{{ selectedFinding.message }}</div>
+          <div class="detail-label collapsible" @click="toggleSection('finding')">
+            <svg class="section-chevron" :class="{ rotated: !isSectionOpen('finding') }" width="8" height="8" viewBox="0 0 8 8"><polyline points="2 2 4 6 6 2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Finding
+          </div>
+          <div v-show="isSectionOpen('finding')" class="detail-text">{{ selectedFinding.message }}</div>
         </div>
 
         <div class="detail-section">
-          <div class="detail-label">What This Means</div>
-          <div class="detail-text">{{ selectedFinding.explanation }}</div>
+          <div class="detail-label collapsible" @click="toggleSection('explanation')">
+            <svg class="section-chevron" :class="{ rotated: !isSectionOpen('explanation') }" width="8" height="8" viewBox="0 0 8 8"><polyline points="2 2 4 6 6 2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            What This Means
+          </div>
+          <div v-show="isSectionOpen('explanation')" class="detail-text">{{ selectedFinding.explanation }}</div>
         </div>
 
         <div class="detail-section">
-          <div class="detail-label">How to Fix</div>
-          <div class="detail-text">{{ selectedFinding.fix }}</div>
+          <div class="detail-label collapsible" @click="toggleSection('fix')">
+            <svg class="section-chevron" :class="{ rotated: !isSectionOpen('fix') }" width="8" height="8" viewBox="0 0 8 8"><polyline points="2 2 4 6 6 2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            How to Fix
+          </div>
+          <div v-show="isSectionOpen('fix')" class="detail-text">{{ selectedFinding.fix }}</div>
         </div>
 
         <div v-if="selectedFinding.command" class="detail-section">
-          <div class="detail-label">Command</div>
-          <div class="detail-cmd">{{ selectedFinding.command }}</div>
+          <div class="detail-label collapsible" @click="toggleSection('command')">
+            <svg class="section-chevron" :class="{ rotated: !isSectionOpen('command') }" width="8" height="8" viewBox="0 0 8 8"><polyline points="2 2 4 6 6 2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Command
+          </div>
+          <div v-show="isSectionOpen('command')" class="detail-cmd">{{ selectedFinding.command }}</div>
         </div>
         
         <div class="detail-section" style="margin-top: 24px;">
@@ -432,6 +453,14 @@ function fixWithAgent(finding) {
   font-size: 10px; font-weight: 600; letter-spacing: 0.07em; color: var(--text3);
   text-transform: uppercase; margin-bottom: 5px;
 }
+.detail-label.collapsible {
+  cursor: pointer; display: flex; align-items: center; gap: 5px;
+  padding: 3px 0; border-radius: 3px; transition: color 0.15s;
+  user-select: none;
+}
+.detail-label.collapsible:hover { color: var(--text2); }
+.section-chevron { flex-shrink: 0; transition: transform 0.15s ease; }
+.section-chevron.rotated { transform: rotate(-90deg); }
 .detail-text { font-size: 12.5px; color: var(--text2); line-height: 1.65; }
 
 .detail-cmd {

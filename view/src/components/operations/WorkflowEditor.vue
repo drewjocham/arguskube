@@ -4,15 +4,10 @@ import { useWorkflows } from '../../composables/useWails'
 
 const { workflows: savedWorkflows, current, saving: isSaving, listWorkflows, getWorkflow, saveWorkflow, deleteWorkflow } = useWorkflows()
 
-const mockSteps = [
-  { id: 1, type: 'trigger', name: 'Input', icon: '⚡' },
-  { id: 2, type: 'action', name: 'Get 3 best stories', icon: '🐍', actionType: 'python' },
-  { id: 3, type: 'action', name: 'Send Message to Channel (slack)', icon: '#', actionType: 'slack' }
-]
 
 const workflowId = ref(null)
 const workflowTitle = ref('New Workflow')
-const steps = ref([...mockSteps])
+const steps = ref([])
 const selectedStep = ref(null)
 const notification = ref(null)
 const showList = ref(true)
@@ -91,7 +86,7 @@ async function loadWorkflow(id) {
   if (wf) {
     workflowId.value = wf.id
     workflowTitle.value = wf.title
-    steps.value = wf.steps && wf.steps.length > 0 ? wf.steps : [...mockSteps]
+    steps.value = wf.steps && wf.steps.length > 0 ? wf.steps : []
     showList.value = false
     selectedStep.value = null
     history.value = []

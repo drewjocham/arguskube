@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/argues/kube-watcher/internal/anomaly"
@@ -94,6 +95,57 @@ func (a *App) GetAnomalyJobs() ([]anomaly.Job, error) {
 	return a.detector.ListJobs(a.ctx)
 }
 
+// GetAnomalySettings returns the saved anomaly detection configuration.
+func (a *App) GetAnomalySettings() (anomaly.Settings, error) {
+	if a.anomalySettings == nil {
+		return anomaly.Settings{
+			Sensitivity: 30, BaselineWindow: 7, MetricType: "cpu",
+			Algorithm: "smart", Threshold: 85, TargetScope: "all",
+		}, nil
+	}
+	return a.anomalySettings.GetSettings(), nil
+}
+
+// SaveAnomalySettings persists anomaly detection configuration.
+func (a *App) SaveAnomalySettings(settings anomaly.Settings) error {
+	if a.anomalySettings == nil {
+		return fmt.Errorf("anomaly settings store not initialized")
+	}
+	return a.anomalySettings.SaveSettings(settings)
+}
+
+// GetAnomalyRules returns all anomaly detection rules.
+func (a *App) GetAnomalyRules() ([]anomaly.Rule, error) {
+	if a.anomalySettings == nil {
+		return nil, nil
+	}
+	return a.anomalySettings.ListRules(), nil
+}
+
+// SaveAnomalyRule creates or updates an anomaly detection rule.
+func (a *App) SaveAnomalyRule(rule anomaly.Rule) error {
+	if a.anomalySettings == nil {
+		return fmt.Errorf("anomaly settings store not initialized")
+	}
+	return a.anomalySettings.SaveRule(rule)
+}
+
+// ToggleAnomalyRule flips the enabled state of a rule and returns the new state.
+func (a *App) ToggleAnomalyRule(id string) (bool, error) {
+	if a.anomalySettings == nil {
+		return false, fmt.Errorf("anomaly settings store not initialized")
+	}
+	return a.anomalySettings.ToggleRule(id)
+}
+
+// DeleteAnomalyRule removes a rule by ID.
+func (a *App) DeleteAnomalyRule(id string) error {
+	if a.anomalySettings == nil {
+		return fmt.Errorf("anomaly settings store not initialized")
+	}
+	return a.anomalySettings.DeleteRule(id)
+}
+
 // ListVulnerabilities returns cached scan results (or demo data if no scan has run).
 func (a *App) ListVulnerabilities() ([]vulnscan.ScannedImage, error) {
 	if a.scanner == nil {
@@ -139,11 +191,12 @@ func (a *App) RestartDeployment(namespace, name string) error {
 	return a.k8s.RestartDeployment(a.ctx, namespace, name)
 }
 
-// EstimateCosts returns a FinOps cost report based on pod resource requests
-// with configurable per-unit pricing (defaults to AWS on-demand rates).
-func (a *App) EstimateCosts() (*k8s.ClusterCostReport, error) {
+// EstimateCosts returns a FinOps cost report based on pod resource requests.
+// provider is one of "aws", "gcp", "azure", "digitalocean". Empty defaults to AWS.
+func (a *App) EstimateCosts(provider string) (*k8s.ClusterCostReport, error) {
 	if a.k8s == nil {
 		return nil, errNoCluster
 	}
-	return a.k8s.EstimateCosts(a.ctx, k8s.DefaultCostConfig())
+	cfg := k8s.CostConfigForProvider(k8s.CloudProvider(provider))
+	return a.k8s.EstimateCosts(a.ctx, cfg)
 }

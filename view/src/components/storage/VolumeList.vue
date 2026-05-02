@@ -6,22 +6,15 @@ const props = defineProps({
   type: { type: String, default: 'pvcs' }
 })
 
-const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
+const { result, detail, loading, error, detailLoading, listResources, getResourceDetail } = useResources()
 
 const resourceKind = props.type || 'pvcs'
-
-const mockVolumes = [
-  { name: 'db-data-pvc', namespace: 'default', status: 'Bound', capacity: '50Gi', accessModes: 'RWO', storageClass: 'gp2', age: '145d' },
-  { name: 'redis-data-pvc', namespace: 'default', status: 'Bound', capacity: '10Gi', accessModes: 'RWO', storageClass: 'gp2', age: '42d' },
-  { name: 'shared-assets', namespace: 'public', status: 'Pending', capacity: '100Gi', accessModes: 'RWX', storageClass: 'efs-sc', age: '2h' },
-]
 
 const volumes = ref([])
 const volDetail = ref(null)
 const expandedVol = ref(null)
 
-onMounted(async () => {
-  await listResources(resourceKind, '')
+function mapItems() {
   if (result.value && result.value.items && result.value.items.length > 0) {
     volumes.value = result.value.items.map(item => ({
       name: item.name,
@@ -34,9 +27,16 @@ onMounted(async () => {
       age: item.age || '—'
     }))
   } else {
-    volumes.value = mockVolumes
+    volumes.value = []
   }
-})
+}
+
+async function refresh(force = false) {
+  await listResources(resourceKind, '', force)
+  mapItems()
+}
+
+onMounted(() => refresh())
 
 async function toggleExpand(volName) {
   if (expandedVol.value === volName) {
@@ -58,11 +58,20 @@ async function toggleExpand(volName) {
 <template>
   <div class="vol-view">
     <div class="header">
-      <div class="title">Persistent Volumes & Claims</div>
-      <div class="subtitle">Storage resources available to your workloads</div>
+      <div class="header-row">
+        <div>
+          <div class="title">Persistent Volumes & Claims</div>
+          <div class="subtitle">Storage resources available to your workloads</div>
+        </div>
+        <button class="refresh-btn" @click="refresh(true)" :disabled="loading">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
+      </div>
     </div>
-    
-    <div class="vol-list">
+
+    <div v-if="loading && !volumes.length" class="state-box">Loading volumes…</div>
+    <div v-else-if="error" class="state-box state-error">{{ error }}</div>
+    <div v-else-if="!volumes.length" class="state-box">No {{ resourceKind === 'pvs' ? 'persistent volumes' : 'volume claims' }} found in this cluster.</div>
+
+    <div v-else class="vol-list">
       <div class="vol-header-row">
         <div class="col-name">Name</div>
         <div class="col-ns">Namespace</div>
@@ -137,6 +146,12 @@ async function toggleExpand(volName) {
 .vol-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; height: 100%; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
+.header-row { display: flex; justify-content: space-between; align-items: flex-start; }
+.refresh-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #b0b4ba; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+.refresh-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.state-box { padding: 40px; text-align: center; color: #8b8f96; font-size: 13px; background: #1e2023; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; }
+.state-error { color: #f05454; }
 
 .vol-list { background: #1e2023; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; overflow: hidden; }
 

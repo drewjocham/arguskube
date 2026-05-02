@@ -8,8 +8,14 @@
   "frontend:dev:serverUrl": "auto",
   "frontend:dir": "../view",
   "wailsjsdir": "../view/src",
+  "skipSelfSign": true,
   "author": {
     "name": "djocham",
     "email": "me@djocham.com"
+  },
+  "info": {
+    "companyName": "djocham",
+    "productName": "KubeWatcher",
+    "copyright": "Copyright 2024 djocham"
   }
 }

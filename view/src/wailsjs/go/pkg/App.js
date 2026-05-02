@@ -22,6 +22,10 @@ export function CreateRunbook(arg1, arg2) {
   return window['go']['pkg']['App']['CreateRunbook'](arg1, arg2);
 }
 
+export function DeleteAnomalyRule(arg1) {
+  return window['go']['pkg']['App']['DeleteAnomalyRule'](arg1);
+}
+
 export function DeleteIncident(arg1) {
   return window['go']['pkg']['App']['DeleteIncident'](arg1);
 }
@@ -54,6 +58,10 @@ export function EmitLogLine(arg1) {
   return window['go']['pkg']['App']['EmitLogLine'](arg1);
 }
 
+export function EstimateCosts(arg1) {
+  return window['go']['pkg']['App']['EstimateCosts'](arg1);
+}
+
 export function GetAgentEventLog() {
   return window['go']['pkg']['App']['GetAgentEventLog']();
 }
@@ -70,8 +78,32 @@ export function GetAnomalyJobs() {
   return window['go']['pkg']['App']['GetAnomalyJobs']();
 }
 
+export function GetAnomalyRules() {
+  return window['go']['pkg']['App']['GetAnomalyRules']();
+}
+
+export function GetAnomalySettings() {
+  return window['go']['pkg']['App']['GetAnomalySettings']();
+}
+
 export function GetAppMode() {
   return window['go']['pkg']['App']['GetAppMode']();
+}
+
+export function GetArgusCDApp(arg1) {
+  return window['go']['pkg']['App']['GetArgusCDApp'](arg1);
+}
+
+export function GetArgusCDDiffs(arg1) {
+  return window['go']['pkg']['App']['GetArgusCDDiffs'](arg1);
+}
+
+export function GetArgusCDResources(arg1) {
+  return window['go']['pkg']['App']['GetArgusCDResources'](arg1);
+}
+
+export function GetArgusCDStatus() {
+  return window['go']['pkg']['App']['GetArgusCDStatus']();
 }
 
 export function GetAutoSummary(arg1) {
@@ -102,6 +134,10 @@ export function GetMetrics() {
   return window['go']['pkg']['App']['GetMetrics']();
 }
 
+export function GetNodeLogs(arg1, arg2) {
+  return window['go']['pkg']['App']['GetNodeLogs'](arg1, arg2);
+}
+
 export function GetNotebook(arg1) {
   return window['go']['pkg']['App']['GetNotebook'](arg1);
 }
@@ -116,6 +152,10 @@ export function GetResourceDetail(arg1, arg2, arg3) {
 
 export function GetRunbook(arg1) {
   return window['go']['pkg']['App']['GetRunbook'](arg1);
+}
+
+export function GetSettings() {
+  return window['go']['pkg']['App']['GetSettings']();
 }
 
 export function GetTier() {
@@ -138,6 +178,10 @@ export function HandleURL(arg1) {
   return window['go']['pkg']['App']['HandleURL'](arg1);
 }
 
+export function HandleWebhook(arg1, arg2) {
+  return window['go']['pkg']['App']['HandleWebhook'](arg1, arg2);
+}
+
 export function InstallArgusScan() {
   return window['go']['pkg']['App']['InstallArgusScan']();
 }
@@ -148,6 +192,10 @@ export function ListAllNamespaces() {
 
 export function ListApplications(arg1) {
   return window['go']['pkg']['App']['ListApplications'](arg1);
+}
+
+export function ListArgusCDApps(arg1) {
+  return window['go']['pkg']['App']['ListArgusCDApps'](arg1);
 }
 
 export function ListContexts() {
@@ -194,8 +242,20 @@ export function QueryTimeSeriesMetrics(arg1, arg2) {
   return window['go']['pkg']['App']['QueryTimeSeriesMetrics'](arg1, arg2);
 }
 
+export function RefreshArgusCDApp(arg1, arg2) {
+  return window['go']['pkg']['App']['RefreshArgusCDApp'](arg1, arg2);
+}
+
 export function ResizeTerminal(arg1, arg2) {
   return window['go']['pkg']['App']['ResizeTerminal'](arg1, arg2);
+}
+
+export function RestartDeployment(arg1, arg2) {
+  return window['go']['pkg']['App']['RestartDeployment'](arg1, arg2);
+}
+
+export function RollbackArgusCDApp(arg1, arg2) {
+  return window['go']['pkg']['App']['RollbackArgusCDApp'](arg1, arg2);
 }
 
 export function RunArgusScan() {
@@ -204,6 +264,14 @@ export function RunArgusScan() {
 
 export function RunCodeSandbox(arg1, arg2) {
   return window['go']['pkg']['App']['RunCodeSandbox'](arg1, arg2);
+}
+
+export function SaveAnomalyRule(arg1) {
+  return window['go']['pkg']['App']['SaveAnomalyRule'](arg1);
+}
+
+export function SaveAnomalySettings(arg1) {
+  return window['go']['pkg']['App']['SaveAnomalySettings'](arg1);
 }
 
 export function SaveNotebook(arg1, arg2) {
@@ -216,6 +284,10 @@ export function SaveRunbook(arg1, arg2) {
 
 export function SaveWorkflow(arg1) {
   return window['go']['pkg']['App']['SaveWorkflow'](arg1);
+}
+
+export function ScaleDeployment(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['ScaleDeployment'](arg1, arg2, arg3);
 }
 
 export function ScanAllImages(arg1) {
@@ -236,6 +308,10 @@ export function SendTerminalInput(arg1) {
 
 export function ServeHTTP(arg1, arg2) {
   return window['go']['pkg']['App']['ServeHTTP'](arg1, arg2);
+}
+
+export function SetPaused(arg1) {
+  return window['go']['pkg']['App']['SetPaused'](arg1);
 }
 
 export function StartEventLoop(arg1) {
@@ -262,8 +338,20 @@ export function SyncApplication(arg1, arg2) {
   return window['go']['pkg']['App']['SyncApplication'](arg1, arg2);
 }
 
+export function SyncArgusCDApp(arg1) {
+  return window['go']['pkg']['App']['SyncArgusCDApp'](arg1);
+}
+
+export function TestArgusCDConnection() {
+  return window['go']['pkg']['App']['TestArgusCDConnection']();
+}
+
 export function TestS3Connection() {
   return window['go']['pkg']['App']['TestS3Connection']();
+}
+
+export function ToggleAnomalyRule(arg1) {
+  return window['go']['pkg']['App']['ToggleAnomalyRule'](arg1);
 }
 
 export function UndeployAgent(arg1) {
@@ -272,4 +360,8 @@ export function UndeployAgent(arg1) {
 
 export function UpdateIncident(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['UpdateIncident'](arg1, arg2, arg3);
+}
+
+export function UpdateSettings(arg1) {
+  return window['go']['pkg']['App']['UpdateSettings'](arg1);
 }

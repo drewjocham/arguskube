@@ -10,12 +10,6 @@ const { result, detail, loading, detailLoading, listResources, getResourceDetail
 
 const resourceKind = props.type || 'configmaps'
 
-const mockConfigmaps = [
-  { name: 'kube-root-ca.crt', namespace: 'default', data: '1', age: '145d' },
-  { name: 'web-app-config', namespace: 'default', data: '4', age: '14d' },
-  { name: 'coredns', namespace: 'kube-system', data: '1', age: '145d' },
-  { name: 'prometheus-server-conf', namespace: 'monitoring', data: '3', age: '42d' },
-]
 
 const configmaps = ref([])
 const cmDetail = ref(null)
@@ -32,7 +26,7 @@ onMounted(async () => {
       age: item.age || '—'
     }))
   } else {
-    configmaps.value = mockConfigmaps
+    configmaps.value = []
   }
 })
 

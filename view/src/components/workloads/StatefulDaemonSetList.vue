@@ -8,11 +8,6 @@ const props = defineProps({
 
 const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
 
-const mockWorkloads = [
-  { name: 'redis-cluster', namespace: 'database', desired: 3, current: 3, ready: 3, age: '14d' },
-  { name: 'elasticsearch', namespace: 'monitoring', desired: 5, current: 5, ready: 4, age: '42d' },
-  { name: 'fluent-bit', namespace: 'kube-system', desired: 12, current: 12, ready: 12, age: '145d' },
-]
 
 const workloads = ref([])
 const wsDetail = ref(null)
@@ -36,7 +31,7 @@ onMounted(async () => {
       }
     })
   } else {
-    workloads.value = mockWorkloads
+    workloads.value = []
   }
 })
 

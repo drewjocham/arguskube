@@ -20,6 +20,8 @@ const (
 type OnlineDataConfig struct {
 	Kubernetes  KubernetesConfig
 	AI          AIConfig
+	ArgoCD      ArgoCDConfig
+	Security    SecurityConfig
 	Features    FeaturesConfig
 	Server      ServerConfig
 	Logging     LoggingConfig
@@ -46,6 +48,21 @@ type AIConfig struct {
 	PopeyeBinary    string `env:"KUBEWATCHER_POPEYE_BIN"`
 	ContextTokenMax int
 	ContextTimeout  time.Duration
+}
+
+// ArgoCDConfig holds connection settings for an Argo CD server.
+type ArgoCDConfig struct {
+	URL      string `env:"ARGOCD_URL"`      // e.g. https://argocd.example.com
+	Token    string `env:"ARGOCD_TOKEN"`    // API bearer token
+	Insecure bool   `env:"ARGOCD_INSECURE"` // skip TLS verification
+}
+
+// SecurityConfig holds optional paths and tokens for security scanning tools.
+// All fields are optional — features degrade gracefully when not configured.
+type SecurityConfig struct {
+	SnykToken    string `env:"SNYK_TOKEN"`              // API token for Snyk CLI
+	TrivyBinary  string `env:"KUBEWATCHER_TRIVY_BIN"`   // path to trivy binary (default: "trivy")
+	FalcoURL     string `env:"KUBEWATCHER_FALCO_URL"`   // Falco gRPC/HTTP endpoint
 }
 
 // FeaturesConfig holds tier and license info.
@@ -86,7 +103,7 @@ func New() (*OnlineDataConfig, error) {
 	cfg := &OnlineDataConfig{
 		Kubernetes: KubernetesConfig{
 			Context:   env("KUBEWATCHER_CONTEXT", ""),
-			Config:    env("KUBEWATCHER_KUBECONFIG", ""),
+			Config:    env("KUBEWATCHER_KUBECONFIG", env("KUBECONFIG", "")),
 			Namespace: env("KUBEWATCHER_NAMESPACE", ""),
 			InCluster: env("KUBEWATCHER_IN_CLUSTER", "false") == "true",
 		},
@@ -100,6 +117,16 @@ func New() (*OnlineDataConfig, error) {
 			PopeyeBinary:    env("KUBEWATCHER_POPEYE_BIN", "popeye"),
 			ContextTokenMax: 8000,
 			ContextTimeout:  3 * time.Second,
+		},
+		ArgoCD: ArgoCDConfig{
+			URL:      env("ARGOCD_URL", ""),
+			Token:    env("ARGOCD_TOKEN", ""),
+			Insecure: env("ARGOCD_INSECURE", "false") == "true",
+		},
+		Security: SecurityConfig{
+			SnykToken:   env("SNYK_TOKEN", ""),
+			TrivyBinary: env("KUBEWATCHER_TRIVY_BIN", "trivy"),
+			FalcoURL:    env("KUBEWATCHER_FALCO_URL", ""),
 		},
 		Features: FeaturesConfig{
 			Tier:       parseTier(env("KUBEWATCHER_TIER", "pro")), // pro for dev; production gates via license

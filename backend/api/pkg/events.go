@@ -48,6 +48,9 @@ func (a *App) pollAlerts(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if a.paused.Load() {
+				continue
+			}
 			alertList, err := a.k8s.DetectAlerts(ctx)
 			if err != nil {
 				a.logger.WarnContext(ctx, "alert poll failed",
@@ -55,6 +58,11 @@ func (a *App) pollAlerts(ctx context.Context) {
 				)
 				continue
 			}
+			// Merge webhook-received alerts into the live stream.
+			a.webhookMu.RLock()
+			alertList = append(alertList, a.webhookAlerts...)
+			a.webhookMu.RUnlock()
+
 			runtime.EventsEmit(ctx, EventAlertUpdate, alertList)
 
 			// Auto-investigate new alerts.
@@ -122,6 +130,9 @@ func (a *App) pollMetrics(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if a.paused.Load() {
+				continue
+			}
 			m, err := a.k8s.GetMetrics(ctx)
 			if err != nil {
 				continue
@@ -141,68 +152,100 @@ func (a *App) pollLogs(ctx context.Context) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
-	var lastPoll time.Time
+	firstRun := true
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if lastPoll.IsZero() {
-				lastPoll = time.Now().Add(-3 * time.Second)
+			if a.paused.Load() {
+				continue
 			}
-			now := time.Now()
-			sinceTime := metav1.NewTime(lastPoll)
+			a.emitRecentLogs(ctx, firstRun)
+			firstRun = false
+		}
+	}
+}
 
-			// Get all pods across all namespaces
-			pods, err := a.k8s.GetClientset().CoreV1().Pods("").List(ctx, metav1.ListOptions{})
+// emitRecentLogs fetches recent log lines from running pods and emits them.
+// On the first call it fetches the last 50 lines per container for an initial
+// seed; subsequent calls use SinceTime to get only new lines.
+func (a *App) emitRecentLogs(ctx context.Context, seed bool) {
+	ns := ""
+	if a.cfg != nil {
+		ns = a.cfg.Kubernetes.Namespace
+	}
+
+	pods, err := a.k8s.GetClientset().CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		a.logger.WarnContext(ctx, "log poll: list pods failed", slog.String("error", err.Error()))
+		return
+	}
+
+	now := time.Now()
+	emitted := 0
+	const maxLines = 200 // cap total lines per tick
+
+	for i := range pods.Items {
+		if emitted >= maxLines {
+			break
+		}
+		p := &pods.Items[i]
+		if p.Status.Phase != corev1.PodRunning {
+			continue
+		}
+		for _, cs := range p.Status.ContainerStatuses {
+			if emitted >= maxLines {
+				break
+			}
+			opts := &corev1.PodLogOptions{
+				Container: cs.Name,
+			}
+			if seed {
+				// First run: grab last 50 lines per container for initial display.
+				var tail int64 = 50
+				opts.TailLines = &tail
+			} else {
+				// Subsequent runs: only new lines since last poll.
+				since := metav1.NewTime(now.Add(-4 * time.Second))
+				opts.SinceTime = &since
+			}
+
+			req := a.k8s.GetClientset().CoreV1().Pods(p.Namespace).GetLogs(p.Name, opts)
+			stream, err := req.Stream(ctx)
 			if err != nil {
 				continue
 			}
 
-			for i := range pods.Items {
-				p := &pods.Items[i]
-				if p.Status.Phase != corev1.PodRunning {
+			scanner := bufio.NewScanner(stream)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if len(line) == 0 {
 					continue
 				}
-				for _, cs := range p.Status.ContainerStatuses {
-					opts := &corev1.PodLogOptions{
-						Container: cs.Name,
-						SinceTime: &sinceTime,
-					}
-					req := a.k8s.GetClientset().CoreV1().Pods(p.Namespace).GetLogs(p.Name, opts)
-					stream, err := req.Stream(ctx)
-					if err != nil {
-						continue
-					}
 
-					scanner := bufio.NewScanner(stream)
-					for scanner.Scan() {
-						line := scanner.Text()
-						if len(line) == 0 {
-							continue
-						}
-						
-						lowerMsg := strings.ToLower(line)
-						level := "info"
-						if strings.Contains(lowerMsg, "error") || strings.Contains(lowerMsg, "fail") || strings.Contains(lowerMsg, "fatal") {
-							level = "error"
-						} else if strings.Contains(lowerMsg, "warn") {
-							level = "warn"
-						}
+				lowerMsg := strings.ToLower(line)
+				level := "info"
+				if strings.Contains(lowerMsg, "error") || strings.Contains(lowerMsg, "fail") || strings.Contains(lowerMsg, "fatal") {
+					level = "error"
+				} else if strings.Contains(lowerMsg, "warn") {
+					level = "warn"
+				}
 
-						entry := alerts.LogLine{
-							Timestamp: now,
-							Source:    "[" + p.Name + "]",
-							Level:     level,
-							Message:   line,
-						}
-						runtime.EventsEmit(ctx, EventLogLine, entry)
-					}
-					stream.Close()
+				entry := alerts.LogLine{
+					Timestamp: now,
+					Source:    "[" + p.Name + "]",
+					Level:     level,
+					Message:   line,
+				}
+				runtime.EventsEmit(ctx, EventLogLine, entry)
+				emitted++
+				if emitted >= maxLines {
+					break
 				}
 			}
-			lastPoll = now
+			stream.Close()
 		}
 	}
 }

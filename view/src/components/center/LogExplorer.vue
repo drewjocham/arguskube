@@ -1,30 +1,15 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useLogs } from '../../composables/useWails'
 import { useWailsEvent, Events } from '../../composables/useEvents'
+import { tokenize } from '../../utils/logHighlight'
 
 const { entries: backendLogs, histogram: backendHistogram, fields: backendFields, total, loading: logLoading, queryTime: backendQueryTime, error: logError, queryLogs } = useLogs()
 
-// Fallback mock logs for dev mode.
-const mockLogs = [
-  { time: '2026-04-29 09:12:42.786', message: '172.70.111.27 - - [29/Apr/2026:07:12:42 +0000] "POST /select/logsql/field_names HTTP/2.0" 200 774 "-" "-" 4048 "logging-logs-ingress" 4ms', pod: 'traefik-abc12', namespace: 'traefik', container: 'traefik', node: 'node-1' },
-  { time: '2026-04-29 09:12:41.956', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/stream_field_values HTTP/2.0" 200 42 "-" "-" 4047 "logging-logs-ingress" 6ms', pod: 'traefik-abc12', namespace: 'traefik', container: 'traefik', node: 'node-1' },
-  { time: '2026-04-29 09:12:41.955', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/stream_field_values HTTP/2.0" 200 72 "-" "-" 4046 "logging-logs-ingress" 6ms', pod: 'traefik-abc12', namespace: 'traefik', container: 'traefik', node: 'node-1' },
-  { time: '2026-04-29 09:12:41.942', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/hits HTTP/2.0" 200 281 "-" "-" 4045 "logging-logs-ingress" 2ms', pod: 'traefik-def34', namespace: 'traefik', container: 'traefik', node: 'node-2' },
-  { time: '2026-04-29 09:12:41.724', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/stream_field_names HTTP/2.0" 200 149 "-" "-" 4043 "logging-logs-ingress" 8ms', pod: 'traefik-def34', namespace: 'traefik', container: 'traefik', node: 'node-2' },
-  { time: '2026-04-29 09:12:41.721', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/query HTTP/2.0" 200 3038 "-" "-" 4044 "logging-logs-ingress" 2ms', pod: 'traefik-def34', namespace: 'traefik', container: 'traefik', node: 'node-2' },
-  { time: '2026-04-29 09:12:41.403', message: '172.70.111.27 - - [29/Apr/2026:07:12:41 +0000] "POST /select/logsql/field_names HTTP/2.0" 200 626 "-" "-" 4042 "logging-logs-ingress" 2ms', pod: 'traefik-abc12', namespace: 'traefik', container: 'traefik', node: 'node-1' },
-]
 
-const mockHistogram = [
-  0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 2, 0, 0, 0, 0,
-  1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 14, 12
-]
 
-// Computed: use backend data if available, else mock.
-const allLogs = computed(() => backendLogs.value.length > 0 ? backendLogs.value : mockLogs)
-const histogramData = computed(() => backendHistogram.value.length > 0 ? backendHistogram.value : mockHistogram)
+const allLogs = computed(() => backendLogs.value || [])
+const histogramData = computed(() => backendHistogram.value || [])
 
 // Query and filter state.
 const query = ref('*')
@@ -99,7 +84,43 @@ function toggleLogRow(index) {
 }
 
 // Filtered logs view.
-const fakeLogs = computed(() => allLogs.value.slice(0, limit.value))
+const displayLogs = computed(() => allLogs.value.slice(0, limit.value))
+
+// Resizable time column.
+const timeColWidth = ref(170)
+let colDragging = false
+let colStartX = 0
+let colStartWidth = 0
+
+function onColDragStart(e) {
+  colDragging = true
+  colStartX = e.clientX
+  colStartWidth = timeColWidth.value
+  document.addEventListener('mousemove', onColDragMove)
+  document.addEventListener('mouseup', onColDragEnd)
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  e.preventDefault()
+}
+
+function onColDragMove(e) {
+  if (!colDragging) return
+  const delta = e.clientX - colStartX
+  timeColWidth.value = Math.max(80, Math.min(400, colStartWidth + delta))
+}
+
+function onColDragEnd() {
+  colDragging = false
+  document.removeEventListener('mousemove', onColDragMove)
+  document.removeEventListener('mouseup', onColDragEnd)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
+
+onUnmounted(() => {
+  document.removeEventListener('mousemove', onColDragMove)
+  document.removeEventListener('mouseup', onColDragEnd)
+})
 
 // Initial load.
 onMounted(() => {
@@ -226,7 +247,7 @@ useWailsEvent(Events.LOG_LINE, (data) => {
             <div class="toolbar-tab" :class="{ active: activeTab === 'json' }" @click="activeTab = 'json'">JSON</div>
           </div>
           <div class="toolbar-stats">
-            Total logs returned: <b>{{ fakeLogs.length }}</b>
+            Total logs returned: <b>{{ displayLogs.length }}</b>
           </div>
         </div>
 
@@ -239,15 +260,16 @@ useWailsEvent(Events.LOG_LINE, (data) => {
         <div class="log-list">
           <!-- Group / Table view -->
           <template v-if="activeTab !== 'json'">
-            <div v-for="(log, i) in fakeLogs" :key="i">
+            <div v-for="(log, i) in displayLogs" :key="i">
               <div class="log-row" @click="toggleLogRow(i)">
                 <div class="log-expander" :class="{ expanded: expandedRow === i }">›</div>
-                <div class="log-time">{{ log.time }}</div>
-                <div class="log-message">{{ log.message }}</div>
+                <div class="log-time" :style="{ width: timeColWidth + 'px' }">{{ log.time }}</div>
+                <div class="col-resize-handle" @mousedown.stop="onColDragStart"></div>
+                <div class="log-message"><template v-for="(seg, si) in tokenize(log.message)" :key="si"><span v-if="seg.cls" :class="seg.cls">{{ seg.text }}</span><template v-else>{{ seg.text }}</template></template></div>
               </div>
               <div v-if="expandedRow === i" class="log-expanded">
                 <div class="expanded-field"><span class="ef-key">_time</span><span class="ef-val">{{ log.time }}</span></div>
-                <div class="expanded-field"><span class="ef-key">_msg</span><span class="ef-val">{{ log.message }}</span></div>
+                <div class="expanded-field"><span class="ef-key">_msg</span><span class="ef-val"><template v-for="(seg, si) in tokenize(log.message)" :key="si"><span v-if="seg.cls" :class="seg.cls">{{ seg.text }}</span><template v-else>{{ seg.text }}</template></template></span></div>
                 <div class="expanded-field"><span class="ef-key">kubernetes.container_name</span><span class="ef-val">traefik</span></div>
                 <div class="expanded-field"><span class="ef-key">kubernetes.pod_namespace</span><span class="ef-val">traefik</span></div>
               </div>
@@ -255,7 +277,7 @@ useWailsEvent(Events.LOG_LINE, (data) => {
           </template>
           <!-- JSON view -->
           <template v-else>
-            <pre class="json-view">{{ JSON.stringify(fakeLogs, null, 2) }}</pre>
+            <pre class="json-view">{{ JSON.stringify(displayLogs, null, 2) }}</pre>
           </template>
         </div>
       </div>
@@ -535,9 +557,19 @@ useWailsEvent(Events.LOG_LINE, (data) => {
 }
 .log-expander.expanded { transform: rotate(90deg); color: var(--accent); }
 .log-time {
-  width: 170px;
   color: var(--text3);
   flex-shrink: 0;
+}
+.col-resize-handle {
+  width: 5px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+  align-self: stretch;
+}
+.col-resize-handle:hover {
+  background: var(--accent);
 }
 .log-message {
   flex: 1;
@@ -574,4 +606,17 @@ useWailsEvent(Events.LOG_LINE, (data) => {
 
 /* Execute button states */
 .action-btn.executing { opacity: 0.7; pointer-events: none; }
+
+/* Log syntax highlighting */
+.hl-fatal    { color: #ff4040; font-weight: 700; background: rgba(255,64,64,0.12); padding: 0 3px; border-radius: 2px; }
+.hl-error    { color: var(--red2); font-weight: 600; }
+.hl-warn     { color: var(--amber2); font-weight: 600; }
+.hl-info     { color: var(--accent2); }
+.hl-debug    { color: var(--text3); }
+.hl-method   { color: #c792ea; font-weight: 500; }
+.hl-string   { color: #c3e88d; }
+.hl-key      { color: #89ddff; }
+.hl-ip       { color: #f78c6c; }
+.hl-label    { color: #a78bfa; }
+.hl-duration { color: var(--green); }
 </style>

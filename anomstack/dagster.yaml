@@ -1,0 +1,54 @@
+run_launcher:
+  module: dagster.core.launcher
+  class: DefaultRunLauncher
+
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: DefaultRunCoordinator
+
+# Run monitoring for local development
+run_monitoring:
+  enabled: true
+  start_timeout_seconds: 300   # 5 minutes to start
+  cancel_timeout_seconds: 180  # 3 minutes to cancel
+  max_runtime_seconds: 900     # 15 minutes max runtime per run
+  poll_interval_seconds: 60    # Check every minute
+
+storage:
+  sqlite:
+    base_dir:
+      env: ANOMSTACK_DAGSTER_SQLITE_STORAGE_BASE_DIR
+
+compute_logs:
+  module: dagster.core.storage.local_compute_log_manager
+  class: LocalComputeLogManager
+  config:
+    base_dir:
+      env: ANOMSTACK_DAGSTER_LOCAL_COMPUTE_LOG_MANAGER_DIRECTORY
+
+local_artifact_storage:
+  module: dagster.core.storage.root
+  class: LocalArtifactStorage
+  config:
+    base_dir:
+      env: ANOMSTACK_DAGSTER_LOCAL_ARTIFACT_STORAGE_DIR
+
+retention:
+  schedule:
+    purge_after_days: 3  # Reduced from 7 to prevent disk buildup
+  sensor:
+    purge_after_days:
+      skipped: 1   # Keep only 1 day of skipped runs
+      failure: 3   # Keep 3 days of failures for debugging
+      success: 1   # Keep only 1 day of successful runs
+
+schedules:
+  use_threads: true
+  num_workers: 8
+
+sensors:
+  use_threads: true
+  num_workers: 4
+
+telemetry:
+  enabled: true

@@ -1,6 +1,6 @@
 <script setup>
-import { ref, provide } from 'vue'
-import { useAppMode, useClusterInfo, useMetrics, useAlerts, useDiagnostics, useFeatures } from './composables/useWails'
+import { ref, provide, onMounted, onUnmounted } from 'vue'
+import { callGo, useAppMode, useClusterInfo, useMetrics, useAlerts, useDiagnostics, useFeatures } from './composables/useWails'
 import { useWailsEvent, Events } from './composables/useEvents'
 import ToastContainer from './components/ToastContainer.vue'
 import Titlebar from './components/titlebar/Titlebar.vue'
@@ -23,6 +23,11 @@ const activeNav = ref('alerts')
 const terminalOpen = ref(false)
 const terminalHeight = ref(220)
 const popOutOpen = ref(false)
+const diagCollapsed = ref(false)
+
+function toggleDiag() {
+  diagCollapsed.value = !diagCollapsed.value
+}
 
 useWailsEvent(Events.ALERT_UPDATE, (data) => {
   if (data) alerts.value = data
@@ -84,6 +89,13 @@ function onDragEnd() {
   document.removeEventListener('mouseup', onDragEnd)
 }
 
+// Pause background polling when the window is hidden/minimized.
+function onVisibilityChange() {
+  callGo('SetPaused', document.hidden).catch(() => {})
+}
+onMounted(() => document.addEventListener('visibilitychange', onVisibilityChange))
+onUnmounted(() => document.removeEventListener('visibilitychange', onVisibilityChange))
+
 provide('tier', tier)
 provide('isAllowed', isAllowed)
 </script>
@@ -113,7 +125,13 @@ provide('isAllowed', isAllowed)
             :activeNav="activeNav"
             @select-alert="onAlertSelect"
           />
+          <div class="diag-collapse-bar" @click="toggleDiag" :title="diagCollapsed ? 'Show AI panel' : 'Hide AI panel'">
+            <svg :class="{ flipped: diagCollapsed }" width="10" height="10" viewBox="0 0 10 10">
+              <polyline points="3 2 7 5 3 8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
           <DiagnosticsPanel
+            v-show="!diagCollapsed"
             :selectedAlert="selectedAlert"
             :bundle="bundle"
             :loading="diagLoading"
@@ -231,4 +249,29 @@ provide('isAllowed', isAllowed)
   transition: all 0.15s;
 }
 .terminal-close:hover { background: var(--bg4); color: var(--text); }
+
+/* Collapsible AI panel toggle */
+.diag-collapse-bar {
+  width: 14px;
+  flex-shrink: 0;
+  background: var(--bg2);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text3);
+  transition: background 0.15s, color 0.15s;
+}
+.diag-collapse-bar:hover {
+  background: var(--bg3);
+  color: var(--text);
+}
+.diag-collapse-bar svg {
+  transition: transform 0.2s ease;
+}
+.diag-collapse-bar svg.flipped {
+  transform: rotate(180deg);
+}
 </style>

@@ -7,14 +7,6 @@ const { logs: podLogs, loading: logsLoading, fetch: fetchLogs } = usePodLogs()
 const { lines: streamLines, streaming, error: streamError, startStream, clear: clearStream } = useLogStream()
 const { queryMetrics } = useTimeSeriesMetrics()
 
-// Demo data shown when the backend is unreachable or returns nothing.
-const mockPods = [
-  { name: 'api-gateway-5f8b9c7d4-x2k9p', namespace: 'default', status: 'Running', statusColor: 'green', restarts: '0', node: 'node-1', cpu: '50m', mem: '128Mi', age: '3d', controlledBy: 'ReplicaSet', qos: 'Burstable' },
-  { name: 'frontend-7c6d8f9b2-m4n7q', namespace: 'default', status: 'Running', statusColor: 'green', restarts: '2', node: 'node-2', cpu: '100m', mem: '256Mi', age: '1d', controlledBy: 'ReplicaSet', qos: 'Burstable' },
-  { name: 'postgres-0', namespace: 'database', status: 'Running', statusColor: 'green', restarts: '0', node: 'node-1', cpu: '250m', mem: '512Mi', age: '7d', controlledBy: 'StatefulSet', qos: 'Guaranteed' },
-  { name: 'redis-cache-6b4c8d2f1-p9r3s', namespace: 'cache', status: 'Running', statusColor: 'green', restarts: '0', node: 'node-2', cpu: '25m', mem: '64Mi', age: '5d', controlledBy: 'ReplicaSet', qos: 'Burstable' },
-  { name: 'worker-processor-8e7f6a5b3-k1l2m', namespace: 'default', status: 'CrashLoopBackOff', statusColor: 'red', restarts: '14', node: 'node-1', cpu: '—', mem: '—', age: '2h', controlledBy: 'ReplicaSet', qos: 'BestEffort' },
-]
 
 const pods = ref([])
 const podDetail = ref(null)
@@ -40,7 +32,7 @@ async function fetchPods() {
     if (resourceError.value) {
       console.error('[PodList] backend error:', resourceError.value)
       connectionError.value = resourceError.value
-      pods.value = mockPods
+      pods.value = []
       return
     }
 
@@ -52,15 +44,15 @@ async function fetchPods() {
       console.log(`[PodList] loaded ${pods.value.length} real pods`)
     } else if (result.value && result.value.items && result.value.items.length === 0) {
       connectionError.value = 'Backend returned 0 pods. Check namespace filter or cluster connection.'
-      pods.value = mockPods
+      pods.value = []
     } else {
-      connectionError.value = 'Could not reach backend — showing demo data.'
-      pods.value = mockPods
+      connectionError.value = 'Could not reach backend — no data to display.'
+      pods.value = []
     }
   } catch (e) {
     console.error('[PodList] unexpected error in fetchPods:', e)
     connectionError.value = `Error: ${e?.message || e}`
-    pods.value = mockPods
+    pods.value = []
   }
 }
 
@@ -342,9 +334,14 @@ onUnmounted(() => {
           <div class="col-mem font-mono">{{ p.mem }}</div>
           <div class="col-age font-mono" style="display:flex; justify-content:space-between; align-items:center;">
             {{ p.age }}
-            <svg class="chevron" :class="{ open: expandedPod === p.name }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
+            <div class="row-actions">
+              <button class="row-delete-btn" @click.stop="confirmDelete = p" title="Delete pod">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+              <svg class="chevron" :class="{ open: expandedPod === p.name }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
           </div>
         </div>
 
@@ -598,6 +595,16 @@ onUnmounted(() => {
 .pod-name-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .font-mono { font-family: 'SF Mono', Consolas, monospace; color: #b0b4ba; font-size: 12px; }
 .high-restarts { color: #f5a623 !important; font-weight: 600; }
+
+.row-actions { display: flex; align-items: center; gap: 6px; }
+
+.row-delete-btn {
+  opacity: 0; background: none; border: 1px solid transparent; color: var(--text3);
+  cursor: pointer; padding: 3px; border-radius: 4px; display: flex; align-items: center;
+  justify-content: center; transition: all 0.15s;
+}
+.pod-row:hover .row-delete-btn { opacity: 1; }
+.row-delete-btn:hover { color: #f05454; border-color: rgba(240, 84, 84, 0.3); background: rgba(240, 84, 84, 0.08); }
 
 .chevron { transition: transform 0.2s ease; color: #6b7078; flex-shrink: 0; }
 .chevron.open { transform: rotate(180deg); }

@@ -6,18 +6,7 @@ const props = defineProps({
   type: { type: String, default: 'networkpolicies' }
 })
 
-const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
-
-const mockPolicies = [
-  { name: 'default-deny-all', namespace: 'default', podSelector: '<none>', ingress: false, egress: false, age: '145d' },
-  { name: 'allow-dns', namespace: 'default', podSelector: '<none>', ingress: false, egress: true, age: '145d' },
-  { name: 'api-allow', namespace: 'backend', podSelector: 'app=api', ingress: true, egress: true, age: '42d' },
-]
-
-const mockEndpoints = [
-  { name: 'kubernetes', namespace: 'default', endpoints: '10.0.1.12:8443', age: '145d' },
-  { name: 'web-app-svc', namespace: 'default', endpoints: '10.0.2.45:80, 10.0.1.143:80', age: '14d' },
-]
+const { result, detail, loading, error, detailLoading, listResources, getResourceDetail } = useResources()
 
 const policies = ref([])
 const endpoints = ref([])
@@ -25,9 +14,9 @@ const itemDetail = ref(null)
 const expandedItem = ref(null)
 const notification = ref(null)
 
-onMounted(async () => {
-  const resourceType = props.type === 'endpoints' ? 'endpoints' : 'networkpolicies'
-  await listResources(resourceType, '')
+const resourceType = props.type === 'endpoints' ? 'endpoints' : 'networkpolicies'
+
+function mapItems() {
   if (result.value && result.value.items && result.value.items.length > 0) {
     if (resourceType === 'networkpolicies') {
       policies.value = result.value.items.map(item => ({
@@ -47,10 +36,19 @@ onMounted(async () => {
       }))
     }
   } else {
-    policies.value = mockPolicies
-    endpoints.value = mockEndpoints
+    policies.value = []
+    endpoints.value = []
   }
-})
+}
+
+async function refresh(force = false) {
+  await listResources(resourceType, '', force)
+  mapItems()
+}
+
+onMounted(() => refresh())
+
+const items = () => resourceType === 'networkpolicies' ? policies.value : endpoints.value
 
 async function toggleExpand(itemName) {
   if (expandedItem.value === itemName) {
@@ -73,8 +71,13 @@ async function toggleExpand(itemName) {
 <template>
   <div class="np-view">
     <div class="header">
-      <div class="title" style="text-transform: capitalize;">{{ type }}</div>
-      <div class="subtitle">{{ type === 'networkpolicies' ? 'Controls traffic flow at the IP address or port level' : 'Network endpoints for Services' }}</div>
+      <div class="header-row">
+        <div>
+          <div class="title" style="text-transform: capitalize;">{{ type }}</div>
+          <div class="subtitle">{{ type === 'networkpolicies' ? 'Controls traffic flow at the IP address or port level' : 'Network endpoints for Services' }}</div>
+        </div>
+        <button class="refresh-btn" @click="refresh(true)" :disabled="loading">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
+      </div>
     </div>
     
     <div v-if="notification" class="agent-notification">
@@ -84,7 +87,11 @@ async function toggleExpand(itemName) {
       <div class="notif-text">{{ notification }}</div>
     </div>
 
-    <div class="np-list">
+    <div v-if="loading && !items()" class="state-box">Loading…</div>
+    <div v-else-if="error" class="state-box state-error">{{ error }}</div>
+    <div v-else-if="!items().length" class="state-box">No {{ type }} found in this cluster.</div>
+
+    <div v-else class="np-list">
       <div v-if="type === 'networkpolicies'" class="np-header-row np-grid">
         <div class="col-name">Name</div>
         <div class="col-ns">Namespace</div>
@@ -163,6 +170,12 @@ async function toggleExpand(itemName) {
 .np-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; height: 100%; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
+.header-row { display: flex; justify-content: space-between; align-items: flex-start; }
+.refresh-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #b0b4ba; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+.refresh-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.state-box { padding: 40px; text-align: center; color: #8b8f96; font-size: 13px; background: #1e2023; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; }
+.state-error { color: #f05454; }
 
 .np-list { background: #1e2023; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; overflow: hidden; }
 

@@ -8,17 +8,7 @@ const props = defineProps({
 
 const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
 
-const mockJobs = [
-  { name: 'db-backup', namespace: 'database', completions: '1/1', duration: '45s', status: 'Complete', age: '14h' },
-  { name: 'data-sync-worker', namespace: 'default', completions: '0/1', duration: '2m', status: 'Running', age: '2m' },
-  { name: 'failed-migration', namespace: 'public', completions: '0/1', duration: '12s', status: 'Failed', age: '1d' },
-]
 
-const mockCronjobs = [
-  { name: 'nightly-backup', namespace: 'database', schedule: '0 0 * * *', suspend: false, active: 0, lastSchedule: '14h', age: '145d' },
-  { name: 'log-rotation', namespace: 'kube-system', schedule: '*/15 * * * *', suspend: false, active: 1, lastSchedule: '4m', age: '42d' },
-  { name: 'stale-cleanup', namespace: 'default', schedule: '0 2 * * 0', suspend: true, active: 0, lastSchedule: '4d', age: '12d' },
-]
 
 const jobs = ref([])
 const cronjobs = ref([])
@@ -54,13 +44,13 @@ async function fetchData() {
         }))
       }
     } else {
-      jobs.value = mockJobs
-      cronjobs.value = mockCronjobs
+      jobs.value = []
+      cronjobs.value = []
     }
   } catch (e) {
     console.error('[JobCronJobList] fetch failed:', e)
-    jobs.value = mockJobs
-    cronjobs.value = mockCronjobs
+    jobs.value = []
+    cronjobs.value = []
   }
 }
 
