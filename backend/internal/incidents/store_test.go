@@ -13,7 +13,7 @@ import (
 // testStore creates a SQLite-backed incident store using a temp-dir DB.
 func testStore(t *testing.T) *Store {
 	t.Helper()
-	logger := slog.New(slog.NewDiscardHandler())
+	logger := slog.New(slog.DiscardHandler)
 	dataDir := t.TempDir()
 	db, err := sqlitedb.Open(dataDir, logger)
 	if err != nil {
@@ -246,7 +246,7 @@ func TestConcurrentCreatesDoNotLoseData(t *testing.T) {
 // TestPersistenceCreateAndReload tests that incidents survive DB reopen.
 func TestPersistenceCreateAndReload(t *testing.T) {
 	dataDir := t.TempDir()
-	logger := slog.New(slog.NewDiscardHandler())
+	logger := slog.New(slog.DiscardHandler)
 	ctx := context.Background()
 
 	// Create first store and add incidents

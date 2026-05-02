@@ -167,6 +167,10 @@ func (c *Client) GetResourceDetail(ctx context.Context, kind, namespace, name st
 		return c.getPVCDetail(ctx, namespace, name)
 	case "ingresses":
 		return c.getIngressDetail(ctx, namespace, name)
+	case "cronjobs":
+		return c.getCronJobDetail(ctx, namespace, name)
+	case "jobs":
+		return c.getJobDetail(ctx, namespace, name)
 	default:
 		return c.getGenericDetail(ctx, kind, namespace, name)
 	}

@@ -12,7 +12,7 @@ import (
 // testStore creates a SQLite-backed workflow store using an in-memory DB.
 func testStore(t *testing.T) *Store {
 	t.Helper()
-	logger := slog.New(slog.NewDiscardHandler())
+	logger := slog.New(slog.DiscardHandler)
 	dataDir := t.TempDir()
 	db, err := sqlitedb.Open(dataDir, logger)
 	if err != nil {

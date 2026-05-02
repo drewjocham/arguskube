@@ -555,6 +555,190 @@ func (c *Client) getDaemonSetDetail(ctx context.Context, ns, name string) (*Reso
 	}, nil
 }
 
+func (c *Client) getCronJobDetail(ctx context.Context, ns, name string) (*ResourceDetailResult, error) {
+	cj, err := c.cs.BatchV1().CronJobs(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	suspend := "False"
+	if cj.Spec.Suspend != nil && *cj.Spec.Suspend {
+		suspend = "True"
+	}
+
+	concurrencyPolicy := string(cj.Spec.ConcurrencyPolicy)
+	if concurrencyPolicy == "" {
+		concurrencyPolicy = "Allow"
+	}
+
+	lastSchedule := "—"
+	if cj.Status.LastScheduleTime != nil {
+		lastSchedule = fmtAge(cj.Status.LastScheduleTime.Time) + " ago"
+	}
+
+	lastSuccess := "—"
+	if cj.Status.LastSuccessfulTime != nil {
+		lastSuccess = fmtAge(cj.Status.LastSuccessfulTime.Time) + " ago"
+	}
+
+	props := []KeyValue{
+		{Key: "Schedule", Value: cj.Spec.Schedule},
+		{Key: "Suspend", Value: suspend},
+		{Key: "Concurrency Policy", Value: concurrencyPolicy},
+		{Key: "Active Jobs", Value: fmt.Sprintf("%d", len(cj.Status.Active))},
+		{Key: "Last Scheduled", Value: lastSchedule},
+		{Key: "Last Successful", Value: lastSuccess},
+	}
+
+	if cj.Spec.StartingDeadlineSeconds != nil {
+		props = append(props, KeyValue{Key: "Starting Deadline", Value: fmt.Sprintf("%ds", *cj.Spec.StartingDeadlineSeconds)})
+	}
+
+	if cj.Spec.SuccessfulJobsHistoryLimit != nil {
+		props = append(props, KeyValue{Key: "Success History Limit", Value: fmt.Sprintf("%d", *cj.Spec.SuccessfulJobsHistoryLimit)})
+	}
+	if cj.Spec.FailedJobsHistoryLimit != nil {
+		props = append(props, KeyValue{Key: "Failed History Limit", Value: fmt.Sprintf("%d", *cj.Spec.FailedJobsHistoryLimit)})
+	}
+
+	// Container images from job template.
+	for _, ctr := range cj.Spec.JobTemplate.Spec.Template.Spec.Containers {
+		props = append(props, KeyValue{Key: "Container: " + ctr.Name, Value: ctr.Image})
+	}
+
+	// Restart policy from job template.
+	if rp := cj.Spec.JobTemplate.Spec.Template.Spec.RestartPolicy; rp != "" {
+		props = append(props, KeyValue{Key: "Restart Policy", Value: string(rp)})
+	}
+
+	// Active job references — stash in Extra for the frontend.
+	activeJobs := make([]map[string]string, 0, len(cj.Status.Active))
+	for _, ref := range cj.Status.Active {
+		activeJobs = append(activeJobs, map[string]string{
+			"name":      ref.Name,
+			"namespace": ref.Namespace,
+		})
+	}
+
+	events := c.getResourceEvents(ctx, ns, "CronJob", name)
+
+	result := &ResourceDetailResult{
+		Kind:       "CronJob",
+		Name:       cj.Name,
+		Namespace:  cj.Namespace,
+		Created:    fmtTimestamp(cj.CreationTimestamp.Time),
+		Labels:     cj.Labels,
+		Annotations: cj.Annotations,
+		Properties: props,
+		Events:     events,
+	}
+
+	if len(activeJobs) > 0 {
+		result.Extra = map[string]interface{}{
+			"activeJobs": activeJobs,
+		}
+	}
+
+	return result, nil
+}
+
+func (c *Client) getJobDetail(ctx context.Context, ns, name string) (*ResourceDetailResult, error) {
+	j, err := c.cs.BatchV1().Jobs(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	// Determine status.
+	status := "Active"
+	for _, cond := range j.Status.Conditions {
+		if cond.Type == "Complete" && cond.Status == "True" {
+			status = "Complete"
+			break
+		}
+		if cond.Type == "Failed" && cond.Status == "True" {
+			status = "Failed"
+			break
+		}
+	}
+
+	completions := int32(1)
+	if j.Spec.Completions != nil {
+		completions = *j.Spec.Completions
+	}
+	parallelism := int32(1)
+	if j.Spec.Parallelism != nil {
+		parallelism = *j.Spec.Parallelism
+	}
+
+	duration := "—"
+	if j.Status.StartTime != nil {
+		if j.Status.CompletionTime != nil {
+			d := j.Status.CompletionTime.Time.Sub(j.Status.StartTime.Time)
+			duration = d.Round(1e9).String()
+		} else {
+			duration = "Running"
+		}
+	}
+
+	props := []KeyValue{
+		{Key: "Status", Value: status},
+		{Key: "Completions", Value: fmt.Sprintf("%d/%d", j.Status.Succeeded, completions)},
+		{Key: "Parallelism", Value: fmt.Sprintf("%d", parallelism)},
+		{Key: "Duration", Value: duration},
+		{Key: "Active Pods", Value: fmt.Sprintf("%d", j.Status.Active)},
+		{Key: "Succeeded Pods", Value: fmt.Sprintf("%d", j.Status.Succeeded)},
+		{Key: "Failed Pods", Value: fmt.Sprintf("%d", j.Status.Failed)},
+	}
+
+	if j.Spec.BackoffLimit != nil {
+		props = append(props, KeyValue{Key: "Backoff Limit", Value: fmt.Sprintf("%d", *j.Spec.BackoffLimit)})
+	}
+	if j.Spec.ActiveDeadlineSeconds != nil {
+		props = append(props, KeyValue{Key: "Active Deadline", Value: fmt.Sprintf("%ds", *j.Spec.ActiveDeadlineSeconds)})
+	}
+	if j.Spec.TTLSecondsAfterFinished != nil {
+		props = append(props, KeyValue{Key: "TTL After Finished", Value: fmt.Sprintf("%ds", *j.Spec.TTLSecondsAfterFinished)})
+	}
+
+	if len(j.OwnerReferences) > 0 {
+		props = append(props, KeyValue{Key: "Controlled By", Value: j.OwnerReferences[0].Kind + "/" + j.OwnerReferences[0].Name})
+	}
+
+	// Container images.
+	for _, ctr := range j.Spec.Template.Spec.Containers {
+		props = append(props, KeyValue{Key: "Container: " + ctr.Name, Value: ctr.Image})
+	}
+
+	if rp := j.Spec.Template.Spec.RestartPolicy; rp != "" {
+		props = append(props, KeyValue{Key: "Restart Policy", Value: string(rp)})
+	}
+
+	conditions := make([]ResourceCondition, 0)
+	for _, cond := range j.Status.Conditions {
+		conditions = append(conditions, ResourceCondition{
+			Type:    string(cond.Type),
+			Status:  string(cond.Status),
+			Reason:  orDash(cond.Reason),
+			Message: orDash(cond.Message),
+			Age:     fmtAge(cond.LastTransitionTime.Time),
+		})
+	}
+
+	events := c.getResourceEvents(ctx, ns, "Job", name)
+
+	return &ResourceDetailResult{
+		Kind:        "Job",
+		Name:        j.Name,
+		Namespace:   j.Namespace,
+		Created:     fmtTimestamp(j.CreationTimestamp.Time),
+		Labels:      j.Labels,
+		Annotations: j.Annotations,
+		Properties:  props,
+		Conditions:  conditions,
+		Events:      events,
+	}, nil
+}
+
 func (c *Client) getGenericDetail(ctx context.Context, kind, ns, name string) (*ResourceDetailResult, error) {
 	return &ResourceDetailResult{
 		Kind:      kind,
