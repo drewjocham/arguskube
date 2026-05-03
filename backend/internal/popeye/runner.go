@@ -123,10 +123,10 @@ func (r *Runner) Run(ctx context.Context) (*Report, error) {
 	// Try local binary first, fall back to Docker.
 	output, err := r.execPopeye(ctx)
 	if err != nil {
-		r.logger.Warn("popeye exec failed, using demo report",
-			slog.String("error", err.Error()),
-		)
-		return r.demoReport(), nil
+		return nil, fmt.Errorf("popeye exec: %w", err)
+	}
+	if len(output) == 0 {
+		return nil, fmt.Errorf("popeye returned empty output — is the cluster reachable?")
 	}
 
 	elapsed := time.Since(start)
@@ -305,14 +305,11 @@ func suggestCommand(resource, message, ns, name string) string {
 	}
 }
 
-// execPopeye tries the local binary first, then falls back to Docker.
 func (r *Runner) execPopeye(ctx context.Context) ([]byte, error) {
-	// Try local binary.
 	if _, err := exec.LookPath(r.binary); err == nil {
 		return r.execBinary(ctx)
 	}
-
-	// Fall back to Docker.
+	
 	if dockerPath, err := exec.LookPath("docker"); err == nil {
 		return r.execDocker(ctx, dockerPath)
 	}
@@ -439,117 +436,4 @@ func truncateBytes(b []byte, max int) string {
 		return string(b)
 	}
 	return string(b[:max]) + "..."
-}
-
-// demoReport returns a realistic sample report when Popeye is not installed.
-func (r *Runner) demoReport() *Report {
-	return &Report{
-		Timestamp:   time.Now(),
-		Score:       72,
-		Grade:       "C",
-		ClusterName: "demo-cluster",
-		ScanTimeMs:  1240,
-		TotalOK:     48,
-		TotalInfo:   12,
-		TotalWarn:   9,
-		TotalError:  5,
-		Findings: []Finding{
-			{
-				ID: "pop-1", Resource: "pod", Name: "web-app-6d8f9b-xp2kl", Namespace: "default",
-				Severity: "error", SevLevel: 3,
-				Message:     "[POP-106] No resources requests/limits defined",
-				Explanation: explainFinding("pod", "no resources", SevErr),
-				Fix:         suggestFix("pod", "no resources", "default", "web-app-6d8f9b-xp2kl"),
-				Command:     suggestCommand("pod", "no resources", "default", "web-app-6d8f9b-xp2kl"),
-			},
-			{
-				ID: "pop-2", Resource: "pod", Name: "worker-7c4b2f-m9z3q", Namespace: "default",
-				Severity: "error", SevLevel: 3,
-				Message:     "[POP-301] No probes defined",
-				Explanation: explainFinding("pod", "no probes", SevErr),
-				Fix:         suggestFix("pod", "no probes", "default", "worker-7c4b2f-m9z3q"),
-				Command:     suggestCommand("pod", "no probes", "default", "worker-7c4b2f-m9z3q"),
-			},
-			{
-				ID: "pop-3", Resource: "deploy", Name: "api-gateway", Namespace: "ingress",
-				Severity: "error", SevLevel: 3,
-				Message:     "[POP-107] Container uses image tag ':latest'",
-				Explanation: explainFinding("deploy", ":latest", SevErr),
-				Fix:         suggestFix("deploy", ":latest", "ingress", "api-gateway"),
-				Command:     suggestCommand("deploy", ":latest", "ingress", "api-gateway"),
-			},
-			{
-				ID: "pop-4", Resource: "pod", Name: "cache-redis-0", Namespace: "data",
-				Severity: "warning", SevLevel: 2,
-				Message:     "[POP-108] CPU limit not set",
-				Explanation: explainFinding("pod", "cpu limit", SevWarn),
-				Fix:         suggestFix("pod", "cpu limit", "data", "cache-redis-0"),
-				Command:     suggestCommand("pod", "cpu limit", "data", "cache-redis-0"),
-			},
-			{
-				ID: "pop-5", Resource: "pod", Name: "metrics-collector-5f8d2a", Namespace: "monitoring",
-				Severity: "warning", SevLevel: 2,
-				Message:     "[POP-109] Memory limit not set",
-				Explanation: explainFinding("pod", "memory limit", SevWarn),
-				Fix:         suggestFix("pod", "memory limit", "monitoring", "metrics-collector-5f8d2a"),
-				Command:     suggestCommand("pod", "memory limit", "monitoring", "metrics-collector-5f8d2a"),
-			},
-			{
-				ID: "pop-6", Resource: "deploy", Name: "payment-service", Namespace: "finance",
-				Severity: "warning", SevLevel: 2,
-				Message:     "[POP-500] Single replica detected",
-				Explanation: explainFinding("deploy", "single replica", SevWarn),
-				Fix:         suggestFix("deploy", "single replica", "finance", "payment-service"),
-				Command:     suggestCommand("deploy", "single replica", "finance", "payment-service"),
-			},
-			{
-				ID: "pop-7", Resource: "sa", Name: "default", Namespace: "default",
-				Severity: "warning", SevLevel: 2,
-				Message:     "[POP-303] Pod uses default service account",
-				Explanation: explainFinding("sa", "service account", SevWarn),
-				Fix:         suggestFix("sa", "service account", "default", "default"),
-				Command:     suggestCommand("sa", "service account", "default", "default"),
-			},
-			{
-				ID: "pop-8", Resource: "pod", Name: "debug-shell-9x2f1", Namespace: "default",
-				Severity: "error", SevLevel: 3,
-				Message:     "[POP-306] Container runs as root",
-				Explanation: explainFinding("pod", "root", SevErr),
-				Fix:         suggestFix("pod", "security context root", "default", "debug-shell-9x2f1"),
-				Command:     suggestCommand("pod", "security context", "default", "debug-shell-9x2f1"),
-			},
-			{
-				ID: "pop-9", Resource: "cm", Name: "legacy-config", Namespace: "default",
-				Severity: "warning", SevLevel: 2,
-				Message:     "[POP-400] ConfigMap not marked immutable",
-				Explanation: explainFinding("cm", "immutable", SevWarn),
-				Fix:         suggestFix("cm", "immutable", "default", "legacy-config"),
-				Command:     suggestCommand("cm", "immutable", "default", "legacy-config"),
-			},
-			{
-				ID: "pop-10", Resource: "secret", Name: "old-tls-cert", Namespace: "kube-system",
-				Severity: "warning", SevLevel: 2,
-				Message:     "[POP-800] Secret appears unused",
-				Explanation: explainFinding("secret", "unused", SevWarn),
-				Fix:         suggestFix("secret", "unused", "kube-system", "old-tls-cert"),
-				Command:     suggestCommand("secret", "unused", "kube-system", "old-tls-cert"),
-			},
-			{
-				ID: "pop-11", Resource: "pod", Name: "nginx-proxy-2a8f4c", Namespace: "ingress",
-				Severity: "error", SevLevel: 3,
-				Message:     "[POP-301] No probes defined",
-				Explanation: explainFinding("pod", "no probes", SevErr),
-				Fix:         suggestFix("pod", "no probes", "ingress", "nginx-proxy-2a8f4c"),
-				Command:     suggestCommand("pod", "no probes", "ingress", "nginx-proxy-2a8f4c"),
-			},
-			{
-				ID: "pop-12", Resource: "svc", Name: "api-gateway", Namespace: "ingress",
-				Severity: "info", SevLevel: 1,
-				Message:     "[POP-700] Found no matching endpoints",
-				Explanation: explainFinding("svc", "no endpoints", SevInfo),
-				Fix:         suggestFix("svc", "no endpoints", "ingress", "api-gateway"),
-				Command:     suggestCommand("svc", "describe", "ingress", "api-gateway"),
-			},
-		},
-	}
 }

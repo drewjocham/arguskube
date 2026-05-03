@@ -142,12 +142,64 @@ async function toggleExpand(itemName) {
         <div class="job-expanded" v-if="expandedItem === item.name">
           <div v-if="detailLoading" style="color:#8b8f96; font-size:13px; padding:12px;">Loading…</div>
           <div v-else-if="itemDetail" class="expanded-grid">
+            <!-- Summary strip for CronJobs -->
+            <div v-if="type === 'cronjobs'" class="detail-summary-strip">
+              <div class="summary-chip">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span class="chip-label">Schedule</span>
+                <span class="chip-value font-mono schedule-box">{{ item.schedule }}</span>
+              </div>
+              <div class="summary-chip">
+                <span class="chip-dot" :style="{ background: item.suspend ? '#f05454' : '#3ecf8e' }"></span>
+                <span class="chip-label">{{ item.suspend ? 'Suspended' : 'Active' }}</span>
+              </div>
+              <div class="summary-chip" v-if="item.lastSchedule !== '—'">
+                <span class="chip-label">Last Run</span>
+                <span class="chip-value font-mono">{{ item.lastSchedule }}</span>
+              </div>
+              <div class="summary-chip" v-if="item.active > 0">
+                <span class="chip-dot running"></span>
+                <span class="chip-label">{{ item.active }} running</span>
+              </div>
+            </div>
+
+            <!-- Summary strip for Jobs -->
+            <div v-else class="detail-summary-strip">
+              <div class="summary-chip">
+                <span class="chip-dot" :style="{ background: item.status === 'Complete' ? '#3ecf8e' : item.status === 'Failed' ? '#f05454' : '#3794ff' }"></span>
+                <span class="chip-label">{{ item.status }}</span>
+              </div>
+              <div class="summary-chip">
+                <span class="chip-label">Completions</span>
+                <span class="chip-value font-mono">{{ item.completions }}</span>
+              </div>
+              <div class="summary-chip" v-if="item.duration !== '—'">
+                <span class="chip-label">Duration</span>
+                <span class="chip-value font-mono">{{ item.duration }}</span>
+              </div>
+            </div>
+
             <div class="expanded-card">
               <h4 class="card-title">Properties</h4>
               <div class="props-grid">
                 <div class="prop-row" v-for="prop in itemDetail.properties" :key="prop.key">
                   <span class="prop-label">{{ prop.key }}</span>
-                  <span class="prop-value font-mono">{{ prop.value }}</span>
+                  <span class="prop-value font-mono" :class="{ 'prop-schedule': prop.key === 'Schedule' }">{{ prop.value }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Active Jobs card for CronJobs -->
+            <div class="expanded-card" v-if="itemDetail.extra?.activeJobs?.length">
+              <h4 class="card-title">
+                <span class="active-dot"></span>
+                Active Jobs ({{ itemDetail.extra.activeJobs.length }})
+              </h4>
+              <div class="active-jobs-list">
+                <div class="active-job-row" v-for="aj in itemDetail.extra.activeJobs" :key="aj.name">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><polyline points="16 3 12 7 8 3"></polyline></svg>
+                  <span class="aj-name font-mono">{{ aj.name }}</span>
+                  <span class="aj-ns font-mono">{{ aj.namespace }}</span>
                 </div>
               </div>
             </div>
@@ -160,6 +212,14 @@ async function toggleExpand(itemName) {
                   <span class="cond-status" :class="c.status === 'True' ? 'ok' : 'fail'">{{ c.status }}</span>
                   <span class="cond-reason font-mono" v-if="c.reason">{{ c.reason }}</span>
                 </div>
+              </div>
+            </div>
+
+            <!-- Labels / Annotations -->
+            <div class="expanded-card" v-if="itemDetail.labels && Object.keys(itemDetail.labels).length">
+              <h4 class="card-title">Labels</h4>
+              <div class="labels-grid">
+                <span class="label-chip font-mono" v-for="(v, k) in itemDetail.labels" :key="k">{{ k }}={{ v }}</span>
               </div>
             </div>
 
@@ -296,4 +356,44 @@ async function toggleExpand(itemName) {
 .status-badge.complete { background: rgba(62, 207, 142, 0.15); color: #3ecf8e; }
 .status-badge.failed { background: rgba(240, 84, 84, 0.15); color: #f05454; }
 .status-badge.running { background: rgba(55, 148, 255, 0.15); color: #3794ff; }
+
+/* Detail summary strip */
+.detail-summary-strip {
+  display: flex; gap: 10px; flex-wrap: wrap; padding: 12px 0; margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.summary-chip {
+  display: flex; align-items: center; gap: 6px; padding: 5px 10px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 6px; font-size: 12px; color: #b0b4ba;
+}
+.chip-label { color: #8b8f96; font-size: 11px; }
+.chip-value { color: #e8eaec; }
+.chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.chip-dot.running { background: #3794ff; animation: pulse-dot 1.5s ease-in-out infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+.prop-schedule { color: #c084fc; }
+
+/* Active Jobs */
+.active-jobs-list { display: flex; flex-direction: column; gap: 4px; }
+.active-job-row {
+  display: flex; align-items: center; gap: 8px; font-size: 12px;
+  padding: 6px 8px; background: rgba(55, 148, 255, 0.06);
+  border: 1px solid rgba(55, 148, 255, 0.12); border-radius: 4px; color: #3794ff;
+}
+.aj-name { color: #e8eaec; }
+.aj-ns { color: #6b7078; margin-left: auto; }
+.active-dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: #3794ff; margin-right: 4px; animation: pulse-dot 1.5s ease-in-out infinite;
+}
+.card-title { display: flex; align-items: center; }
+
+/* Labels */
+.labels-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.label-chip {
+  padding: 2px 8px; border-radius: 4px; font-size: 10.5px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+  color: #b0b4ba; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
 </style>

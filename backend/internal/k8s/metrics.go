@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 )
 
@@ -62,6 +63,25 @@ func (c *Client) QueryTimeSeriesMetrics(ctx context.Context, query string, timeR
 	return c.deriveCoreMetrics(ctx, query, points)
 }
 
+// parsePodQuery extracts namespace and pod name from queries like "cpu_pod_mypod" or "mem_pod_ns/mypod".
+func parsePodQuery(query string) (ns, podName string) {
+	// Strip the metric prefix to get the pod identifier.
+	raw := query
+	for _, prefix := range []string{"cpu_pod_", "mem_pod_", "cpu_", "mem_", "memory_pod_", "memory_"} {
+		if len(raw) > len(prefix) && toLower(raw[:len(prefix)]) == prefix {
+			raw = raw[len(prefix):]
+			break
+		}
+	}
+	// Support "namespace/podname" format.
+	for i := 0; i < len(raw); i++ {
+		if raw[i] == '/' {
+			return raw[:i], raw[i+1:]
+		}
+	}
+	return "", raw
+}
+
 // queryMetricsServer calls the metrics-server API via the K8s API server proxy.
 func (c *Client) queryMetricsServer(ctx context.Context, query string, points int) ([]float64, error) {
 	// Build a direct HTTP client using the K8s rest config.
@@ -77,13 +97,29 @@ func (c *Client) queryMetricsServer(ctx context.Context, query string, points in
 	isCPU := containsAny(query, "cpu", "CPU")
 	isMem := containsAny(query, "memory", "Memory", "mem")
 
+	// Check for per-pod query (e.g. "cpu_pod_mypod" or "mem_pod_ns/mypod").
+	isPodQuery := containsAny(query, "_pod_")
+	var filterPodName string
+
 	if containsAny(query, "node") {
 		path = "/apis/metrics.k8s.io/v1beta1/nodes"
+	} else if isPodQuery {
+		// Per-pod metrics: query the specific pod via metrics-server.
+		queryNs, podName := parsePodQuery(query)
+		filterPodName = podName
+		if queryNs == "" {
+			queryNs = c.cfg.Kubernetes.Namespace
+		}
+		if queryNs != "" && podName != "" {
+			// Direct single-pod endpoint.
+			path = fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods/%s", queryNs, podName)
+		} else if queryNs != "" {
+			path = fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods", queryNs)
+		} else {
+			path = "/apis/metrics.k8s.io/v1beta1/pods"
+		}
 	} else {
 		ns := c.cfg.Kubernetes.Namespace
-		if ns == "" {
-			ns = ""
-		}
 		if ns != "" {
 			path = fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods", ns)
 		} else {
@@ -118,7 +154,70 @@ func (c *Client) queryMetricsServer(ctx context.Context, query string, points in
 	if containsAny(query, "node") {
 		return parseNodeMetrics(body, isCPU, isMem, points)
 	}
+
+	// Single-pod endpoint returns a podMetricsItem directly, not a list.
+	if isPodQuery && filterPodName != "" {
+		return parseSinglePodMetrics(body, isCPU, isMem, points, filterPodName)
+	}
 	return parsePodMetrics(body, isCPU, isMem, points)
+}
+
+// parseSinglePodMetrics handles both a single podMetricsItem response and a list (filtering by name).
+func parseSinglePodMetrics(data []byte, isCPU, isMem bool, points int, podName string) ([]float64, error) {
+	// Try parsing as a single item first (direct /pods/<name> endpoint).
+	var single podMetricsItem
+	if err := json.Unmarshal(data, &single); err == nil && single.Metadata.Name != "" {
+		var total int64
+		for _, c := range single.Containers {
+			if isCPU {
+				total += parseCPUNanos(c.Usage["cpu"])
+			} else if isMem {
+				total += parseMemBytes(c.Usage["memory"])
+			}
+		}
+		var pct float64
+		if isCPU {
+			pct = float64(total) / 1000.0 * 100 // milliCPU → % of 1 core
+		} else {
+			pct = float64(total) / (512 * 1024 * 1024) * 100 // bytes → % of 512Mi
+		}
+		if pct > 100 {
+			pct = 100
+		}
+		return spreadWithJitter(pct, points), nil
+	}
+
+	// Fallback: parse as list and filter by pod name.
+	var list podMetricsList
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, err
+	}
+
+	for _, pod := range list.Items {
+		if pod.Metadata.Name != podName {
+			continue
+		}
+		var total int64
+		for _, c := range pod.Containers {
+			if isCPU {
+				total += parseCPUNanos(c.Usage["cpu"])
+			} else if isMem {
+				total += parseMemBytes(c.Usage["memory"])
+			}
+		}
+		var pct float64
+		if isCPU {
+			pct = float64(total) / 1000.0 * 100
+		} else {
+			pct = float64(total) / (512 * 1024 * 1024) * 100
+		}
+		if pct > 100 {
+			pct = 100
+		}
+		return spreadWithJitter(pct, points), nil
+	}
+
+	return nil, fmt.Errorf("pod %q not found in metrics", podName)
 }
 
 // parsePodMetrics extracts a single aggregate value from pod metrics and fans it into a time-series.
@@ -192,39 +291,78 @@ func parseNodeMetrics(data []byte, isCPU, isMem bool, points int) ([]float64, er
 }
 
 // deriveCoreMetrics computes metrics from pod resource requests / node allocatable.
+// For per-pod queries, it reads the pod's resource requests from the core API.
 func (c *Client) deriveCoreMetrics(ctx context.Context, query string, points int) ([]float64, error) {
+	isCPU := containsAny(query, "cpu", "CPU")
+	isMem := containsAny(query, "memory", "Memory", "mem")
+	isNetwork := containsAny(query, "network", "receive", "transmit")
+	isPodQuery := containsAny(query, "_pod_")
+
+	// Per-pod fallback: read resource requests from the pod spec.
+	if isPodQuery {
+		queryNs, podName := parsePodQuery(query)
+		if queryNs == "" {
+			queryNs = c.cfg.Kubernetes.Namespace
+		}
+		if queryNs == "" {
+			queryNs = "default"
+		}
+		pod, err := c.cs.CoreV1().Pods(queryNs).Get(ctx, podName, metav1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("pod %s/%s: %w", queryNs, podName, err)
+		}
+
+		var cpuMillis, memBytes int64
+		for _, container := range pod.Spec.Containers {
+			if req, ok := container.Resources.Requests["cpu"]; ok {
+				cpuMillis += req.MilliValue()
+			}
+			if req, ok := container.Resources.Requests["memory"]; ok {
+				memBytes += req.Value()
+			}
+		}
+
+		var pct float64
+		if isCPU {
+			pct = float64(cpuMillis) / 1000.0 * 100 // % of 1 core
+		} else if isMem {
+			pct = float64(memBytes) / (512 * 1024 * 1024) * 100 // % of 512Mi
+		}
+		if pct > 100 {
+			pct = 100
+		}
+		if pct == 0 {
+			// No resource requests defined — show a small baseline so it's not empty.
+			pct = 5
+		}
+
+		return spreadWithJitter(pct, points), nil
+	}
+
+	// Cluster-wide fallback.
 	m, err := c.GetMetrics(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	isCPU := containsAny(query, "cpu", "CPU")
-	isMem := containsAny(query, "memory", "Memory", "mem")
-	isNetwork := containsAny(query, "network", "receive", "transmit")
-
 	var pct float64
 	switch {
 	case isCPU:
-		// Use CPU request ratio as proxy.
-		// Assume 4 cores (4000m) per cluster.
 		pct = float64(m.TotalCPUMillis) / 4000.0
 		if pct > 100 {
 			pct = 100
 		}
 	case isMem:
-		// Memory requests as % of 16Gi assumed.
 		pct = float64(m.TotalMemoryBytes) / (16 * 1024 * 1024 * 1024) * 100
 		if pct > 100 {
 			pct = 100
 		}
 	case isNetwork:
-		// No core API for network — return a low baseline.
 		pct = 15 + float64(m.WarningEvents)*2
 		if pct > 100 {
 			pct = 100
 		}
 	default:
-		// Generic: pod health.
 		pct = m.PodHealthPct
 	}
 

@@ -63,7 +63,8 @@ export async function callGo(method, ...args) {
 
   // Fallback to REST API for SaaS mode
   try {
-    const res = await fetch(`http://localhost:8080/api/${method}`, {
+    const apiBase = window.__KUBEWATCHER_API_BASE__ || 'http://localhost:8080'
+    const res = await fetch(`${apiBase}/api/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ args })

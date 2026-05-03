@@ -321,23 +321,39 @@ func (c *Client) GetPodLogs(ctx context.Context, namespace, podName string, tail
 	}
 	defer stream.Close()
 
-	buf := make([]byte, 32*1024)
+	scanner := bufio.NewScanner(stream)
+	scanner.Buffer(make([]byte, 256*1024), 256*1024) // handle long lines
+
 	var lines []alerts.LogLine
-	for {
-		n, readErr := stream.Read(buf)
-		if n > 0 {
-			lines = append(lines, alerts.LogLine{
-				Timestamp: time.Now(),
-				Source:    fmt.Sprintf("[%s]", podName),
-				Level:     "info",
-				Message:   string(buf[:n]),
-			})
+	source := fmt.Sprintf("[%s]", podName)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
 		}
-		if readErr != nil {
-			break
-		}
+		lines = append(lines, alerts.LogLine{
+			Timestamp: time.Now(),
+			Source:    source,
+			Level:     inferLogLevel(line),
+			Message:   line,
+		})
 	}
 	return lines, nil
+}
+
+// inferLogLevel guesses a severity from common log patterns.
+func inferLogLevel(line string) string {
+	lower := strings.ToLower(line)
+	switch {
+	case strings.Contains(lower, "error") || strings.Contains(lower, "fatal") || strings.Contains(lower, "panic"):
+		return "error"
+	case strings.Contains(lower, "warn"):
+		return "warning"
+	case strings.Contains(lower, "debug") || strings.Contains(lower, "trace"):
+		return "debug"
+	default:
+		return "info"
+	}
 }
 
 // DeletePod deletes a pod by name and namespace.

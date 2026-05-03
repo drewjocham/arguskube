@@ -165,6 +165,14 @@ func (a *App) GetVPARecommendations(namespace string) ([]k8s.VPARecommendation, 
 	return a.k8s.GetVPARecommendations(a.ctx, namespace)
 }
 
+// GetServicePods resolves a service's label selector to its backing pods.
+func (a *App) GetServicePods(namespace, serviceName string) ([]k8s.ServicePod, error) {
+	if a.k8s == nil {
+		return nil, errNoCluster
+	}
+	return a.k8s.GetServicePods(a.ctx, namespace, serviceName)
+}
+
 // GetFeatures returns all features and their availability for the current tier.
 func (a *App) GetFeatures() map[features.Feature]bool {
 	return a.gate.AllFeatures()
@@ -340,6 +348,91 @@ func containsMask(s string) bool {
 		}
 	}
 	return false
+}
+
+// --- Pod Exec (Shell) bindings ---
+
+const EventExecOutput = "exec:output"
+const EventExecExit = "exec:exit"
+
+// ExecPodShell starts an interactive shell session in a pod container.
+func (a *App) ExecPodShell(namespace, podName, container string, rows, cols int) error {
+	if a.k8s == nil {
+		return errNoCluster
+	}
+
+	// Close any existing exec session.
+	a.closeExecSession()
+
+	sess, err := a.k8s.ExecPodShell(a.ctx, namespace, podName, container, uint16(rows), uint16(cols))
+	if err != nil {
+		return fmt.Errorf("exec shell: %w", err)
+	}
+
+	sess.OnOutput = func(data string) {
+		runtime.EventsEmit(a.ctx, EventExecOutput, data)
+	}
+
+	a.execMu.Lock()
+	a.execSession = sess
+	a.execMu.Unlock()
+
+	// Watch for session end.
+	go func() {
+		<-sess.Done()
+		a.execMu.Lock()
+		a.execSession = nil
+		a.execMu.Unlock()
+		runtime.EventsEmit(a.ctx, EventExecExit, nil)
+	}()
+
+	a.logger.Info("exec shell started",
+		slog.String("namespace", namespace),
+		slog.String("pod", podName),
+		slog.String("container", container),
+	)
+	return nil
+}
+
+// SendExecInput writes raw input to the active exec session.
+func (a *App) SendExecInput(data string) error {
+	a.execMu.RLock()
+	sess := a.execSession
+	a.execMu.RUnlock()
+
+	if sess == nil {
+		return nil
+	}
+	return sess.Write(data)
+}
+
+// ResizeExec updates the active exec session's terminal dimensions.
+func (a *App) ResizeExec(rows, cols int) error {
+	a.execMu.RLock()
+	sess := a.execSession
+	a.execMu.RUnlock()
+
+	if sess == nil {
+		return nil
+	}
+	sess.Resize(uint16(rows), uint16(cols))
+	return nil
+}
+
+// CloseExecSession terminates the active exec session.
+func (a *App) CloseExecSession() {
+	a.closeExecSession()
+}
+
+func (a *App) closeExecSession() {
+	a.execMu.Lock()
+	sess := a.execSession
+	a.execSession = nil
+	a.execMu.Unlock()
+
+	if sess != nil {
+		sess.Close()
+	}
 }
 
 // --- Terminal bindings ---

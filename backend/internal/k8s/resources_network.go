@@ -185,3 +185,53 @@ func (c *Client) listNetworkPolicies(ctx context.Context, ns string) (*ResourceL
 
 	return &ResourceListResult{Schema: schema, Items: items, Total: len(items)}, nil
 }
+
+// ServicePod is a simplified pod reference returned by GetServicePods.
+type ServicePod struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Status    string `json:"status"`
+	Container string `json:"container"` // first container name
+}
+
+// GetServicePods resolves a service's selector to its backing pods.
+func (c *Client) GetServicePods(ctx context.Context, namespace, serviceName string) ([]ServicePod, error) {
+	svc, err := c.cs.CoreV1().Services(namespace).Get(ctx, serviceName, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get service: %w", err)
+	}
+
+	if len(svc.Spec.Selector) == 0 {
+		return nil, fmt.Errorf("service %s has no selector", serviceName)
+	}
+
+	// Build label selector from service spec.
+	var parts []string
+	for k, v := range svc.Spec.Selector {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+	labelSelector := strings.Join(parts, ",")
+
+	pods, err := c.cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list pods for service: %w", err)
+	}
+
+	result := make([]ServicePod, 0, len(pods.Items))
+	for i := range pods.Items {
+		p := &pods.Items[i]
+		container := ""
+		if len(p.Spec.Containers) > 0 {
+			container = p.Spec.Containers[0].Name
+		}
+		result = append(result, ServicePod{
+			Name:      p.Name,
+			Namespace: p.Namespace,
+			Status:    string(p.Status.Phase),
+			Container: container,
+		})
+	}
+	return result, nil
+}

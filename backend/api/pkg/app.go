@@ -72,6 +72,10 @@ type App struct {
 
 	appMode string
 
+	// execSession holds the active kubectl exec session (one at a time).
+	execSession *k8s.PodExecSession
+	execMu      sync.RWMutex
+
 	// paused stops background polling when the window is hidden/minimized.
 	paused atomic.Bool
 
@@ -149,6 +153,7 @@ func (a *App) Startup(ctx context.Context) {
 
 // Shutdown is called by Wails when the app closes.
 func (a *App) Shutdown(ctx context.Context) {
+	a.closeExecSession()
 	a.term.Close()
 	a.logger.InfoContext(ctx, "kubewatcher shutting down")
 }
