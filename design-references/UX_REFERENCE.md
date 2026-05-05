@@ -12,7 +12,7 @@ The definitive UX reference for the KubeWatcher SRE Console is `kube_watcher_sre
 
 ## Design Language
 - **macOS-native feel**: traffic light window controls, frosted-dark surfaces (#1a1c1e base), 0.5px crisp borders (rgba white at 7-12%)
-- **Typography**: DM Sans (UI) + DM Mono (data/code) — 13px base, 10-11px labels, 22px metric values
+- **Typography**: Segoe UI Variable (UI) + Cascadia Mono (data/code) — 13px base, 10-11px labels, 22px metric values
 - **Layout**: three-column — sidebar (220px, cluster selector + nav + AI context card), center (metrics grid + alert list + log stream + topology map), right panel (310px AI Diagnostics)
 - **Color tokens**: accent blue #4f8ef7, red #f05454, amber #f5a623, green #3ecf8e, purple #a78bfa, teal #2dd4bf
 

@@ -1,11 +1,98 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useResources, usePodLogs, useLogStream, useTimeSeriesMetrics, callGo } from '../../composables/useWails'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useResources, usePodLogs, useLogStream, useTimeSeriesMetrics, usePodExec, callGo } from '../../composables/useWails'
+import { useWailsEvent } from '../../composables/useEvents'
+import { tokenize } from '../../utils/logHighlight'
 
 const { result, detail, loading, detailLoading, error: resourceError, listResources, getResourceDetail, listNamespaces, namespaces } = useResources()
 const { logs: podLogs, loading: logsLoading, fetch: fetchLogs } = usePodLogs()
 const { lines: streamLines, streaming, error: streamError, startStream, clear: clearStream } = useLogStream()
 const { queryMetrics } = useTimeSeriesMetrics()
+const { connected: execConnected, error: execError, startExec, sendInput: sendExecInput, resizeExec, closeExec } = usePodExec()
+
+// Shell terminal state.
+const shellTermRef = ref(null)
+let shellTerm = null
+let shellFitAddon = null
+
+async function openShell(pod, containerName) {
+  activeTab.value = 'shell'
+  await nextTick()
+  await initShellTerminal(pod, containerName)
+}
+
+async function initShellTerminal(pod, containerName) {
+  // Dynamically import xterm to avoid bundling when not needed.
+  const { Terminal } = await import('xterm')
+  const { FitAddon } = await import('xterm-addon-fit')
+
+  if (shellTerm) {
+    shellTerm.dispose()
+    shellTerm = null
+  }
+
+  const term = new Terminal({
+    cursorBlink: true,
+    fontSize: 13,
+    fontFamily: "'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, monospace",
+    theme: {
+      background: '#1a1c1e',
+      foreground: '#e8eaec',
+      cursor: '#4f8ef7',
+      selectionBackground: 'rgba(79,142,247,0.3)',
+    },
+    allowTransparency: true,
+  })
+
+  const fitAddon = new FitAddon()
+  term.loadAddon(fitAddon)
+
+  if (shellTermRef.value) {
+    term.open(shellTermRef.value)
+    fitAddon.fit()
+  }
+
+  shellTerm = term
+  shellFitAddon = fitAddon
+
+  // Wire input → backend.
+  term.onData((data) => {
+    sendExecInput(data)
+  })
+
+  // Start the exec session.
+  const rows = term.rows
+  const cols = term.cols
+  await startExec(pod.namespace, pod.name, containerName || '', rows, cols)
+
+  // Handle resize.
+  term.onResize(({ rows, cols }) => {
+    resizeExec(rows, cols)
+  })
+}
+
+function destroyShellTerminal() {
+  if (shellTerm) {
+    shellTerm.dispose()
+    shellTerm = null
+    shellFitAddon = null
+  }
+  closeExec()
+}
+
+// Listen for exec output.
+useWailsEvent('exec:output', (data) => {
+  if (shellTerm && data) {
+    shellTerm.write(data)
+  }
+})
+
+// Listen for exec session end.
+useWailsEvent('exec:exit', () => {
+  if (shellTerm) {
+    shellTerm.write('\r\n\x1b[33m[Session ended]\x1b[0m\r\n')
+  }
+})
 
 
 const pods = ref([])
@@ -19,6 +106,7 @@ const logTailLines = ref(100)
 const logContent = ref([])
 const logSearchFilter = ref('')
 const followMode = ref(false)
+const expandedLogRow = ref(null)
 const confirmDelete = ref(null)
 const connectionError = ref(null)
 let autoRefreshTimer = null
@@ -142,7 +230,9 @@ async function toggleExpand(podName) {
     podDetail.value = null
     activeTab.value = 'details'
     logContent.value = []
+    destroyShellTerminal()
   } else {
+    destroyShellTerminal()
     expandedPod.value = podName
     activeTab.value = 'details'
     cpuSpark.value = generateSparkline(20)
@@ -156,9 +246,11 @@ async function toggleExpand(podName) {
       }
       
       try {
+        const ns = pod.namespace || ''
+        const podId = ns ? `${ns}/${podName}` : podName
         const [cpuData, memData] = await Promise.all([
-          queryMetrics(`cpu_pod_${podName}`, '1h'),
-          queryMetrics(`mem_pod_${podName}`, '1h')
+          queryMetrics(`cpu_pod_${podId}`, '1h'),
+          queryMetrics(`mem_pod_${podId}`, '1h')
         ])
         
         if (cpuData && cpuData.length) cpuSpark.value = buildSparklinePath(cpuData)
@@ -202,6 +294,21 @@ const filteredLogs = computed(() => {
   return logContent.value.filter(l => l.message?.toLowerCase().includes(q))
 })
 
+function toggleLogRow(index) {
+  expandedLogRow.value = expandedLogRow.value === index ? null : index
+}
+
+// Infer log level for row styling.
+function logLevel(msg) {
+  if (!msg) return 'info'
+  const lower = msg.toLowerCase()
+  if (lower.includes('fatal') || lower.includes('panic')) return 'fatal'
+  if (lower.includes('error') || lower.includes('err')) return 'error'
+  if (lower.includes('warn')) return 'warning'
+  if (lower.includes('debug') || lower.includes('trace')) return 'debug'
+  return 'info'
+}
+
 async function deletePod(pod) {
   confirmDelete.value = null
   notification.value = `Deleting pod ${pod.name}...`
@@ -238,6 +345,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (autoRefreshTimer) clearInterval(autoRefreshTimer)
+  destroyShellTerminal()
 })
 </script>
 
@@ -335,6 +443,9 @@ onUnmounted(() => {
           <div class="col-age font-mono" style="display:flex; justify-content:space-between; align-items:center;">
             {{ p.age }}
             <div class="row-actions">
+              <button class="row-shell-btn" @click.stop="toggleExpand(p.name); openShell(p, '')" title="Shell into pod">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+              </button>
               <button class="row-delete-btn" @click.stop="confirmDelete = p" title="Delete pod">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
               </button>
@@ -353,11 +464,18 @@ onUnmounted(() => {
             <button class="tab-btn" :class="{ active: activeTab === 'containers' }" @click="switchTab('containers')">Containers</button>
             <button class="tab-btn" :class="{ active: activeTab === 'logs' }" @click="switchTab('logs')">Logs</button>
             <button class="tab-btn" :class="{ active: activeTab === 'events' }" @click="switchTab('events')">Events</button>
+            <button class="tab-btn shell-tab" :class="{ active: activeTab === 'shell' }" @click="openShell(p, '')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+              Shell
+            </button>
 
             <div class="tab-actions">
               <button class="action-btn delete-btn" @click.stop="confirmDelete = p">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 Delete Pod
+              </button>
+              <button class="close-x" @click.stop="toggleExpand(p.name)" title="Close">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M7.116 8l-4.558 4.558.884.884L8 8.884l4.558 4.558.884-.884L8.884 8l4.558-4.558-.884-.884L8 7.116 3.442 2.558l-.884.884L7.116 8z"/></svg>
               </button>
             </div>
           </div>
@@ -485,12 +603,25 @@ onUnmounted(() => {
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                 Reload
               </button>
+              <div class="logs-stats">
+                <span class="log-count font-mono">{{ filteredLogs.length }} lines</span>
+              </div>
             </div>
-            <div class="logs-viewer" v-if="filteredLogs.length">
-              <div v-for="(line, i) in filteredLogs" :key="i" class="log-line">
-                <span class="log-ts font-mono" v-if="line.timestamp">{{ new Date(line.timestamp).toLocaleTimeString() }}</span>
-                <span class="log-src font-mono" v-if="line.source">{{ line.source }}</span>
-                <span class="log-msg">{{ line.message }}</span>
+            <div class="log-list" v-if="filteredLogs.length">
+              <div v-for="(line, i) in filteredLogs" :key="i">
+                <div class="log-row" :class="'level-' + logLevel(line.message)" @click="toggleLogRow(i)">
+                  <div class="log-expander" :class="{ expanded: expandedLogRow === i }">›</div>
+                  <div class="log-level-indicator" :class="logLevel(line.message)"></div>
+                  <div class="log-time font-mono" v-if="line.timestamp">{{ new Date(line.timestamp).toLocaleTimeString() }}</div>
+                  <div class="log-source font-mono" v-if="line.source">{{ line.source }}</div>
+                  <div class="log-message"><template v-for="(seg, si) in tokenize(line.message)" :key="si"><span v-if="seg.cls" :class="seg.cls">{{ seg.text }}</span><template v-else>{{ seg.text }}</template></template></div>
+                </div>
+                <div v-if="expandedLogRow === i" class="log-expanded">
+                  <div class="expanded-field" v-if="line.timestamp"><span class="ef-key">_time</span><span class="ef-val font-mono">{{ new Date(line.timestamp).toISOString() }}</span></div>
+                  <div class="expanded-field" v-if="line.source"><span class="ef-key">source</span><span class="ef-val font-mono">{{ line.source }}</span></div>
+                  <div class="expanded-field"><span class="ef-key">level</span><span class="ef-val font-mono">{{ line.level || logLevel(line.message) }}</span></div>
+                  <div class="expanded-field"><span class="ef-key">_msg</span><span class="ef-val"><template v-for="(seg, si) in tokenize(line.message)" :key="si"><span v-if="seg.cls" :class="seg.cls">{{ seg.text }}</span><template v-else>{{ seg.text }}</template></template></span></div>
+                </div>
               </div>
             </div>
             <div v-else-if="logsLoading || streaming" class="empty-state">{{ streaming ? 'Streaming logs...' : 'Loading logs...' }}</div>
@@ -514,6 +645,22 @@ onUnmounted(() => {
               </div>
             </div>
             <div v-else class="empty-state">No recent events for this pod.</div>
+          </div>
+
+          <!-- Shell Tab -->
+          <div v-else-if="activeTab === 'shell'" class="shell-section">
+            <div class="shell-toolbar">
+              <div class="shell-info">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                <span class="font-mono">{{ p.namespace }}/{{ p.name }}</span>
+                <span class="shell-status" :class="{ connected: execConnected }">{{ execConnected ? 'Connected' : 'Connecting…' }}</span>
+              </div>
+              <button class="shell-close-btn" @click="destroyShellTerminal(); activeTab = 'details'" title="Close shell">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M7.116 8l-4.558 4.558.884.884L8 8.884l4.558 4.558.884-.884L8.884 8l4.558-4.558-.884-.884L8 7.116 3.442 2.558l-.884.884L7.116 8z"/></svg>
+              </button>
+            </div>
+            <div v-if="execError" class="shell-error">{{ execError }}</div>
+            <div class="shell-terminal" ref="shellTermRef"></div>
           </div>
         </div>
       </div>
@@ -565,7 +712,7 @@ onUnmounted(() => {
 .pod-count { font-size: 12px; color: #6b7078; white-space: nowrap; }
 
 /* Pod Table */
-.pods-list { background: #1e2023; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; overflow: hidden; }
+.pods-list { background: #1e2023; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; overflow: visible; }
 
 .pod-header-row {
   display: grid;
@@ -593,7 +740,7 @@ onUnmounted(() => {
 
 .col-name { display: flex; align-items: center; font-weight: 500; color: #e8eaec; overflow: hidden; }
 .pod-name-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.font-mono { font-family: 'SF Mono', Consolas, monospace; color: #b0b4ba; font-size: 12px; }
+.font-mono { font-family: var(--mono); color: #b0b4ba; font-size: 12px; }
 .high-restarts { color: #f5a623 !important; font-weight: 600; }
 
 .row-actions { display: flex; align-items: center; gap: 6px; }
@@ -643,6 +790,14 @@ onUnmounted(() => {
 }
 .delete-btn:hover { color: #f05454; border-color: rgba(240, 84, 84, 0.3); background: rgba(240, 84, 84, 0.08); }
 
+.close-x {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 4px;
+  background: transparent; border: none; color: #8b8f96;
+  cursor: pointer; transition: all 0.1s; margin-left: 4px;
+}
+.close-x:hover { background: rgba(232, 17, 35, 0.9); color: #fff; }
+
 /* Panels */
 .expanded-grid { display: flex; gap: 24px; padding: 16px; }
 .panel-col { flex: 1; display: flex; flex-direction: column; gap: 16px; }
@@ -681,7 +836,7 @@ onUnmounted(() => {
 
 /* Labels */
 .labels-grid { display: flex; flex-wrap: wrap; gap: 6px; }
-.label-chip { background: rgba(55, 148, 255, 0.1); color: #3794ff; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: 'SF Mono', Consolas, monospace; }
+.label-chip { background: rgba(55, 148, 255, 0.1); color: #3794ff; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: var(--mono); }
 
 /* Container Cards */
 .containers-section { padding: 16px; }
@@ -717,7 +872,7 @@ onUnmounted(() => {
 .logs-section { display: flex; flex-direction: column; }
 .logs-toolbar {
   display: flex; align-items: center; gap: 12px; padding: 10px 16px;
-  border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.05)); background: var(--bg2, rgba(255,255,255,0.02));
 }
 .logs-search-box {
   flex: 1; display: flex; align-items: center; gap: 6px;
@@ -726,7 +881,7 @@ onUnmounted(() => {
 .logs-search-box svg { color: #6b7078; }
 .log-filter-input {
   flex: 1; background: transparent; border: none; color: #e8eaec; font-size: 12px; outline: none;
-  font-family: 'SF Mono', Consolas, monospace;
+  font-family: var(--mono);
 }
 .log-filter-input::placeholder { color: #4b5058; }
 .follow-btn {
@@ -741,21 +896,79 @@ onUnmounted(() => {
   background: #0d0d0d; border: 1px solid rgba(255,255,255,0.06); color: #b0b4ba;
   padding: 5px 8px; border-radius: 4px; font-size: 11px; outline: none; cursor: pointer;
 }
+.logs-stats { margin-left: auto; }
+.log-count { font-size: 11px; color: var(--text3, #6b7078); }
 
-.logs-viewer {
-  padding: 12px 16px;
-  font-family: 'SF Mono', Consolas, monospace; font-size: 12px;
-  color: #d4d4d4; max-height: 400px; overflow-y: auto;
-  background: #0a0a0a;
+/* Log list — matches LogExplorer rendering */
+.log-list {
+  flex: 1; overflow-y: auto; max-height: 450px;
 }
-.log-line {
-  display: flex; gap: 12px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.02);
-  line-height: 1.5;
+.log-row {
+  display: flex; align-items: flex-start; padding: 5px 16px;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.04));
+  font-family: var(--mono); font-size: 11.5px;
+  background: rgba(255,255,255,0.02); cursor: pointer;
+  transition: background 0.1s;
 }
-.log-line:hover { background: rgba(255,255,255,0.03); }
-.log-ts { color: #6b7078; flex-shrink: 0; min-width: 80px; }
-.log-src { color: #3794ff; flex-shrink: 0; }
-.log-msg { color: #d4d4d4; word-break: break-all; white-space: pre-wrap; }
+.log-row:nth-child(even) { background: transparent; }
+.log-row:hover { background: var(--bg3, rgba(255,255,255,0.05)); }
+
+/* Level accent stripe on left */
+.log-level-indicator {
+  width: 3px; min-height: 16px; border-radius: 1px; flex-shrink: 0; margin-right: 8px;
+  background: transparent;
+}
+.log-level-indicator.error, .log-level-indicator.fatal { background: var(--red2, #f05454); }
+.log-level-indicator.warning { background: var(--amber2, #f5a623); }
+.log-level-indicator.debug { background: var(--text3, #6b7078); }
+.log-level-indicator.info { background: var(--accent, #4f8ef7); opacity: 0.3; }
+
+/* Levels — subtle row tints */
+.log-row.level-error, .log-row.level-fatal { background: rgba(240,84,84,0.04); }
+.log-row.level-warning { background: rgba(245,166,35,0.03); }
+
+.log-expander {
+  width: 18px; flex-shrink: 0; color: var(--text3, #6b7078);
+  cursor: pointer; user-select: none; transition: transform 0.15s;
+  font-size: 13px; line-height: 16px;
+}
+.log-expander.expanded { transform: rotate(90deg); color: var(--accent, #4f8ef7); }
+
+.log-time {
+  color: var(--text3, #6b7078); flex-shrink: 0; min-width: 80px; margin-right: 8px;
+}
+.log-source {
+  color: #3794ff; flex-shrink: 0; margin-right: 12px;
+}
+.log-message {
+  flex: 1; color: var(--text2, #b0b4ba); word-break: break-all;
+}
+
+/* Expanded log detail — matches LogExplorer */
+.log-expanded {
+  background: var(--bg2, #1a1c1e);
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+  padding: 8px 16px 8px 42px;
+}
+.expanded-field {
+  display: flex; gap: 12px; padding: 3px 0;
+  font-size: 11px; font-family: var(--mono);
+}
+.ef-key { color: var(--accent2, #5fa4f7); min-width: 120px; flex-shrink: 0; }
+.ef-val { color: var(--text2, #b0b4ba); word-break: break-all; }
+
+/* Log syntax highlighting — same as LogExplorer */
+.hl-fatal    { color: #ff4040; font-weight: 700; background: rgba(255,64,64,0.12); padding: 0 3px; border-radius: 2px; }
+.hl-error    { color: var(--red2, #f05454); font-weight: 600; }
+.hl-warn     { color: var(--amber2, #f5a623); font-weight: 600; }
+.hl-info     { color: var(--accent2, #5fa4f7); }
+.hl-debug    { color: var(--text3, #6b7078); }
+.hl-method   { color: #c792ea; font-weight: 500; }
+.hl-string   { color: #c3e88d; }
+.hl-key      { color: #89ddff; }
+.hl-ip       { color: #f78c6c; }
+.hl-label    { color: #a78bfa; }
+.hl-duration { color: var(--green, #3ecf8e); }
 
 /* Events */
 .events-section { padding: 16px; }
@@ -773,9 +986,9 @@ onUnmounted(() => {
 .type-pill.normal { background: rgba(62, 207, 142, 0.12); color: #3ecf8e; }
 .type-pill.warning { background: rgba(245, 166, 35, 0.12); color: #f5a623; }
 .ev-type { font-weight: 600; }
-.ev-reason { color: #a78bfa; font-family: 'SF Mono', Consolas, monospace; font-size: 11px; }
+.ev-reason { color: #a78bfa; font-family: var(--mono); font-size: 11px; }
 .ev-msg { color: #8b8f96; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ev-age { color: #6b7078; text-align: right; font-family: 'SF Mono', Consolas, monospace; font-size: 11px; }
+.ev-age { color: #6b7078; text-align: right; font-family: var(--mono); font-size: 11px; }
 
 /* Error banner */
 .error-banner {
@@ -832,4 +1045,74 @@ onUnmounted(() => {
   padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .confirm-delete:hover { background: rgba(240, 84, 84, 0.25); }
+
+/* Shell button in row */
+.row-shell-btn {
+  background: none; border: none; color: var(--text3); cursor: pointer;
+  padding: 2px; border-radius: 4px; display: flex; align-items: center;
+  transition: all 0.15s var(--ease);
+}
+.row-shell-btn:hover { color: var(--accent2); background: rgba(79,142,247,0.12); }
+
+/* Shell tab button accent */
+.tab-btn.shell-tab { display: flex; align-items: center; gap: 5px; }
+
+/* Shell section */
+.shell-section {
+  display: flex;
+  flex-direction: column;
+  height: 350px;
+}
+.shell-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+}
+.shell-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text2);
+}
+.shell-status {
+  font-size: 10px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: rgba(245,166,35,0.15);
+  color: var(--amber2);
+  font-weight: 500;
+}
+.shell-status.connected {
+  background: rgba(62,207,142,0.15);
+  color: var(--green2);
+}
+.shell-close-btn {
+  background: none; border: none; color: var(--text3); cursor: pointer;
+  padding: 4px; border-radius: 4px; display: flex; align-items: center;
+  transition: all 0.15s var(--ease);
+}
+.shell-close-btn:hover { color: rgba(232,17,35,0.9); background: rgba(232,17,35,0.1); }
+.shell-error {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--red2);
+  background: rgba(240,84,84,0.08);
+  border-bottom: 1px solid rgba(240,84,84,0.15);
+}
+.shell-terminal {
+  flex: 1;
+  background: #1a1c1e;
+  padding: 4px;
+  overflow: hidden;
+}
+.shell-terminal :deep(.xterm) {
+  height: 100%;
+}
+.shell-terminal :deep(.xterm-viewport) {
+  overflow-y: auto !important;
+}
 </style>

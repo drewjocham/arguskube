@@ -1,5 +1,5 @@
 <div style="display: flex; justify-content: center; padding: 1rem 0;">
-<div style="width: 320px; background: #23262a; border-radius: 10px; border: 0.5px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; color: #e8eaec; height: 620px;">
+<div style="width: 320px; background: #23262a; border-radius: 10px; border: 0.5px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; overflow: hidden; font-family: 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; color: #e8eaec; height: 620px;">
 
 <div style="padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 8px;">
 <div style="width: 22px; height: 22px; border-radius: 50%; background: conic-gradient(from 0deg, #4f8ef7, #a78bfa, #2dd4bf, #4f8ef7); flex-shrink: 0;"></div>
@@ -9,7 +9,7 @@
 
 <div style="display: flex; border-bottom: 1px solid rgba(255,255,255,0.06); padding: 0 8px;">
 <div style="padding: 7px 10px; font-size: 11.5px; font-weight: 500; color: #6ba3f9; border-bottom: 2px solid #4f8ef7;">Diagnostics</div>
-<div style="padding: 7px 10px; font-size: 11.5px; color: #8b8f96; display: flex; align-items: center; gap: 4px;">Chat <span style="font-size: 9px; font-family: 'SF Mono', monospace; padding: 1px 5px; border-radius: 8px; background: rgba(79,142,247,0.15); color: #6ba3f9;">3</span></div>
+<div style="padding: 7px 10px; font-size: 11.5px; color: #8b8f96; display: flex; align-items: center; gap: 4px;">Chat <span style="font-size: 9px; font-family: 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, monospace; padding: 1px 5px; border-radius: 8px; background: rgba(79,142,247,0.15); color: #6ba3f9;">3</span></div>
 <div style="padding: 7px 10px; font-size: 11.5px; color: #8b8f96;">Activity</div>
 </div>
 
@@ -29,7 +29,7 @@ Agent investigation
 <div style="width: 5px; height: 5px; border-radius: 50%; background: #f05454;"></div>
 Alert context
 </div>
-<pre style="font-family: 'SF Mono', 'DM Mono', monospace; font-size: 11px; color: #b0b4ba; line-height: 1.6; margin: 0; white-space: pre-wrap;">CRITICAL · OOMKilled: payment-svc
+<pre style="font-family: 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace; font-size: 11px; color: #b0b4ba; line-height: 1.6; margin: 0; white-space: pre-wrap;">CRITICAL · OOMKilled: payment-svc
 pod: payment-svc-7d8f9c6b5-x2k4m
 ns: production · restarts: 4
 mem: 512Mi limit / 256Mi req
@@ -54,7 +54,7 @@ Recommended actions
 <div style="display: flex; flex-direction: column; gap: 6px;">
 <div style="display: flex; gap: 9px; padding: 8px 10px; background: #2a2d31; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); align-items: flex-start;">
 <div style="width: 18px; height: 18px; border-radius: 50%; background: #383b40; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: #b0b4ba; flex-shrink: 0;">1</div>
-<div style="font-size: 12px; color: #b0b4ba; line-height: 1.5;">Increase memory limit to 1Gi temporarily<br><span style="font-family: 'SF Mono', monospace; font-size: 10.5px; color: #6ba3f9; margin-top: 3px; display: inline-block; padding: 2px 6px; background: rgba(79,142,247,0.08); border-radius: 4px;">kubectl set resources deploy/payment-svc -c payment --limits=memory=1Gi</span></div>
+<div style="font-size: 12px; color: #b0b4ba; line-height: 1.5;">Increase memory limit to 1Gi temporarily<br><span style="font-family: 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, monospace; font-size: 10.5px; color: #6ba3f9; margin-top: 3px; display: inline-block; padding: 2px 6px; background: rgba(79,142,247,0.08); border-radius: 4px;">kubectl set resources deploy/payment-svc -c payment --limits=memory=1Gi</span></div>
 </div>
 <div style="display: flex; gap: 9px; padding: 8px 10px; background: #2a2d31; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); align-items: flex-start;">
 <div style="width: 18px; height: 18px; border-radius: 50%; background: #383b40; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: #b0b4ba; flex-shrink: 0;">2</div>

@@ -94,6 +94,58 @@ if a feature requires more than two clicks to achieve its primary goal, it is a 
 - **DRY Principle**: Avoid repeating test setup. Use helper functions for repetitive test data generation or setup/teardown.
 - **Mocks**: Leverage `mockery`-generated mocks for testing handlers and services in isolation without relying on actual external connections.
 
+# Council Review — Multi-Agent System
+
+Trigger: `Run Council Review`
+
+## Agents
+
+### 1. @architect (System Design & Strategy)
+- **Focus:** Long-term scalability, data isolation, structural integrity
+- **Core Logic:** Analyze multi-tenancy models (Silo vs Pool vs Bridge). Distinguish Control Plane (admin/billing) from Data Plane (tenant workloads).
+- **Goal:** Ensure no scaling wall at 100+ tenants.
+- **Tool:** Task subagent with `subagent_type: architect`
+
+### 2. @library-curator (Efficiency & Dependency Management)
+- **Focus:** No reinventing the wheel
+- **Core Logic:** Compare custom logic against 2026 industry standards (Clerk for Auth, Stripe for Billing, OpenTelemetry for Observability).
+- **Goal:** Minimize custom code → reduce maintenance burden and security vulnerabilities.
+- **Tool:** Task subagent with `subagent_type: library-curator`
+
+### 3. @kube-guardian (Kubernetes & Infrastructure SRE)
+- **Focus:** Security, automation, K8s-native orchestration
+- **Core Logic:** Enforce GitOps (ArgoCD), auto-scaling (Karpenter), policy engine (Kyverno).
+- **Goal:** Move from manual infra to self-healing, declarative environment.
+- **Tool:** Task subagent with `subagent_type: kube-guardian`
+
+## Workflow Execution
+
+When user types `Run Council Review`:
+
+1. Launch all 3 agents in parallel via Task tool
+2. Each receives: project context (.md files, codebase structure, configs)
+3. Collect results, synthesize into Unified Review
+
+## Unified Review Output Format
+
+### Phase 1: Directional Audit (@architect)
+- Trajectory evaluation for Enterprise SaaS
+- Missing critical systems (Rate limiting, DR, Tenant Isolation)
+
+### Phase 2: The "Wheel" Audit (@library-curator)
+- Custom modules to deprecate → specific 3rd-party replacements
+- Tech stack assessment: Gold Standard vs Legacy
+
+### Phase 3: Infrastructure Hardening (@kube-guardian)
+- K8s features to Add (Gateway API, External Secrets) and Remove (manual ConfigMaps, local storage)
+- GitOps-readiness score
+
+## Guiding Principles
+- **Strictness:** Direct corrections for insecure/unscalable designs
+- **2026 Context:** Only modern, active technologies
+- **Actionable:** Every critique → Proposed Next Step
+- **Cost-Aware:** Balance performance with cloud-spend efficiency
+
 ## Additional Notes
 - Ensure clean shutdown sequences by intercepting OS signals (`os.Interrupt`, `syscall.SIGTERM`) and gracefully terminating servers and background workers using context cancellations with reasonable timeouts.
 - Mock generation: Ensure mocks for interfaces are generated using `mockery` as defined in `.mockery.yaml`.

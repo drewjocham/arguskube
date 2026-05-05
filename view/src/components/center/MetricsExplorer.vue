@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue'
-import { useTimeSeriesMetrics } from '../../composables/useWails'
+import { useTimeSeriesMetrics, callGo } from '../../composables/useWails'
 
 const { queryMetrics } = useTimeSeriesMetrics()
 
@@ -20,14 +20,10 @@ function toggleLive() {
   }
 }
 
-// Empty data placeholder when backend returns nothing.
-const emptyData = (points) => new Array(points).fill(0)
-
 function pointsToPath(data, width, height) {
   if (!data.length) return ''
   const step = width / (data.length - 1)
   const d = data.map((val, i) => {
-    // Map 0-100 to height-0
     const y = height - (val / 100 * height)
     const x = i * step
     return `${i === 0 ? 'M' : 'L'} ${x} ${y}`
@@ -40,58 +36,110 @@ function pointsToArea(data, width, height) {
   return `${line} L ${width} ${height} L 0 ${height} Z`
 }
 
+// Format helpers for computed values.
+function fmtPct(data) {
+  if (!data || !data.length) return '—'
+  const avg = data.reduce((a, b) => a + b, 0) / data.length
+  return `${avg.toFixed(1)}%`
+}
+
+function fmtBytes(data, baseGi = 16) {
+  if (!data || !data.length) return '—'
+  const avgPct = data.reduce((a, b) => a + b, 0) / data.length
+  const gb = (avgPct / 100) * baseGi
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(gb * 1024).toFixed(0)} MB`
+}
+
+function fmtRate(data) {
+  if (!data || !data.length) return '—'
+  const avg = data.reduce((a, b) => a + b, 0) / data.length
+  return `${avg.toFixed(0)} Mbps`
+}
+
 const panels = ref([
   {
-    id: 1, type: 'area', title: 'CPU Utilization', val: '42%',
-    query: 'sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)',
+    id: 1, type: 'area', title: 'CPU Utilization',
+    query: 'cpu',
     color: 'var(--accent)', bg: 'rgba(79, 142, 247, 0.15)',
-    data: [], editing: false, span: 1, loading: true
+    data: [], editing: false, span: 1, loading: true, error: null
   },
   {
-    id: 2, type: 'area', title: 'Memory Usage', val: '8.4 GB',
-    query: 'sum(container_memory_working_set_bytes) by (pod)',
+    id: 2, type: 'area', title: 'Memory Usage',
+    query: 'memory',
     color: 'var(--purple)', bg: 'rgba(167, 139, 250, 0.15)',
-    data: [], editing: false, span: 1, loading: true
+    data: [], editing: false, span: 1, loading: true, error: null
   },
   {
     id: 3, type: 'network', title: 'Network I/O',
-    query: 'rate(container_network_receive_bytes_total[5m])',
+    query: 'network_receive',
     rxData: [], txData: [],
-    editing: false, span: 2, loading: true
+    editing: false, span: 2, loading: true, error: null
   },
   {
-    id: 4, type: 'stat', title: 'Disk IOPS',
-    query: 'rate(container_fs_reads_total[5m])',
-    reads: '4,281', writes: '1,092',
-    editing: false, span: 1, loading: false
+    id: 4, type: 'stat', title: 'Cluster Health',
+    query: 'cluster_health',
+    reads: '—', writes: '—',
+    editing: false, span: 1, loading: true, error: null
   },
   {
     id: 5, type: 'gauge', title: 'Active Pods',
     query: 'count(kube_pod_info)',
-    val: '124', limit: '200',
-    editing: false, span: 1, loading: false
+    val: '—', limit: '—', gaugePct: 0,
+    editing: false, span: 1, loading: true, error: null
   }
 ])
 
 async function refreshPanelData(p, isBackground = false) {
   if (!isBackground) p.loading = true
+  p.error = null
   try {
     if (p.type === 'area' || p.type === 'line' || p.type === 'bar') {
       const data = await queryMetrics(p.query, timeRange.value)
-      p.data = data && data.length ? data : emptyData(100)
+      if (data && data.length) {
+        p.data = data
+        // Compute display value from real data.
+        if (p.query.includes('memory') || p.query.includes('mem')) {
+          p.val = fmtBytes(data)
+        } else {
+          p.val = fmtPct(data)
+        }
+      } else {
+        p.data = []
+        p.val = '—'
+        p.error = 'No data available'
+      }
     } else if (p.type === 'network') {
-      const rx = await queryMetrics(`sum(${p.query})`, timeRange.value)
-      const tx = await queryMetrics(`sum(rate(container_network_transmit_bytes_total[5m]))`, timeRange.value)
-      p.rxData = rx && rx.length ? rx : emptyData(100)
-      p.txData = tx && tx.length ? tx : emptyData(100)
+      const rx = await queryMetrics(p.query, timeRange.value)
+      const tx = await queryMetrics('network_transmit', timeRange.value)
+      p.rxData = rx && rx.length ? rx : []
+      p.txData = tx && tx.length ? tx : []
+      if (!p.rxData.length && !p.txData.length) {
+        p.error = 'No network data available'
+      }
+    } else if (p.type === 'stat' || p.type === 'gauge') {
+      // Fetch real cluster metrics from GetMetrics.
+      const m = await callGo('GetMetrics')
+      if (m) {
+        if (p.type === 'stat') {
+          p.reads = m.restartCount != null ? m.restartCount.toLocaleString() : '0'
+          p.writes = m.warningEvents != null ? m.warningEvents.toLocaleString() : '0'
+          // Override labels for real data.
+          p.statLabel1 = 'Restarts'
+          p.statLabel2 = 'Warning Events'
+        } else if (p.type === 'gauge') {
+          p.val = m.podsRunning != null ? String(m.podsRunning) : '0'
+          p.limit = m.podsTotal != null ? String(m.podsTotal) : '0'
+          p.gaugePct = m.podsTotal > 0 ? (m.podsRunning / m.podsTotal) : 0
+        }
+      } else {
+        p.error = 'Failed to fetch cluster metrics'
+      }
     }
   } catch (err) {
     console.error(`Failed to fetch metrics for ${p.title}:`, err)
-    if (p.type === 'area' || p.type === 'line' || p.type === 'bar') p.data = emptyData(100)
-    if (p.type === 'network') {
-      p.rxData = emptyData(100)
-      p.txData = emptyData(100)
-    }
+    p.error = err?.message || 'Fetch failed'
+    if (p.type === 'area' || p.type === 'line' || p.type === 'bar') { p.data = []; p.val = '—' }
+    if (p.type === 'network') { p.rxData = []; p.txData = [] }
   } finally {
     if (!isBackground) p.loading = false
   }
@@ -115,10 +163,10 @@ watch(timeRange, () => {
 
 function addPanel() {
   panels.value.push({
-    id: Date.now(), type: 'area', title: 'New Custom Metric', val: '0',
-    query: 'rate(http_requests_total[5m])',
+    id: Date.now(), type: 'area', title: 'New Custom Metric',
+    query: 'cpu',
     color: 'var(--teal)', bg: 'rgba(45, 212, 191, 0.15)',
-    data: emptyData(100), editing: true, span: 1, isNew: true
+    data: [], editing: true, span: 1, isNew: true, loading: false, error: null
   })
 }
 
@@ -143,18 +191,38 @@ function cancelEdit(p) {
 function generateQuery(p) {
   if (!p.aiPrompt) return
   const prompt = p.aiPrompt.toLowerCase()
-  p.query = `// AI Generated for: ${p.aiPrompt}\n`
   if (prompt.includes('memory') || prompt.includes('ram')) {
-    p.query += 'topk(5, sum(container_memory_working_set_bytes) by (pod))'
+    p.query = 'memory'
   } else if (prompt.includes('cpu')) {
-    p.query += 'topk(5, sum(rate(container_cpu_usage_seconds_total[5m])) by (pod))'
+    p.query = 'cpu'
   } else if (prompt.includes('network') || prompt.includes('traffic')) {
-    p.query += 'sum(rate(container_network_receive_bytes_total[5m])) by (namespace)'
+    p.query = 'network_receive'
+  } else if (prompt.includes('node')) {
+    p.query = 'node_cpu'
   } else {
-    p.query += 'rate(http_requests_total[5m])'
+    p.query = 'cpu'
   }
   p.showAI = false
   p.aiPrompt = ''
+}
+
+// Gauge arc — compute SVG arc endpoint from percentage (0–1).
+function gaugeArc(pct) {
+  if (pct <= 0) return 'M 10 50 A 40 40 0 0 1 10 50'
+  const clamp = Math.min(pct, 1)
+  // Arc goes from (-170°) to (−10°), so 160° total.
+  const angle = -170 + clamp * 160
+  const rad = angle * Math.PI / 180
+  const x = 50 + 40 * Math.cos(rad)
+  const y = 50 + 40 * Math.sin(rad)
+  const largeArc = clamp > 0.5 ? 1 : 0
+  return `M 10 50 A 40 40 0 ${largeArc} 1 ${x.toFixed(1)} ${y.toFixed(1)}`
+}
+
+function gaugeColor(pct) {
+  if (pct >= 0.9) return 'var(--green)'
+  if (pct >= 0.7) return 'var(--amber, #f5a623)'
+  return 'var(--red, #f05454)'
 }
 
 const expandedPanel = ref(null)
@@ -319,10 +387,10 @@ function onResizeEnd() {
               <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
             </button>
           </div>
-          <span class="panel-val" v-if="p.val">{{ p.val }}</span>
+          <span class="panel-val" v-if="p.val && p.type !== 'network' && p.type !== 'stat' && p.type !== 'gauge'">{{ p.val }}</span>
           <div class="panel-legend" v-else-if="p.type === 'network'">
-            <span class="leg-item"><span class="leg-dot rx"></span> RX: 120 Mbps</span>
-            <span class="leg-item"><span class="leg-dot tx"></span> TX: 45 Mbps</span>
+            <span class="leg-item"><span class="leg-dot rx"></span> RX: {{ fmtRate(p.rxData) }}</span>
+            <span class="leg-item"><span class="leg-dot tx"></span> TX: {{ fmtRate(p.txData) }}</span>
           </div>
         </div>
 
@@ -382,6 +450,9 @@ function onResizeEnd() {
             <div v-if="p.loading" class="loading-overlay">
               <div class="loader"></div>
             </div>
+            <div v-else-if="p.error || !p.data.length" class="no-data-overlay">
+              <span>{{ p.error || 'No data' }}</span>
+            </div>
             <svg v-else viewBox="0 0 400 100" preserveAspectRatio="none" class="panel-svg">
               <path :d="pointsToArea(p.data, 400, 100)" :fill="p.bg || 'rgba(79, 142, 247, 0.15)'" />
               <path :d="pointsToPath(p.data, 400, 100)" fill="none" :stroke="p.color || 'var(--accent)'" stroke-width="1.5" />
@@ -392,6 +463,9 @@ function onResizeEnd() {
             <div v-if="p.loading" class="loading-overlay">
               <div class="loader"></div>
             </div>
+            <div v-else-if="p.error || !p.data.length" class="no-data-overlay">
+              <span>{{ p.error || 'No data' }}</span>
+            </div>
             <svg v-else viewBox="0 0 400 100" preserveAspectRatio="none" class="panel-svg">
               <path :d="pointsToPath(p.data, 400, 100)" fill="none" :stroke="p.color || 'var(--teal)'" stroke-width="2" />
             </svg>
@@ -401,12 +475,15 @@ function onResizeEnd() {
             <div v-if="p.loading" class="loading-overlay">
               <div class="loader"></div>
             </div>
+            <div v-else-if="p.error || !p.data.length" class="no-data-overlay">
+              <span>{{ p.error || 'No data' }}</span>
+            </div>
             <svg v-else viewBox="0 0 400 100" preserveAspectRatio="none" class="panel-svg">
-              <rect v-for="(val, i) in p.data" :key="i" 
-                    :x="i * (400 / p.data.length)" 
-                    :y="100 - (val / 100 * 100)" 
-                    :width="(400 / p.data.length) - 1" 
-                    :height="(val / 100 * 100)" 
+              <rect v-for="(val, i) in p.data" :key="i"
+                    :x="i * (400 / p.data.length)"
+                    :y="100 - (val / 100 * 100)"
+                    :width="(400 / p.data.length) - 1"
+                    :height="(val / 100 * 100)"
                     :fill="p.color || 'var(--purple)'" />
             </svg>
           </template>
@@ -414,6 +491,9 @@ function onResizeEnd() {
           <template v-else-if="p.type === 'network'">
             <div v-if="p.loading" class="loading-overlay">
               <div class="loader"></div>
+            </div>
+            <div v-else-if="p.error || (!p.rxData.length && !p.txData.length)" class="no-data-overlay">
+              <span>{{ p.error || 'No network data' }}</span>
             </div>
             <svg v-else viewBox="0 0 800 150" preserveAspectRatio="none" class="panel-svg">
               <line x1="0" y1="30" x2="800" y2="30" stroke="var(--border)" stroke-width="1" stroke-dasharray="4" />
@@ -427,25 +507,39 @@ function onResizeEnd() {
           </template>
 
           <template v-else-if="p.type === 'stat'">
-            <div class="stat-big">
-              <div class="stat-num">{{ p.reads }}</div>
-              <div class="stat-sub">Reads/sec</div>
+            <div v-if="p.loading" class="loading-overlay">
+              <div class="loader"></div>
             </div>
-            <div class="stat-big mt">
-              <div class="stat-num">{{ p.writes }}</div>
-              <div class="stat-sub">Writes/sec</div>
+            <div v-else-if="p.error" class="no-data-overlay">
+              <span>{{ p.error }}</span>
             </div>
+            <template v-else>
+              <div class="stat-big">
+                <div class="stat-num">{{ p.reads }}</div>
+                <div class="stat-sub">{{ p.statLabel1 || 'Restarts' }}</div>
+              </div>
+              <div class="stat-big mt">
+                <div class="stat-num">{{ p.writes }}</div>
+                <div class="stat-sub">{{ p.statLabel2 || 'Warning Events' }}</div>
+              </div>
+            </template>
           </template>
 
           <template v-else-if="p.type === 'gauge'">
-            <div class="flex-center" style="flex:1; display:flex;">
+            <div v-if="p.loading" class="loading-overlay">
+              <div class="loader"></div>
+            </div>
+            <div v-else-if="p.error" class="no-data-overlay">
+              <span>{{ p.error }}</span>
+            </div>
+            <div v-else class="flex-center" style="flex:1; display:flex;">
               <div class="gauge">
                 <svg viewBox="0 0 100 50">
                   <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="var(--bg4)" stroke-width="12" stroke-linecap="round" />
-                  <path d="M 10 50 A 40 40 0 0 1 70 15" fill="none" stroke="var(--green)" stroke-width="12" stroke-linecap="round" />
+                  <path :d="gaugeArc(p.gaugePct || 0)" fill="none" :stroke="gaugeColor(p.gaugePct || 0)" stroke-width="12" stroke-linecap="round" />
                 </svg>
-                <div class="gauge-val">{{ p.val }}</div>
-                <div class="gauge-lbl">of {{ p.limit }} Limit</div>
+                <div class="gauge-val" :style="{ color: gaugeColor(p.gaugePct || 0) }">{{ p.val }}</div>
+                <div class="gauge-lbl">of {{ p.limit }} total</div>
               </div>
             </div>
           </template>
@@ -755,6 +849,18 @@ function onResizeEnd() {
 }
 .resize-handle:hover svg path {
   opacity: 1;
+}
+
+/* No data state */
+.no-data-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text3, #6b7078);
+  font-size: 12px;
+  font-style: italic;
 }
 
 /* Loading state */

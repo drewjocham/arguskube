@@ -309,9 +309,9 @@ async function toggleExpand(hpaName) {
 @keyframes slide-down { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
 .col-name { display: flex; align-items: center; font-weight: 500; }
-.font-mono { font-family: 'SF Mono', Consolas, monospace; color: #b0b4ba; font-size: 12px; }
+.font-mono { font-family: var(--mono); color: #b0b4ba; font-size: 12px; }
 
-.target-badge { font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 600; background: rgba(255,255,255,0.05); color: #ccc; font-family: 'SF Mono', Consolas, monospace; border: 1px solid rgba(255,255,255,0.05); }
+.target-badge { font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 600; background: rgba(255,255,255,0.05); color: #ccc; font-family: var(--mono); border: 1px solid rgba(255,255,255,0.05); }
 .target-badge.alert { background: rgba(240, 84, 84, 0.15); color: #f05454; border-color: rgba(240, 84, 84, 0.3); }
 
 .maxed { color: #f05454; font-weight: 600; }
@@ -325,7 +325,7 @@ async function toggleExpand(hpaName) {
 .vpa-loading { color: #8b8f96; font-size: 13px; padding: 16px; text-align: center; }
 .vpa-empty { color: #6b7078; font-size: 13px; text-align: center; padding: 24px; display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .vpa-hint { font-size: 11px; color: #4b5058; }
-.vpa-hint code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 3px; font-family: 'SF Mono', Consolas, monospace; color: #8b8f96; }
+.vpa-hint code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 3px; font-family: var(--mono); color: #8b8f96; }
 
 .vpa-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
 
@@ -361,7 +361,7 @@ async function toggleExpand(hpaName) {
 .vpa-rec-col { display: flex; flex-direction: column; gap: 4px; text-align: center; }
 .vpa-rec-col.target { background: rgba(167, 139, 250, 0.08); border-radius: 4px; padding: 4px; }
 .vpa-rec-header { font-size: 10px; color: #6b7078; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
-.vpa-rec-val { font-size: 11px; color: #b0b4ba; font-family: 'SF Mono', Consolas, monospace; }
+.vpa-rec-val { font-size: 11px; color: #b0b4ba; font-family: var(--mono); }
 .vpa-rec-val.highlight { color: #a78bfa; font-weight: 600; }
 
 .vpa-no-recs { font-size: 12px; color: #6b7078; text-align: center; padding: 8px; font-style: italic; }

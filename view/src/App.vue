@@ -60,7 +60,21 @@ function onContextSwitched() {
 }
 
 function toggleTerminal() {
+  // Close pop-out if open — only one PTY at a time.
+  if (popOutOpen.value) {
+    popOutOpen.value = false
+  }
   terminalOpen.value = !terminalOpen.value
+}
+
+function openPopOut() {
+  // Close embedded terminal first — shares the same PTY.
+  terminalOpen.value = false
+  popOutOpen.value = true
+}
+
+function closePopOut() {
+  popOutOpen.value = false
 }
 
 // Terminal resize drag.
@@ -106,7 +120,7 @@ provide('isAllowed', isAllowed)
   </template>
 
   <template v-else>
-    <Titlebar :clusterInfo="clusterInfo" @toggle-terminal="toggleTerminal" @pop-out="popOutOpen = true" :terminalOpen="terminalOpen" />
+    <Titlebar :clusterInfo="clusterInfo" @toggle-terminal="toggleTerminal" @pop-out="openPopOut" :terminalOpen="terminalOpen" />
     <div class="main">
       <Sidebar
         :clusterInfo="clusterInfo"
@@ -163,7 +177,7 @@ provide('isAllowed', isAllowed)
     </div>
     
     <ToastContainer />
-    <ProDesktopApp v-if="popOutOpen" @close="popOutOpen = false" />
+    <ProDesktopApp v-if="popOutOpen" @close="closePopOut" />
   </template>
 </template>
 

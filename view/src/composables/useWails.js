@@ -529,6 +529,77 @@ export function useTerminal() {
   return { startTerminal, sendInput, resizeTerminal }
 }
 
+/**
+ * Composable for interactive pod exec (kubectl exec -it).
+ */
+export function usePodExec() {
+  const connected = ref(false)
+  const error = ref(null)
+
+  async function startExec(namespace, podName, container, rows, cols) {
+    error.value = null
+    try {
+      await callGo('ExecPodShell', namespace, podName, container || '', rows, cols)
+      connected.value = true
+    } catch (e) {
+      error.value = e?.message || String(e)
+      console.error('[exec]', e)
+    }
+  }
+
+  async function sendInput(data) {
+    try {
+      await callGo('SendExecInput', data)
+    } catch (e) {
+      console.error('[exec-input]', e)
+    }
+  }
+
+  async function resizeExec(rows, cols) {
+    try {
+      await callGo('ResizeExec', rows, cols)
+    } catch (e) {
+      console.error('[exec-resize]', e)
+    }
+  }
+
+  async function closeExec() {
+    try {
+      await callGo('CloseExecSession')
+    } catch (e) {
+      console.error('[exec-close]', e)
+    }
+    connected.value = false
+  }
+
+  return { connected, error, startExec, sendInput, resizeExec, closeExec }
+}
+
+/**
+ * Composable for resolving service → backing pods.
+ */
+export function useServicePods() {
+  const pods = ref([])
+  const loading = ref(false)
+  const error = ref(null)
+
+  async function fetchServicePods(namespace, serviceName) {
+    loading.value = true
+    error.value = null
+    try {
+      const result = await callGo('GetServicePods', namespace, serviceName)
+      pods.value = result || []
+    } catch (e) {
+      error.value = e?.message || String(e)
+      pods.value = []
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { pods, loading, error, fetchServicePods }
+}
+
 
 /**
  * Composable for S3-backed notebooks.

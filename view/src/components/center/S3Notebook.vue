@@ -370,7 +370,7 @@ async function onDropOnRoot(e) {
   height: 100%;
   background: #1e1e1e;
   color: #cccccc;
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+  font-family: var(--font);
   overflow: hidden;
 }
 
@@ -587,5 +587,5 @@ async function onDropOnRoot(e) {
 :deep(.tiptap a:hover) { text-decoration: underline; }
 :deep(.tiptap ul), :deep(.tiptap ol) { padding-left: 2em; margin-bottom: 1em; }
 :deep(.tiptap blockquote) { border-left: 4px solid #37373d; padding-left: 1em; margin-left: 0; color: #999; }
-:deep(.tiptap code) { background: rgba(255,255,255,0.1); padding: 0.2em 0.4em; border-radius: 3px; font-family: 'SF Mono', Consolas, monospace; font-size: 0.9em; }
+:deep(.tiptap code) { background: rgba(255,255,255,0.1); padding: 0.2em 0.4em; border-radius: 3px; font-family: var(--mono); font-size: 0.9em; }
 </style>

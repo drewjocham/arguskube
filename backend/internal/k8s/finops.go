@@ -219,8 +219,11 @@ func (c *Client) EstimateCosts(ctx context.Context, costCfg CostConfig) (*Cluste
 
 	// Simulated daily history — project current rate across last 30 days with
 	// slight variance to give the bar chart realistic shape. In production this
-	// would come from stored snapshots.
-	report.DailyHistory = buildDailyHistory(report.TotalCostDay, 30)
+	// would come from stored snapshots. Skip when there is no cost to project,
+	// otherwise an empty cluster shows a flat zero bar chart that implies data.
+	if report.TotalCostDay > 0 {
+		report.DailyHistory = buildDailyHistory(report.TotalCostDay, 30)
+	}
 
 	return report, nil
 }

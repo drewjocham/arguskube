@@ -49,7 +49,7 @@ frontend-dev: ## Start Vite dev server standalone (for debugging)
 # ── Build ────────────────────────────────────────────────────────
 
 build: frontend ## Production build (macOS app bundle)
-	cd $(BACKEND_DIR) && wails build
+	cd $(BACKEND_DIR) && wails build && xattr -cr build/bin/kubewatcher.app && codesign --force --deep --sign - build/bin/kubewatcher.app
 
 build-nopackage: frontend ## Production binary (no .app bundle)
 	cd $(BACKEND_DIR) && wails build -nopackage

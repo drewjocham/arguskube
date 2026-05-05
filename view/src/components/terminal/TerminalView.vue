@@ -21,7 +21,7 @@ async function initTerminal() {
   const { FitAddon } = await import('xterm-addon-fit')
 
   term = new Terminal({
-    fontFamily: "'DM Mono', 'SF Mono', 'Menlo', monospace",
+    fontFamily: "'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, monospace",
     fontSize: 12,
     lineHeight: 1.35,
     cursorBlink: true,

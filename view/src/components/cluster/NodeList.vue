@@ -327,7 +327,7 @@ const diskSpark = ref(generateSparkline(20))
   justify-content: space-between;
   align-items: center;
 }
-.node-name { font-size: 14px; font-weight: 600; color: #e8eaec; font-family: 'SF Mono', Consolas, monospace; }
+.node-name { font-size: 14px; font-weight: 600; color: #e8eaec; font-family: var(--mono); }
 
 .node-status { font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
 .node-status.ready { background: rgba(62, 207, 142, 0.15); color: #3ecf8e; }
@@ -352,7 +352,7 @@ const diskSpark = ref(generateSparkline(20))
 }
 .resource-bar-container { display: flex; flex-direction: column; gap: 4px; }
 .res-label { display: flex; justify-content: space-between; font-size: 11px; font-weight: 500; color: #8b8f96; }
-.res-label span { font-family: 'SF Mono', Consolas, monospace; }
+.res-label span { font-family: var(--mono); }
 .res-track { width: 100%; height: 6px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; }
 .res-fill { height: 100%; transition: width 0.3s ease; }
 
@@ -389,7 +389,7 @@ const diskSpark = ref(generateSparkline(20))
 .info-list { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
 .info-row { display: flex; justify-content: space-between; align-items: flex-start; }
 .info-row .label { color: #8b8f96; }
-.info-row .val { color: #e8eaec; font-family: 'SF Mono', Consolas, monospace; text-align: right; }
+.info-row .val { color: #e8eaec; font-family: var(--mono); text-align: right; }
 .val.taints { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
 .badge { background: rgba(245, 166, 35, 0.15); color: #f5a623; padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap; }
 
@@ -461,7 +461,7 @@ const diskSpark = ref(generateSparkline(20))
 
 .logs-viewer {
   padding: 12px;
-  font-family: 'SF Mono', Consolas, monospace;
+  font-family: var(--mono);
   font-size: 12px;
   color: #d4d4d4;
   height: 250px;

@@ -296,7 +296,7 @@ function switchDetailTab(tab) {
 .replica-bar { width: 100%; height: 6px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; }
 .replica-fill { height: 100%; transition: width 0.3s ease; }
 
-.font-mono { font-family: 'SF Mono', Consolas, monospace; font-size: 12px; color: #a78bfa; }
+.font-mono { font-family: var(--mono); font-size: 12px; color: #a78bfa; }
 
 /* Manifest Tracker Label */
 .manifest-tracker {
@@ -365,7 +365,7 @@ function switchDetailTab(tab) {
 .cond-reason { color: #8b8f96; }
 
 .labels-grid { display: flex; flex-wrap: wrap; gap: 6px; }
-.label-chip { background: rgba(55, 148, 255, 0.1); color: #3794ff; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: 'SF Mono', Consolas, monospace; }
+.label-chip { background: rgba(55, 148, 255, 0.1); color: #3794ff; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: var(--mono); }
 
 .events-mini { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
 .event-mini-row { display: grid; grid-template-columns: 60px 120px 1fr 50px; gap: 8px; font-size: 11px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); align-items: center; }

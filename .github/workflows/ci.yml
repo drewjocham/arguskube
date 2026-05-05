@@ -51,14 +51,41 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend/agent
+        working-directory: agent
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: backend/agent/go.mod
-          cache-dependency-path: backend/agent/go.sum
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test -race -count=1 -timeout 120s ./...
+
+  # --- Go Alert Ingress ---
+  alert-ingress:
+    name: Alert Ingress (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: alert-ingress
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: alert-ingress/go.mod
+          cache-dependency-path: alert-ingress/go.sum
 
       - name: Download dependencies
         run: go mod download

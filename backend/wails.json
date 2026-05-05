@@ -13,11 +13,7 @@
     "name": "djocham",
     "email": "me@djocham.com"
   },
-  "postBuildHooks": {
-    "darwin/arm64": "xattr -cr build/bin/kubewatcher.app && codesign --force --deep --sign - build/bin/kubewatcher.app",
-    "darwin/amd64": "xattr -cr build/bin/kubewatcher.app && codesign --force --deep --sign - build/bin/kubewatcher.app",
-    "darwin/universal": "xattr -cr build/bin/kubewatcher.app && codesign --force --deep --sign - build/bin/kubewatcher.app"
-  },
+
   "info": {
     "companyName": "djocham",
     "productName": "KubeWatcher",

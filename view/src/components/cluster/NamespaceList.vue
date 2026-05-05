@@ -183,6 +183,8 @@ async function toggleExpand(nsName) {
   gap: 24px;
   overflow-y: auto;
   height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 .header { display: flex; justify-content: space-between; align-items: flex-start; }
 .header-text .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
@@ -203,7 +205,7 @@ async function toggleExpand(nsName) {
   background: #1e2023;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .ns-header-row {
@@ -239,7 +241,7 @@ async function toggleExpand(nsName) {
 .ns-row.terminating { opacity: 0.6; }
 
 .ns-name { display: flex; align-items: center; font-weight: 500; }
-.font-mono { font-family: 'SF Mono', Consolas, monospace; color: #b0b4ba; }
+.font-mono { font-family: var(--mono); color: #b0b4ba; }
 
 .chevron { transition: transform 0.2s ease; color: #6b7078; }
 .chevron.open { transform: rotate(180deg); }
