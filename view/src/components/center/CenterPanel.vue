@@ -33,8 +33,13 @@ import FinOpsView from './FinOpsView.vue'
 import SetupPanel from '../setup/SetupPanel.vue'
 import SettingsPanel from '../setup/SettingsPanel.vue'
 import { useArgusScan } from '../../composables/useWails'
+import { useBackgroundTasks } from '../../composables/useBackgroundTasks'
 
 const { report: argusScanReport, loading: argusScanLoading, error: argusScanError, runScan: runArgusScanReal } = useArgusScan()
+const { startTask, completeTask, failTask, getTask } = useBackgroundTasks()
+
+// Persist the last Argus scan result across navigation.
+const ARGUS_SCAN_KEY = 'argus-scan'
 
 const props = defineProps({
   metrics: { type: Object, default: null },
@@ -106,12 +111,26 @@ const isOperations = computed(() => operationViews.includes(props.activeNav))
 const isKnowledge = computed(() => knowledgeViews.includes(props.activeNav))
 const isAdmin = computed(() => adminViews.includes(props.activeNav))
 
-// Argus Scan logic — real backend only.
-const reportData = computed(() => argusScanReport.value || null)
+// Argus Scan logic — real backend only, persisted across navigation.
+const reportData = computed(() => {
+  // Always use the freshest backend response first.
+  if (argusScanReport.value) return argusScanReport.value
+  // Fallback: try restoring from the persistence store (navigation survived).
+  const stored = getTask(ARGUS_SCAN_KEY)
+  return stored?.status === 'completed' ? stored.result : null
+})
 const loadingReport = computed(() => argusScanLoading.value)
 
 async function runArgusScan() {
-  await runArgusScanReal()
+  startTask(ARGUS_SCAN_KEY)
+  try {
+    await runArgusScanReal()
+    if (argusScanReport.value) {
+      completeTask(ARGUS_SCAN_KEY, argusScanReport.value)
+    }
+  } catch (e) {
+    failTask(ARGUS_SCAN_KEY, e?.message || String(e))
+  }
 }
 </script>
 
@@ -253,8 +272,10 @@ async function runArgusScan() {
 
     <!-- Admin views -->
     <template v-else-if="isAdmin">
-      <SetupPanel v-if="activeNav === 'setup'" />
-      <SettingsPanel v-if="activeNav === 'settings'" />
+      <div class="admin-scroll">
+        <SetupPanel v-if="activeNav === 'setup'" />
+        <SettingsPanel v-if="activeNav === 'settings'" />
+      </div>
     </template>
   </div>
 </template>
@@ -316,6 +337,9 @@ async function runArgusScan() {
 }
 .ctrl-btn:hover:not(:disabled) { background: var(--accent); color: white; border-color: var(--accent); }
 .ctrl-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Admin scroll wrapper */
+.admin-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
 .editing-dim { opacity: 0.6; pointer-events: none; border: 1px dashed var(--border); border-radius: var(--r); }
 
 /* Resource layout — table + optional detail panel */

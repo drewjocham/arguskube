@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useResources, useNodeLogs } from '../../composables/useWails'
+import { useResources, useNodeLogs, callGo } from '../../composables/useWails'
 
 const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
 const { logs: rawNodeLogs, loading: logsLoading, error: logsError, fetchNodeLogs, clear: clearLogs } = useNodeLogs()
@@ -48,14 +48,25 @@ async function toggleExpand(nodeName) {
     nodeDetail.value = null
     stopLogPolling()
     clearLogs()
+    nodeMetrics.value = null
   } else {
     expandedNode.value = nodeName
-    // Fetch detail and logs in parallel.
+    // Fetch detail, logs, and live metrics in parallel.
     const detailPromise = getResourceDetail('nodes', '', nodeName)
     const logsPromise = fetchNodeLogs(nodeName, 200)
-    await Promise.all([detailPromise, logsPromise])
+    const metricsPromise = callGo('QueryTimeSeriesMetrics', `node:${nodeName}`, '1h')
+    await Promise.allSettled([detailPromise, logsPromise, metricsPromise])
     if (detail.value) {
       nodeDetail.value = detail.value
+    }
+    // Populate real metric sparklines from the response.
+    try {
+      const raw = await metricsPromise
+      if (raw && raw.datapoints) {
+        nodeMetrics.value = raw.datapoints
+      }
+    } catch (_) {
+      // Metrics-server may not be available — leave sparklines empty.
     }
   }
 }
@@ -105,19 +116,31 @@ function stopLogPolling() {
   isStreamingLogs.value = false
 }
 
-// Generate simple sparklines.
-const generateSparkline = (points) => {
+// Real metric data — populated from QueryTimeSeriesMetrics when a node is expanded.
+const nodeMetrics = ref(null)
+
+function buildSparkPath(metricValues, height = 100) {
+  if (!metricValues || metricValues.length < 2) {
+    // Single-datapoint or empty — flat line at 50%.
+    return 'M0 50 L100 50'
+  }
+  const count = metricValues.length
+  const maxVal = Math.max(...metricValues, 10)
   let path = ''
-  for (let i = 0; i < points; i++) {
-    const x = i * (100 / (points - 1))
-    const y = 50 + Math.sin(i * 0.5) * 20 + (Math.random() * 20)
-    path += `${i === 0 ? 'M' : 'L'} ${x} ${100 - y} `
+  for (let i = 0; i < count; i++) {
+    const x = (i / (count - 1)) * 100
+    const y = (metricValues[i] / maxVal) * height
+    path += `${i === 0 ? 'M' : 'L'} ${x} ${Math.max(height - y, 1)} `
   }
   return path
 }
-const cpuSpark = ref(generateSparkline(20))
-const memSpark = ref(generateSparkline(20))
-const diskSpark = ref(generateSparkline(20))
+
+function sparkLine(name) {
+  if (!nodeMetrics.value) return 'M0 50 L100 50'
+  const values = Array.isArray(nodeMetrics.value[name]) ? nodeMetrics.value[name] : null
+  if (!values || values.length < 2) return 'M0 50 L100 50'
+  return buildSparkPath(values)
+}
 </script>
 
 <template>
@@ -205,15 +228,18 @@ const diskSpark = ref(generateSparkline(20))
               <div class="metrics-sparklines">
                 <div class="spark-box">
                   <div class="spark-lbl">CPU Load</div>
-                  <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path :d="cpuSpark" fill="none" stroke="#f5a623" stroke-width="3" /></svg>
+                  <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path :d="sparkLine('cpu')" fill="none" stroke="#f5a623" stroke-width="3" /></svg>
+                  <div v-if="!nodeMetrics" class="spark-hint">unavailable</div>
                 </div>
                 <div class="spark-box">
                   <div class="spark-lbl">Memory</div>
-                  <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path :d="memSpark" fill="none" stroke="#a78bfa" stroke-width="3" /></svg>
+                  <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path :d="sparkLine('memory')" fill="none" stroke="#a78bfa" stroke-width="3" /></svg>
+                  <div v-if="!nodeMetrics" class="spark-hint">unavailable</div>
                 </div>
                 <div class="spark-box">
                   <div class="spark-lbl">Disk I/O</div>
-                  <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path :d="diskSpark" fill="none" stroke="#3ecf8e" stroke-width="3" /></svg>
+                  <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path :d="sparkLine('disk')" fill="none" stroke="#3ecf8e" stroke-width="3" /></svg>
+                  <div v-if="!nodeMetrics" class="spark-hint">unavailable</div>
                 </div>
               </div>
             </div>
@@ -408,6 +434,7 @@ const diskSpark = ref(generateSparkline(20))
   height: 80px;
 }
 .spark-lbl { font-size: 11px; color: #8b8f96; text-align: center; }
+.spark-hint { font-size: 9px; color: #6b7078; text-align: center; font-style: italic; margin-top: -6px; }
 .spark-box svg { width: 100%; height: 100%; }
 
 /* Logs View */
