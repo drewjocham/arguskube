@@ -67,3 +67,4 @@ go.work.sum
 # Tests
 view/test-results/
 view/e2e/playwright-report/
+node_modules/.vite/

@@ -83,3 +83,118 @@ func TestIdempotentClose(t *testing.T) {
 		t.Fatalf("Close on unstarted terminal should be safe: %v", err)
 	}
 }
+
+func TestStartEmptyShell(t *testing.T) {
+	term := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+
+	// Start with empty shell — should auto-detect (fall back to zsh).
+	if err := term.Start("", 40, 120); err != nil {
+		t.Skipf("cannot start PTY with empty shell: %v", err)
+	}
+	defer term.Close()
+
+	if !term.IsRunning() {
+		t.Error("expected terminal to be running after Start")
+	}
+}
+
+func TestIsRunningFalseBeforeStart(t *testing.T) {
+	term := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+
+	if term.IsRunning() {
+		t.Error("expected IsRunning to be false before Start")
+	}
+}
+
+func TestIsRunningFalseAfterClose(t *testing.T) {
+	term := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+
+	if err := term.Start("sh", 40, 120); err != nil {
+		t.Skipf("cannot start PTY: %v", err)
+	}
+
+	if !term.IsRunning() {
+		t.Error("expected IsRunning to be true after Start")
+	}
+
+	term.Close()
+
+	if term.IsRunning() {
+		t.Error("expected IsRunning to be false after Close")
+	}
+}
+
+func TestWriteBeforeStartNoPanic(t *testing.T) {
+	term := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+
+	// Writing before Start should be a no-op, not a panic.
+	if err := term.Write("test"); err != nil {
+		t.Logf("Write before Start returned error: %v", err)
+	}
+}
+
+func TestResizeBeforeStartNoPanic(t *testing.T) {
+	term := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+
+	// Resizing before Start should be a no-op, not a panic.
+	if err := term.Resize(80, 160); err != nil {
+		t.Logf("Resize before Start returned error: %v", err)
+	}
+}
+
+func TestNewNilLogger(t *testing.T) {
+	term := New(nil)
+	if term == nil {
+		t.Fatal("New with nil logger returned nil")
+	}
+}
+
+func TestCloseUnstarted(t *testing.T) {
+	term := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+
+	// Close before Start should be safe.
+	if err := term.Close(); err != nil {
+		t.Fatalf("Close on unstarted terminal should be safe: %v", err)
+	}
+}
+
+func TestWriteAfterCloseNoPanic(t *testing.T) {
+	term := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+
+	if err := term.Start("sh", 40, 120); err != nil {
+		t.Skipf("cannot start PTY: %v", err)
+	}
+	term.Close()
+
+	// Writing after Close should be safe.
+	if err := term.Write("test"); err != nil {
+		t.Logf("Write after Close returned error: %v", err)
+	}
+}
+
+func TestResizeAfterCloseNoPanic(t *testing.T) {
+	term := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+
+	if err := term.Start("sh", 40, 120); err != nil {
+		t.Skipf("cannot start PTY: %v", err)
+	}
+	term.Close()
+
+	if err := term.Resize(80, 160); err != nil {
+		t.Logf("Resize after Close returned error: %v", err)
+	}
+}
+
+func TestStartTwice(t *testing.T) {
+	term := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
+
+	if err := term.Start("sh", 40, 120); err != nil {
+		t.Skipf("cannot start PTY: %v", err)
+	}
+	defer term.Close()
+
+	// Starting again should close the first and start a new one.
+	if err := term.Start("sh", 80, 160); err != nil {
+		t.Fatalf("Start again failed: %v", err)
+	}
+}
