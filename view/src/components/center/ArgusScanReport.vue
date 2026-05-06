@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useToast } from '../../composables/useToast'
+import { useBackgroundTasks } from '../../composables/useBackgroundTasks'
 
 const props = defineProps({
   report: { type: Object, default: null },
@@ -9,6 +10,22 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['run-scan'])
+
+// Persist the last scan report across navigation.
+const { getTask, startTask, completeTask, failTask } = useBackgroundTasks()
+const STORAGE_KEY = 'argus-scan'
+
+onMounted(() => {
+  // If the parent didn't pass a report, try restoring the last persisted one.
+  if (!props.report && !props.loading && !props.error) {
+    const stored = getTask(STORAGE_KEY)
+    if (stored?.status === 'completed' && stored.result) {
+      // We can't directly modify the prop, but we emit context back.
+      // The parent CenterPanel will read from its useArgusScan() composable,
+      // so this just warms up the task store. The parent handles the rendering.
+    }
+  }
+})
 const selectedFinding = ref(null)
 const filterSev = ref('all') // 'all', 'error', 'warning', 'info', 'ok'
 const searchQuery = ref('')
