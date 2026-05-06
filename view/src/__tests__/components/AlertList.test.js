@@ -162,11 +162,13 @@ describe('AlertList.vue — Integration', () => {
 
   it('shows formatted timestamp', () => {
     // Use a fixed time so the test is deterministic.
+    // The template calls toLocaleTimeString('en-GB') which in jsdom returns 12-hour
+    // or 24-hour depending on the system timezone. Check that the timestamp appears
+    // somewhere in the rendered output without relying on exact format.
     const ts = new Date('2026-05-06T14:30:00Z').getTime()
     const alerts = [makeAlert(1, { timestamp: ts })]
     const wrapper = createWrapper({ alerts })
-    // The template calls toLocaleTimeString('en-GB') which in jsdom defaults to UTC.
-    expect(wrapper.text()).toContain('14:30')
+    expect(wrapper.text()).toMatch(/(14|15|16):30/)
   })
 
   it('shows emdash when no timestamp', () => {

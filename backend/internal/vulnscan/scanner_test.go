@@ -2,6 +2,7 @@ package vulnscan_test
 
 import (
 	"log/slog"
+	"os"
 	"testing"
 
 	"github.com/argues/kube-watcher/internal/vulnscan"

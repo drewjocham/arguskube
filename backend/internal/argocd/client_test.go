@@ -18,7 +18,7 @@ func TestNew_NilOnEmptyURL(t *testing.T) {
 }
 
 func TestConnected(t *testing.T) {
-	c := New(Config{URL: "https://argocd.example.com"}, nil)
+	c := New(Config{URL: "https://argocd.example.com"}, slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	if c == nil || !c.Connected() {
 		t.Fatal("expected connected client")
 	}

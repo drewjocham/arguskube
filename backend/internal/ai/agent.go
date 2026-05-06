@@ -125,6 +125,10 @@ func (a *Agent) investigate(ctx context.Context, alert alerts.Alert, metrics *al
 		alertContext += "\n\nRecent patterns observed:\n" + recentPatterns
 	}
 
+	if a.client == nil {
+		return nil, fmt.Errorf("DeepSeek client is nil")
+	}
+
 	messages := []Message{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: fmt.Sprintf(

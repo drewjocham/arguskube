@@ -144,7 +144,7 @@ func TestClusterMetricsDefaults(t *testing.T) {
 
 func TestClusterMetricsValues(t *testing.T) {
 	cm := ClusterMetrics{
-		PodHealthPct:     95.5,
+		PodHealthPct:     96.0,
 		PodsRunning:      48,
 		PodsTotal:        50,
 		PodsPending:      1,

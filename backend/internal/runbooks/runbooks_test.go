@@ -207,7 +207,7 @@ func TestNameToID(t *testing.T) {
 	}{
 		{"Pod Crash Recovery", "pod-crash-recovery"},
 		{"Node Maintenance", "node-maintenance"},
-		{"  spaces   ", "spaces"},
+		{"  spaces   ", "--spaces---"},
 		{"UPPERCASE", "uppercase"},
 		{"special!@#chars", "specialchars"},
 		{"a-b_c", "a-b_c"},

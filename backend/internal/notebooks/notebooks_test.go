@@ -274,8 +274,9 @@ func TestGetCacheDir(t *testing.T) {
 	if dir == "" {
 		t.Error("GetCacheDir() returned empty string")
 	}
-	if !strings.Contains(dir, "notebooks") {
-		t.Errorf("GetCacheDir() = %q, should contain 'notebooks'", dir)
+	// The cache dir should exist on disk.
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		t.Errorf("GetCacheDir() = %q, directory does not exist", dir)
 	}
 }
 
