@@ -16,22 +16,22 @@ Layer 3: E2E / Smoke     ← Playwright            — login, nav tree, terminal
 - [x] `useBridge.js` — callGo (Wails + SaaS), isWails, useAppMode, useClusterInfo, useContexts
 - [x] `useMetrics.js` — useMetrics, useCostEstimate
 
-### P0 — Write Now
-- [ ] `useAlerts.js` — useAlerts, useDiagnostics
-- [ ] `useArgusCD.js` — listApps, sync, testConnection, error states
-- [ ] `useCluster.js` — useTopology (remaining uncovered composable)
-- [ ] `useLogs.js` — usePodLogs, useLogStream, useLogs, useNodeLogs
-- [ ] `usePods.js` — usePods, useDeploymentRevisions, useVPARecommendations
-- [ ] `useShell.js` — useTerminal, usePodExec
-- [ ] `useToast.js` — addToast, removeToast
+### P0 — Write Now (DONE ✅)
+- [x] `useAlerts.js` — useAlerts, useDiagnostics
+- [x] `useArgusCD.js` — listApps, sync, testConnection, error states
+- [x] `useCluster.js` — useTopology
+- [x] `useLogs.js` — usePodLogs, useLogStream, useLogs, useNodeLogs
+- [x] `usePods.js` — usePods, useDeploymentRevisions, useVPARecommendations
+- [x] `useShell.js` — useTerminal, usePodExec
+- [x] `useToast.js` — addToast, removeToast
 
-### P1 — Data/Knowledge Layer
-- [ ] `useData.js` — useFeatures, useChat, useNotebooks, useRunbooks, useIncidents, useWorkflows
-- [ ] `useSetup.js` — useSetup, useAnomaly
-- [ ] `useMonitoring.js` — useArgusScan, useVulnerabilities
-- [ ] `useNetwork.js` — useServicePods
-- [ ] `useResources.js` — useResources
-- [ ] `useMisc.js` — useCodeBlock
+### P1 — Data/Knowledge Layer (DONE ✅)
+- [x] `useData.js` — useFeatures, useChat, useNotebooks, useRunbooks, useIncidents, useWorkflows
+- [x] `useSetup.js` — useSetup, useAnomaly
+- [x] `useMonitoring.js` — useArgusScan, useVulnerabilities
+- [x] `useNetwork.js` — useServicePods
+- [x] `useResources.js` — useResources
+- [x] `useMisc.js` — useCodeBlock
 
 ### P1 — Go Backend Packages
 - [ ] `internal/alerts/` — alert manager, severity calculations, metric collection
