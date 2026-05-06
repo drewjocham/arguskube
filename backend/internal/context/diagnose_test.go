@@ -9,11 +9,6 @@ import (
 	"github.com/argues/kube-watcher/internal/context"
 )
 
-// makeDiagnosisBundle creates a minimal context.Bundle for testing GenerateDiagnosis.
-func makeDiagnosisBundle(t *testing.T) *context.Bundle {
-	return &context.Bundle{}
-}
-
 func makeAlert(name string) alerts.Alert {
 	return alerts.Alert{
 		ID:           "alert-1",
