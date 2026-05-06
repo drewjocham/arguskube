@@ -95,7 +95,7 @@ func TestListApps_WithProject(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(Config{URL: srv.URL, Token: "test", Insecure: true}, nil)
+	c := New(Config{URL: srv.URL, Token: "test", Insecure: true}, slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	apps, err := c.ListApps(context.Background(), "myproject")
 	if err != nil {
 		t.Fatalf("ListApps with project failed: %v", err)
@@ -140,7 +140,7 @@ func TestGetApp(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(Config{URL: srv.URL, Token: "test", Insecure: true}, nil)
+	c := New(Config{URL: srv.URL, Token: "test", Insecure: true}, slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	app, err := c.GetApp(context.Background(), "guestbook")
 	if err != nil {
 		t.Fatalf("GetApp failed: %v", err)
@@ -173,7 +173,7 @@ func TestSyncApp(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(Config{URL: srv.URL, Token: "test", Insecure: true}, nil)
+	c := New(Config{URL: srv.URL, Token: "test", Insecure: true}, slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	result, err := c.SyncApp(context.Background(), "guestbook")
 	if err != nil {
 		t.Fatalf("SyncApp failed: %v", err)
@@ -190,7 +190,7 @@ func TestTestConnection(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(Config{URL: srv.URL, Token: "test", Insecure: true}, nil)
+	c := New(Config{URL: srv.URL, Token: "test", Insecure: true}, slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	if err := c.TestConnection(context.Background()); err != nil {
 		t.Fatalf("TestConnection failed: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestHTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(Config{URL: srv.URL, Token: "bad-token", Insecure: true}, nil)
+	c := New(Config{URL: srv.URL, Token: "bad-token", Insecure: true}, slog.New(slog.NewTextHandler(os.Stderr, nil)))
 	_, err := c.ListApps(context.Background(), "")
 	if err == nil {
 		t.Fatal("expected error for unauthorized request")

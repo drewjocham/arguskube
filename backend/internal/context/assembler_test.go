@@ -1,6 +1,7 @@
 package context_test
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -20,11 +21,11 @@ type mockDetector struct {
 	err    error
 }
 
-func (m *mockDetector) Detect(_ testing, _ anomaly.DetectRequest) (*anomaly.DetectResult, error) {
+func (m *mockDetector) Detect(_ context.Context, _ anomaly.DetectRequest) (*anomaly.DetectResult, error) {
 	return m.result, m.err
 }
 
-func (m *mockDetector) ListJobs(_ testing) ([]anomaly.Job, error) {
+func (m *mockDetector) ListJobs(_ context.Context) ([]anomaly.Job, error) {
 	return nil, nil
 }
 
@@ -70,7 +71,7 @@ func TestAssemble(t *testing.T) {
 		t.Fatal("NewAssembler() returned nil")
 	}
 
-	bundle, err := a.Assemble(testing.WithValue(testing.Background(), "alert", alert), alert)
+	bundle, err := a.Assemble(testing.WithValue(testing.Background(), "alert", alert), alert, []alerts.Alert{alert})
 	if err != nil {
 		t.Fatalf("Assemble() failed: %v", err)
 	}

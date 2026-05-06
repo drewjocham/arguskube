@@ -3,6 +3,7 @@ package anomaly
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync"
 )

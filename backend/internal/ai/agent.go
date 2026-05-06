@@ -209,6 +209,10 @@ func (a *Agent) SendMessage(ctx context.Context, alertID string, userMessage str
 	// Build messages for the API (keep last 20 messages to stay within token limits).
 	messages := historyToMessages(history, 20)
 
+	if a.client == nil {
+		return "", fmt.Errorf("DeepSeek client is nil")
+	}
+
 	response, err := a.client.Chat(ctx, messages)
 	if err != nil {
 		return "", err
