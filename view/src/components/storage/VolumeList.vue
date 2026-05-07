@@ -183,7 +183,7 @@ async function toggleExpand(volName) {
 .vol-row:hover { background: rgba(255, 255, 255, 0.02); }
 
 .col-name { display: flex; align-items: center; font-weight: 500; }
-.font-mono { font-family: 'SF Mono', Consolas, monospace; color: #b0b4ba; font-size: 12px; }
+.font-mono { font-family: var(--mono); color: #b0b4ba; font-size: 12px; }
 
 .status-badge { font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 600; background: rgba(255,255,255,0.05); color: #ccc; }
 .status-badge.bound { background: rgba(62, 207, 142, 0.15); color: #3ecf8e; }
@@ -230,7 +230,7 @@ async function toggleExpand(volName) {
 
 /* Labels */
 .labels-grid { display: flex; flex-wrap: wrap; gap: 6px; }
-.label-chip { background: rgba(55, 148, 255, 0.1); color: #3794ff; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: 'SF Mono', Consolas, monospace; }
+.label-chip { background: rgba(55, 148, 255, 0.1); color: #3794ff; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: var(--mono); }
 
 /* Mini Events */
 .events-mini { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }

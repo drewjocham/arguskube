@@ -162,10 +162,12 @@ func (a *App) Shutdown(ctx context.Context) {
 // Called from the frontend when the window visibility changes.
 func (a *App) SetPaused(paused bool) {
 	a.paused.Store(paused)
-	if paused {
-		a.logger.Info("event loop paused (window hidden)")
-	} else {
-		a.logger.Info("event loop resumed (window visible)")
+	if a.logger != nil {
+		if paused {
+			a.logger.Info("event loop paused (window hidden)")
+		} else {
+			a.logger.Info("event loop resumed (window visible)")
+		}
 	}
 }
 

@@ -49,7 +49,11 @@ type DecisionEntry struct {
 }
 
 func (a *Assembler) Assemble(ctx context.Context, alert alerts.Alert, allAlerts []alerts.Alert) (*Bundle, error) {
-	ctx, cancel := context.WithTimeout(ctx, a.cfg.AI.ContextTimeout)
+	timeout := 3 * time.Second
+	if a.cfg != nil {
+		timeout = a.cfg.AI.ContextTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	bundle := &Bundle{Alert: alert}

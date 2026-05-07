@@ -6,8 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 )
+
+// incidentSeq disambiguates IDs created within the same nanosecond — concurrent
+// Create() calls would otherwise collide on the UNIQUE primary key.
+var incidentSeq atomic.Uint64
 
 // Incident represents a tracked incident.
 type Incident struct {
@@ -81,7 +86,7 @@ func (s *Store) Get(_ context.Context, id string) (*Incident, error) {
 // Create adds a new incident and persists it.
 func (s *Store) Create(_ context.Context, title, severity, incType, description, namespace string) (Incident, error) {
 	now := time.Now()
-	id := fmt.Sprintf("inc-%d", now.UnixMilli())
+	id := fmt.Sprintf("inc-%d-%d", now.UnixNano(), incidentSeq.Add(1))
 
 	if severity == "" {
 		severity = "info"

@@ -147,7 +147,7 @@ async function toggleExpand(wsName) {
 </template>
 
 <style scoped>
-.ws-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; height: 100%; }
+.ws-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; flex: 1; min-height: 0; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
 
@@ -251,7 +251,7 @@ async function toggleExpand(wsName) {
 @keyframes slide-down { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
 .col-name { display: flex; align-items: center; font-weight: 500; }
-.font-mono { font-family: 'SF Mono', Consolas, monospace; color: #b0b4ba; font-size: 12px; }
+.font-mono { font-family: var(--mono); color: #b0b4ba; font-size: 12px; }
 
 .health-bar-container {
   width: 100%; height: 6px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden;

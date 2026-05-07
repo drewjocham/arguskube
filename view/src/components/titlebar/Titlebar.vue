@@ -15,11 +15,12 @@ function openDeepLink(path) {
 
 <template>
   <div class="titlebar" style="--wails-draggable: drag">
-    <div class="traffic-lights">
+    <div v-if="!isWails()" class="traffic-lights">
       <div class="tl tl-r"></div>
       <div class="tl tl-y"></div>
       <div class="tl tl-g"></div>
     </div>
+    <div v-else class="traffic-spacer"></div>
     <div class="titlebar-title">
       <span>KubeWatcher</span> — SRE Console
     </div>
@@ -79,6 +80,11 @@ function openDeepLink(path) {
 .tl-r { background: #ff5f57; box-shadow: 0 0 0 0.5px rgba(0,0,0,0.3); }
 .tl-y { background: #febc2e; box-shadow: 0 0 0 0.5px rgba(0,0,0,0.3); }
 .tl-g { background: #28c840; box-shadow: 0 0 0 0.5px rgba(0,0,0,0.3); }
+
+.traffic-spacer {
+  width: 68px;
+  flex-shrink: 0;
+}
 
 .titlebar-title {
   flex: 1;

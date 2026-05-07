@@ -21,6 +21,8 @@ import {popeye} from '../models';
 
 export function CheckToolStatus():Promise<Array<setup.ToolStatus>>;
 
+export function CloseExecSession():Promise<void>;
+
 export function ConnectToAgent(arg1:string):Promise<Array<agentconn.Anomaly>>;
 
 export function CreateIncident(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<incidents.Incident>;
@@ -48,6 +50,8 @@ export function DiagnoseAlert(arg1:string):Promise<context.Bundle>;
 export function EmitLogLine(arg1:alerts.LogLine):Promise<void>;
 
 export function EstimateCosts(arg1:string):Promise<k8s.ClusterCostReport>;
+
+export function ExecPodShell(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<void>;
 
 export function GetAgentEventLog():Promise<Array<ai.AgentEvent>>;
 
@@ -95,6 +99,8 @@ export function GetResourceDetail(arg1:string,arg2:string,arg3:string):Promise<k
 
 export function GetRunbook(arg1:string):Promise<string>;
 
+export function GetServicePods(arg1:string,arg2:string):Promise<Array<k8s.ServicePod>>;
+
 export function GetSettings():Promise<pkg.SettingsPayload>;
 
 export function GetTier():Promise<config.Tier>;
@@ -141,6 +147,8 @@ export function QueryTimeSeriesMetrics(arg1:string,arg2:string):Promise<Array<nu
 
 export function RefreshArgusCDApp(arg1:string,arg2:boolean):Promise<void>;
 
+export function ResizeExec(arg1:number,arg2:number):Promise<void>;
+
 export function ResizeTerminal(arg1:number,arg2:number):Promise<void>;
 
 export function RestartDeployment(arg1:string,arg2:string):Promise<void>;
@@ -168,6 +176,8 @@ export function ScanAllImages(arg1:string):Promise<Array<vulnscan.ScannedImage>>
 export function ScanImage(arg1:string,arg2:string):Promise<string>;
 
 export function SendChatMessage(arg1:string,arg2:string):Promise<string>;
+
+export function SendExecInput(arg1:string):Promise<void>;
 
 export function SendTerminalInput(arg1:string):Promise<void>;
 

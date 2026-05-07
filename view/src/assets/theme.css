@@ -1,4 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@300;400;500&display=swap');
+/*
+ * Typography: Segoe UI Variable (Windows 11 / VS Code native font).
+ * Falls back through the platform stack: SF Pro on macOS, system-ui elsewhere.
+ * Monospace: Cascadia Mono (Windows Terminal / VS Code) with SF Mono fallback.
+ *
+ * Smoothness: GPU-accelerated transitions, smooth scroll, sub-pixel rendering.
+ */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -23,12 +29,13 @@
   --green2: #5edba6;
   --purple: #a78bfa;
   --teal: #2dd4bf;
-  --font: 'DM Sans', -apple-system, sans-serif;
-  --mono: 'DM Mono', 'SF Mono', monospace;
+  --font: 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --mono: 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace;
   --r: 10px;
   --r2: 7px;
   --shadow: 0 1px 3px rgba(0,0,0,0.4);
   --shadow2: 0 4px 20px rgba(0,0,0,0.5);
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 body {
@@ -36,11 +43,25 @@ body {
   color: var(--text);
   font-family: var(--font);
   font-size: 13px;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
   height: 100vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Smooth scroll and GPU-composited transitions globally. */
+*, *::before, *::after {
+  scroll-behavior: smooth;
+}
+
+/* Default transition for interactive elements — matches WinUI3 motion. */
+button, a, input, select, textarea,
+[class*="tab"], [class*="btn"], [class*="chip"], [class*="nav"], [class*="row"] {
+  transition-timing-function: var(--ease);
 }
 
 #app {
@@ -51,10 +72,14 @@ body {
   height: 100vh;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar { width: 5px; }
+/* Scrollbar styling — thin, unobtrusive, smooth fade. */
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--bg5); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; transition: background 0.2s; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* Global utility: monospace text (used across all resource views). */
+.font-mono { font-family: var(--mono); font-size: 12px; }
 
 /* Shared utilities */
 .badge {

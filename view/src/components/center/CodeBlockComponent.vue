@@ -57,7 +57,7 @@ function copyCode() {
   border-radius: 8px;
   margin: 1.5rem 0;
   overflow: hidden;
-  font-family: 'SF Mono', Consolas, monospace;
+  font-family: var(--mono);
 }
 
 .code-block-header {
@@ -97,7 +97,7 @@ function copyCode() {
   border: none;
   color: #888;
   font-size: 12px;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
   cursor: pointer;
   outline: none;
   appearance: none;
@@ -160,7 +160,7 @@ function copyCode() {
 
 .terminal-output {
   color: #d4d4d4;
-  font-family: 'SF Mono', Consolas, monospace;
+  font-family: var(--mono);
   font-size: 12px;
 }
 .terminal-output pre {

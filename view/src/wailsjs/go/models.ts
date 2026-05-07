@@ -1418,6 +1418,24 @@ export namespace k8s {
 		}
 	}
 	
+	export class ServicePod {
+	    name: string;
+	    namespace: string;
+	    status: string;
+	    container: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ServicePod(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.namespace = source["namespace"];
+	        this.status = source["status"];
+	        this.container = source["container"];
+	    }
+	}
 	export class TopologyEdge {
 	    source: string;
 	    target: string;

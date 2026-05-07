@@ -257,7 +257,7 @@ async function toggleExpand(itemName) {
 
 /* Labels */
 .labels-grid { display: flex; flex-wrap: wrap; gap: 6px; }
-.label-chip { background: rgba(55, 148, 255, 0.1); color: #3794ff; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: 'SF Mono', Consolas, monospace; }
+.label-chip { background: rgba(55, 148, 255, 0.1); color: #3794ff; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: var(--mono); }
 
 /* Agent Notification */
 .agent-notification { display: flex; align-items: center; gap: 12px; background: rgba(167, 139, 250, 0.15); border: 1px solid rgba(167, 139, 250, 0.3); padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; color: #e8eaec; font-size: 13px; animation: slide-down 0.3s ease-out; }
@@ -265,7 +265,7 @@ async function toggleExpand(itemName) {
 @keyframes slide-down { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
 .col-name { display: flex; align-items: center; font-weight: 500; }
-.font-mono { font-family: 'SF Mono', Consolas, monospace; color: #b0b4ba; font-size: 12px; }
+.font-mono { font-family: var(--mono); color: #b0b4ba; font-size: 12px; }
 
 .tag { background: rgba(255,255,255,0.05); padding: 4px 6px; border-radius: 4px; display: inline-block; border: 1px solid rgba(255,255,255,0.05); }
 </style>

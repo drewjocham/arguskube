@@ -1,80 +1,145 @@
 <script setup>
-import { ref, inject } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { useTerminal } from '../../composables/useWails'
+import { useWailsEvent } from '../../composables/useEvents'
+
+const props = defineProps({
+  standalone: { type: Boolean, default: false },
+})
 
 const emit = defineEmits(['close'])
-const isAllowed = inject('isAllowed', () => true)
 
-const terminalOutput = ref([
-  { type: 'system', text: 'Initializing Argus Agent Workspace...' },
-  { type: 'system', text: 'Connected to local Kubernetes context: production-cluster-01' },
-  { type: 'system', text: 'Agent is ready. Waiting for tasks.' }
-])
+const termRef = ref(null)
+const { startTerminal, sendInput, resizeTerminal } = useTerminal()
 
-const inputText = ref('')
+let term = null
+let fitAddon = null
+let started = false
+let resizeObs = null
 
-function runCommand() {
-  if (!inputText.value.trim()) return
-  const cmd = inputText.value
-  terminalOutput.value.push({ type: 'user', text: `$ ${cmd}` })
-  inputText.value = ''
-  
-  setTimeout(() => {
-    if (cmd.includes('workflow')) {
-      terminalOutput.value.push({ type: 'agent', text: 'Executing workflow: ' + cmd })
-      terminalOutput.value.push({ type: 'agent', text: 'Workflow completed successfully.' })
-    } else {
-      terminalOutput.value.push({ type: 'agent', text: 'Command executed.' })
-    }
-  }, 600)
+async function initTerminal() {
+  if (term || !termRef.value) return
+
+  const { Terminal } = await import('xterm')
+  const { FitAddon } = await import('xterm-addon-fit')
+
+  term = new Terminal({
+    fontFamily: "var(--mono), 'Cascadia Mono', 'SF Mono', Consolas, monospace",
+    fontSize: 13,
+    lineHeight: 1.35,
+    cursorBlink: true,
+    cursorStyle: 'bar',
+    theme: {
+      background: '#0d0d0d',
+      foreground: '#e8eaec',
+      cursor: '#4f8ef7',
+      cursorAccent: '#0d0d0d',
+      selectionBackground: 'rgba(79,142,247,0.25)',
+      black: '#1a1c1e',
+      red: '#f05454',
+      green: '#3ecf8e',
+      yellow: '#f5a623',
+      blue: '#4f8ef7',
+      magenta: '#a78bfa',
+      cyan: '#2dd4bf',
+      white: '#e8eaec',
+      brightBlack: '#5c6168',
+      brightRed: '#ff7575',
+      brightGreen: '#5edba6',
+      brightYellow: '#ffc04d',
+      brightBlue: '#6ba3f9',
+      brightMagenta: '#c4b3fd',
+      brightCyan: '#5ee8d4',
+      brightWhite: '#ffffff',
+    },
+  })
+
+  fitAddon = new FitAddon()
+  term.loadAddon(fitAddon)
+  term.open(termRef.value)
+
+  await nextTick()
+  fitAddon.fit()
+
+  term.onData((data) => {
+    sendInput(data)
+  })
+
+  if (!started) {
+    started = true
+    await startTerminal(term.rows, term.cols)
+  }
+
+  term.focus()
+
+  // Observe container resize for fit.
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObs = new ResizeObserver(() => {
+      if (fitAddon && term) {
+        fitAddon.fit()
+        resizeTerminal(term.rows, term.cols)
+      }
+    })
+    resizeObs.observe(termRef.value)
+  }
 }
+
+useWailsEvent('terminal:output', (data) => {
+  if (term && data) {
+    term.write(data)
+  }
+})
+
+function handleClose() {
+  emit('close')
+}
+
+// Keyboard shortcut: Escape to close (only in overlay mode).
+function onKeydown(e) {
+  if (e.key === 'Escape' && !props.standalone) {
+    handleClose()
+  }
+}
+
+onMounted(async () => {
+  window.addEventListener('keydown', onKeydown)
+  await nextTick()
+  await initTerminal()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+  resizeObs?.disconnect()
+  term?.dispose()
+  term = null
+})
 </script>
 
 <template>
-  <div class="pro-desktop-overlay">
+  <div class="pro-desktop-overlay" @mousedown.self="handleClose">
     <div class="pro-desktop-window">
       <!-- Titlebar -->
       <div class="pro-window-titlebar" style="--wails-draggable: drag">
         <div class="traffic-lights">
-          <div class="tl tl-r" @click="emit('close')"></div>
+          <div class="tl tl-r" @click="handleClose"></div>
           <div class="tl tl-y"></div>
           <div class="tl tl-g"></div>
         </div>
         <div class="window-title">
-          <span>Argus Agent</span> — Isolated Desktop Environment (Pro)
+          <span>KubeWatcher</span> — Terminal
         </div>
         <div class="window-right">
-          <div class="badge-pro">PRO</div>
+          <button class="close-btn" @click="handleClose" title="Close (Esc)" style="--wails-draggable: no-drag">
+            <svg width="12" height="12" viewBox="0 0 12 12">
+              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+          </button>
         </div>
       </div>
-      
-      <!-- Content -->
-      <div class="pro-window-content">
-        <div class="sidebar-mini">
-          <div class="nav-item active">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
-            Terminal
-          </div>
-          <div class="nav-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-            Workflows
-          </div>
-          <div class="nav-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-            Files
-          </div>
-        </div>
-        
-        <div class="main-terminal">
-          <div class="terminal-output">
-            <div v-for="(line, idx) in terminalOutput" :key="idx" class="term-line" :class="line.type">
-              {{ line.text }}
-            </div>
-          </div>
-          <div class="terminal-input">
-            <span class="prompt">❯</span>
-            <input v-model="inputText" @keydown.enter="runCommand" type="text" placeholder="Type a command or ask the agent to run a workflow..." spellcheck="false" />
-          </div>
-        </div>
+
+      <!-- Terminal area -->
+      <div class="pro-terminal-area">
+        <div ref="termRef" class="pro-terminal-element"></div>
       </div>
     </div>
   </div>
@@ -84,43 +149,44 @@ function runCommand() {
 .pro-desktop-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(8px);
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px);
   z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px;
+  padding: 32px;
 }
 
 .pro-desktop-window {
   width: 100%;
-  max-width: 1200px;
+  max-width: 960px;
   height: 100%;
-  max-height: 800px;
-  background: #111214;
-  border-radius: 12px;
+  max-height: 640px;
+  background: #0d0d0d;
+  border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.1);
   box-shadow: 0 24px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: pop-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: pop-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes pop-in {
-  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 .pro-window-titlebar {
-  height: 44px;
+  height: 40px;
   background: #1a1c1f;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
   display: flex;
   align-items: center;
-  padding: 0 16px;
+  padding: 0 14px;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .traffic-lights {
@@ -134,110 +200,55 @@ function runCommand() {
 .tl-g { background: #28c840; box-shadow: 0 0 0 0.5px rgba(0,0,0,0.3); }
 
 .window-title {
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
-  color: #8b8f96;
+  color: var(--text3, #8b8f96);
 }
 .window-title span {
-  color: #fff;
+  color: var(--text, #e8eaec);
 }
 
-.badge-pro {
-  background: linear-gradient(135deg, #a78bfa, #c084fc);
-  color: #000;
-  font-size: 10px;
-  font-weight: 800;
-  padding: 3px 8px;
-  border-radius: 12px;
-  letter-spacing: 0.5px;
-}
-
-.pro-window-content {
-  flex: 1;
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--text3, #5c6168);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
   display: flex;
+  align-items: center;
+  transition: all 0.15s;
+}
+.close-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text, #e8eaec);
+}
+
+.pro-terminal-area {
+  flex: 1;
   overflow: hidden;
 }
 
-.sidebar-mini {
-  width: 200px;
-  background: #141517;
-  border-right: 1px solid rgba(255,255,255,0.05);
-  padding: 16px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.pro-terminal-element {
+  width: 100%;
+  height: 100%;
+  padding: 6px 10px;
 }
 
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  color: #8b8f96;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.nav-item:hover {
-  background: rgba(255,255,255,0.05);
-  color: #e8eaec;
-}
-.nav-item.active {
-  background: rgba(167, 139, 250, 0.1);
-  color: #c084fc;
+:deep(.xterm) {
+  padding: 0;
 }
 
-.main-terminal {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: #0d0d0d;
+:deep(.xterm-viewport) {
+  overflow-y: auto !important;
 }
 
-.terminal-output {
-  flex: 1;
-  padding: 24px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-family: 'SF Mono', Consolas, monospace;
-  font-size: 13px;
-  line-height: 1.6;
+:deep(.xterm-viewport::-webkit-scrollbar) {
+  width: 5px;
 }
 
-.term-line.system { color: #8b8f96; }
-.term-line.user { color: #e8eaec; }
-.term-line.agent { color: #a78bfa; border-left: 2px solid #a78bfa; padding-left: 12px; }
-
-.terminal-input {
-  display: flex;
-  align-items: center;
-  padding: 16px 24px;
-  background: #111214;
-  border-top: 1px solid rgba(255,255,255,0.05);
-  font-family: 'SF Mono', Consolas, monospace;
-}
-
-.prompt {
-  color: #c084fc;
-  margin-right: 12px;
-  font-size: 14px;
-  font-weight: bold;
-}
-
-.terminal-input input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #e8eaec;
-  font-family: inherit;
-  font-size: 13px;
-}
-.terminal-input input::placeholder {
-  color: #4a4d54;
+:deep(.xterm-viewport::-webkit-scrollbar-thumb) {
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
 }
 </style>

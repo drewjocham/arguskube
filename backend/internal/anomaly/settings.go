@@ -3,6 +3,7 @@ package anomaly
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync"
 )
@@ -34,6 +35,9 @@ type SettingsStore struct {
 
 // NewSettingsStore creates a store and ensures the schema exists.
 func NewSettingsStore(db *sql.DB, logger *slog.Logger) (*SettingsStore, error) {
+	if db == nil {
+		return nil, fmt.Errorf("settings store: nil database")
+	}
 	s := &SettingsStore{db: db, logger: logger}
 	if err := s.migrate(); err != nil {
 		return nil, err

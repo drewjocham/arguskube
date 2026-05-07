@@ -125,6 +125,10 @@ func (a *Agent) investigate(ctx context.Context, alert alerts.Alert, metrics *al
 		alertContext += "\n\nRecent patterns observed:\n" + recentPatterns
 	}
 
+	if a.client == nil {
+		return nil, fmt.Errorf("DeepSeek client is nil")
+	}
+
 	messages := []Message{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: fmt.Sprintf(
@@ -204,6 +208,10 @@ func (a *Agent) SendMessage(ctx context.Context, alertID string, userMessage str
 
 	// Build messages for the API (keep last 20 messages to stay within token limits).
 	messages := historyToMessages(history, 20)
+
+	if a.client == nil {
+		return "", fmt.Errorf("DeepSeek client is nil")
+	}
 
 	response, err := a.client.Chat(ctx, messages)
 	if err != nil {

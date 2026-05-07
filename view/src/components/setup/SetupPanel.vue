@@ -204,7 +204,7 @@ const totalCount = computed(() => tools.value.length)
   border-radius: 8px;
 }
 .status-text { font-size: 13px; color: #b0b4ba; }
-.ready-count { font-weight: 600; color: #3ecf8e; font-family: 'SF Mono', Consolas, monospace; }
+.ready-count { font-weight: 600; color: #3ecf8e; font-family: var(--mono); }
 
 .refresh-btn {
   display: flex;
@@ -247,7 +247,7 @@ const totalCount = computed(() => tools.value.length)
 .toast-msg { font-weight: 500; }
 .toast-output {
   margin-top: 6px;
-  font-family: 'SF Mono', Consolas, monospace;
+  font-family: var(--mono);
   font-size: 11px;
   color: #8b8f96;
   max-height: 80px;
@@ -378,7 +378,7 @@ const totalCount = computed(() => tools.value.length)
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 4px;
   color: #e8eaec;
-  font-family: 'SF Mono', Consolas, monospace;
+  font-family: var(--mono);
   font-size: 12px;
   outline: none;
 }
@@ -396,7 +396,7 @@ const totalCount = computed(() => tools.value.length)
   background: rgba(255,255,255,0.06);
   padding: 1px 5px;
   border-radius: 3px;
-  font-family: 'SF Mono', Consolas, monospace;
+  font-family: var(--mono);
   color: #a78bfa;
 }
 

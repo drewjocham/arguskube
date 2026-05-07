@@ -104,7 +104,7 @@ services:
       - "11434:11434"
     networks:
       - kw-net
-    # GPU passthrough (uncomment if you have NVIDIA GPU + nvidia-docker):
+    # GPU passthrough (NVIDIA GPU + nvidia-docker):
     # deploy:
     #   resources:
     #     reservations:

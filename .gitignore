@@ -63,3 +63,8 @@ go.work.sum
 # env file
 .env
 
+-e 
+# Tests
+view/test-results/
+view/e2e/playwright-report/
+node_modules/.vite/

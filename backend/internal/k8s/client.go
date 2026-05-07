@@ -222,9 +222,10 @@ func (c *Client) GetMetrics(ctx context.Context) (*alerts.ClusterMetrics, error)
 		}
 	}
 
-	// Derive a SLO status from the data we have.
+	// Derive a SLO status from the data we have. An empty cluster has no
+	// running workloads to breach against — treat it as ok.
 	sloStatus := "ok"
-	if healthPct < 95 || errorRate > 5 {
+	if total > 0 && (healthPct < 95 || errorRate > 5) {
 		sloStatus = "breach"
 	}
 
@@ -278,7 +279,11 @@ func (c *Client) DetectAlerts(ctx context.Context) ([]alerts.Alert, error) {
 				result = append(result, buildImagePullAlert(p, &cs))
 			}
 
-			if cs.RestartCount >= 5 && cs.LastTerminationState.Terminated == nil {
+			// Skip high-restart alert if CrashLoopBackOff is already firing for
+			// this container — the CrashLoop alert is more specific and the
+			// restart count is implied.
+			inCrashLoop := cs.State.Waiting != nil && cs.State.Waiting.Reason == "CrashLoopBackOff"
+			if cs.RestartCount >= 5 && cs.LastTerminationState.Terminated == nil && !inCrashLoop {
 				result = append(result, buildHighRestartAlert(p, &cs))
 			}
 		}

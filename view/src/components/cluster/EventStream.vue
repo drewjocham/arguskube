@@ -173,9 +173,9 @@ onUnmounted(() => stopAutoRefresh())
   padding-left: 13px;
 }
 
-.font-mono { font-family: 'SF Mono', Consolas, monospace; }
+.font-mono { font-family: var(--mono); }
 
-.col-object { color: #a78bfa; font-family: 'SF Mono', Consolas, monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.col-object { color: #a78bfa; font-family: var(--mono); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .col-message { color: #b0b4ba; line-height: 1.4; }
 
 .type-pill {

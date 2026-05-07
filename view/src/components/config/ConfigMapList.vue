@@ -119,7 +119,7 @@ async function toggleExpand(cmName) {
 </template>
 
 <style scoped>
-.cm-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; height: 100%; }
+.cm-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; flex: 1; min-height: 0; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
 
@@ -159,7 +159,7 @@ async function toggleExpand(cmName) {
 .cm-row:hover { background: rgba(255, 255, 255, 0.02); }
 
 .col-name { display: flex; align-items: center; font-weight: 500; }
-.font-mono { font-family: 'SF Mono', Consolas, monospace; color: #b0b4ba; font-size: 12px; }
+.font-mono { font-family: var(--mono); color: #b0b4ba; font-size: 12px; }
 
 .chevron { transition: transform 0.2s ease; color: #6b7078; }
 .chevron.open { transform: rotate(180deg); }
@@ -209,7 +209,7 @@ async function toggleExpand(cmName) {
 
 /* Labels */
 .labels-grid { display: flex; flex-wrap: wrap; gap: 6px; }
-.label-chip { background: rgba(55, 148, 255, 0.1); color: #3794ff; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: 'SF Mono', Consolas, monospace; }
+.label-chip { background: rgba(55, 148, 255, 0.1); color: #3794ff; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-family: var(--mono); }
 
 /* Agent Notification */
 .agent-notification { display: flex; align-items: center; gap: 12px; background: rgba(167, 139, 250, 0.15); border: 1px solid rgba(167, 139, 250, 0.3); padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; color: #e8eaec; font-size: 13px; animation: slide-down 0.3s ease-out; }

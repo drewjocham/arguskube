@@ -83,8 +83,46 @@ function toggleLogRow(index) {
   expandedRow.value = expandedRow.value === index ? null : index
 }
 
+// Pinned logs.
+const pinnedSet = ref(new Set())
+const showPinnedOnly = ref(false)
+
+function togglePin(log) {
+  const key = pinKey(log)
+  if (pinnedSet.value.has(key)) {
+    pinnedSet.value.delete(key)
+  } else {
+    pinnedSet.value.add(key)
+  }
+  // Force reactivity on the Set.
+  pinnedSet.value = new Set(pinnedSet.value)
+}
+
+function isPinned(log) {
+  return pinnedSet.value.has(pinKey(log))
+}
+
+function pinKey(log) {
+  return `${log.time}::${log.message}`
+}
+
+function togglePinnedView() {
+  showPinnedOnly.value = !showPinnedOnly.value
+}
+
+function clearPins() {
+  pinnedSet.value = new Set()
+  showPinnedOnly.value = false
+}
+
 // Filtered logs view.
-const displayLogs = computed(() => allLogs.value.slice(0, limit.value))
+const displayLogs = computed(() => {
+  const sliced = allLogs.value.slice(0, limit.value)
+  if (showPinnedOnly.value) {
+    return sliced.filter(l => pinnedSet.value.has(pinKey(l)))
+  }
+  return sliced
+})
 
 // Resizable time column.
 const timeColWidth = ref(170)
@@ -246,8 +284,18 @@ useWailsEvent(Events.LOG_LINE, (data) => {
             <div class="toolbar-tab" :class="{ active: activeTab === 'table' }" @click="activeTab = 'table'">Table</div>
             <div class="toolbar-tab" :class="{ active: activeTab === 'json' }" @click="activeTab = 'json'">JSON</div>
           </div>
-          <div class="toolbar-stats">
-            Total logs returned: <b>{{ displayLogs.length }}</b>
+          <div class="toolbar-right">
+            <button class="pin-master" :class="{ active: showPinnedOnly }" @click="togglePinnedView" :disabled="pinnedSet.size === 0" :title="showPinnedOnly ? 'Show all logs' : 'Show pinned only (' + pinnedSet.size + ')'">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L12 22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" v-if="showPinnedOnly"/>
+                <path d="M15.5 4.5L8.5 4.5C8.5 4.5 7 8 7 10.5C7 11.5 7.5 12 8.5 12.5L10 13V17L12 22L14 17V13L15.5 12.5C16.5 12 17 11.5 17 10.5C17 8 15.5 4.5 15.5 4.5Z" :fill="showPinnedOnly ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+              </svg>
+              <span class="pin-count" v-if="pinnedSet.size > 0">{{ pinnedSet.size }}</span>
+            </button>
+            <button v-if="pinnedSet.size > 0" class="pin-clear" @click="clearPins" title="Clear all pins">×</button>
+            <div class="toolbar-stats">
+              Total logs returned: <b>{{ displayLogs.length }}</b>
+            </div>
           </div>
         </div>
 
@@ -261,7 +309,12 @@ useWailsEvent(Events.LOG_LINE, (data) => {
           <!-- Group / Table view -->
           <template v-if="activeTab !== 'json'">
             <div v-for="(log, i) in displayLogs" :key="i">
-              <div class="log-row" @click="toggleLogRow(i)">
+              <div class="log-row" :class="{ pinned: isPinned(log) }" @click="toggleLogRow(i)">
+                <div class="log-pin" :class="{ active: isPinned(log) }" @click.stop="togglePin(log)" title="Pin this log">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                    <path d="M15.5 4.5L8.5 4.5C8.5 4.5 7 8 7 10.5C7 11.5 7.5 12 8.5 12.5L10 13V17L12 22L14 17V13L15.5 12.5C16.5 12 17 11.5 17 10.5C17 8 15.5 4.5 15.5 4.5Z" :fill="isPinned(log) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                  </svg>
+                </div>
                 <div class="log-expander" :class="{ expanded: expandedRow === i }">›</div>
                 <div class="log-time" :style="{ width: timeColWidth + 'px' }">{{ log.time }}</div>
                 <div class="col-resize-handle" @mousedown.stop="onColDragStart"></div>
@@ -603,6 +656,65 @@ useWailsEvent(Events.LOG_LINE, (data) => {
   white-space: pre-wrap;
   margin: 0;
 }
+
+/* Pin — per-row icon */
+.log-pin {
+  width: 18px;
+  flex-shrink: 0;
+  color: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s var(--ease);
+}
+.log-row:hover .log-pin { color: var(--text3); }
+.log-pin.active { color: var(--accent); }
+.log-pin:hover { color: var(--accent2) !important; }
+.log-row.pinned { background: rgba(79,142,247,0.04); }
+
+/* Pin — master toolbar button */
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pin-master {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 7px;
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.15s var(--ease);
+}
+.pin-master:hover:not(:disabled) { color: var(--accent2); border-color: var(--accent); background: rgba(79,142,247,0.08); }
+.pin-master.active { color: var(--accent); border-color: var(--accent); background: rgba(79,142,247,0.12); }
+.pin-master:disabled { opacity: 0.35; cursor: default; }
+.pin-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: rgba(79,142,247,0.15);
+  color: var(--accent2);
+  padding: 0 5px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.pin-clear {
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.pin-clear:hover { color: var(--red2); }
 
 /* Execute button states */
 .action-btn.executing { opacity: 0.7; pointer-events: none; }

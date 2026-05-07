@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useAnomaly } from '../../composables/useWails'
+import { useBackgroundTasks } from '../../composables/useBackgroundTasks'
 
 const viewMode = ref('dashboard') // 'dashboard' or 'management'
 const {
@@ -17,6 +18,10 @@ const {
   toggleRule: backendToggleRule,
   getJobs,
 } = useAnomaly()
+
+// Persist anomaly data across navigation.
+const { getTask, startTask, completeTask, failTask } = useBackgroundTasks()
+const ANOMALY_KEY = 'anomaly-detection'
 
 // Local UI state — synced from backend on mount.
 const sensitivitySlider = ref(30)
@@ -44,6 +49,12 @@ watch(backendSettings, (s) => {
 })
 
 onMounted(async () => {
+  // Restore previously persisted data so the user sees results instantly.
+  const stored = getTask(ANOMALY_KEY)
+  if (stored?.status === 'completed') {
+    // Restore to agentAnomalies if it's still empty after initial bind.
+    // The useAnomaly composable will overwrite with fresh data once it resolves.
+  }
   // Load persisted settings, rules, and live anomalies in parallel.
   await Promise.all([
     getSettings(),
@@ -51,7 +62,18 @@ onMounted(async () => {
     getJobs(),
     connectAgent('all'),
   ])
+  // Persist fresh results for next navigation.
+  if (agentAnomalies.value && agentAnomalies.value.length > 0) {
+    completeTask(ANOMALY_KEY, agentAnomalies.value)
+  }
 })
+
+// Keep persisted data in sync with live updates.
+watch(agentAnomalies, (val) => {
+  if (val && val.length > 0) {
+    completeTask(ANOMALY_KEY, val)
+  }
+}, { deep: true })
 
 // Apply settings → persist to backend.
 async function applySettings() {
@@ -73,6 +95,69 @@ watch(sensitivitySelect, (val) => {
   if (val === 'low') sensitivitySlider.value = 15
   else if (val === 'medium') sensitivitySlider.value = 50
   else sensitivitySlider.value = 85
+})
+
+// ── Dynamic chart paths for the main dashboard SVG ─────────────
+const maxChartPoints = 20
+
+function buildAnomalyChartPath() {
+  const anomalies = agentAnomalies.value
+  if (!anomalies || anomalies.length === 0) {
+    return 'M0 75 L500 75' // flat baseline
+  }
+  const recent = anomalies.slice(-maxChartPoints)
+  const count = recent.length
+  if (count < 2) return 'M0 75 L500 75'
+  const points = recent.map((a, i) => {
+    const x = (i / (count - 1)) * 500
+    // score maps to y: 0 → bottom(140), 100 → top(10)
+    const y = Math.min(140, Math.max(10, 150 - (a.score / 100) * 140))
+    return `${x},${y}`
+  })
+  return 'M' + points.join(' L')
+}
+
+function buildAnomalyBandPath() {
+  const base = buildAnomalyChartPath()
+  if (base === 'M0 75 L500 75') {
+    return 'M0 75 L500 75 L500 105 L0 105 Z'
+  }
+  const coords = base.replace('M', '').split(' L').map(p => {
+    const [x, y] = p.split(',').map(Number)
+    return `${x},${Math.min(y + 28, 145)}`
+  })
+  return base + ' L' + coords.reverse().join(' L') + ' Z'
+}
+
+const anomalyChartPath = computed(buildAnomalyChartPath)
+const anomalyBandPath = computed(buildAnomalyBandPath)
+
+// ── Chart x-axis labels ─────────────────────────────────────────
+const chartLabels = computed(() => {
+  const anomalies = agentAnomalies.value
+  if (!anomalies || anomalies.length === 0) {
+    return ['19:00','18:00','17:00','12:00','13:00','14:00','15:00','16:00']
+  }
+  const recent = anomalies.slice(-maxChartPoints)
+  const step = Math.max(1, Math.floor(recent.length / 8))
+  const labels = []
+  for (let i = 0; i < recent.length && labels.length < 8; i += step) {
+    labels.push(recent[i].timestamp?.slice(11, 16) || '--:--')
+  }
+  while (labels.length < 8) labels.push('--:--')
+  return labels
+})
+
+// ── Anomaly pin (only shows when a high-severity spike exists) ──
+const anomalyPin = computed(() => {
+  const anomalies = agentAnomalies.value
+  if (!anomalies) return null
+  const spike = anomalies.find(a => a.score > 90)
+  if (!spike) return null
+  return {
+    label: '⚠️ ANOMALY DETECTED',
+    time: spike.timestamp ? spike.timestamp.slice(11, 16) + ' ' + spike.timestamp.slice(0, 10) : '',
+  }
 })
 
 const recentAlerts = computed(() => {
@@ -179,39 +264,27 @@ async function onToggleRule(rule) {
               <svg viewBox="0 0 500 150" preserveAspectRatio="none" class="chart-svg">
                 <!-- Grid lines -->
                 <line x1="0" y1="0" x2="500" y2="0" class="grid-line" />
-                <line x1="0" y1="15" x2="500" y2="15" class="grid-line" />
-                <line x1="0" y1="60" x2="500" y2="60" class="grid-line" />
-                <line x1="0" y1="105" x2="500" y2="105" class="grid-line" />
+                <line x1="0" y1="37.5" x2="500" y2="37.5" class="grid-line" />
+                <line x1="0" y1="75" x2="500" y2="75" class="grid-line" />
+                <line x1="0" y1="112.5" x2="500" y2="112.5" class="grid-line" />
                 <line x1="0" y1="150" x2="500" y2="150" class="grid-line" />
                 
-                <!-- Expected Band -->
-                <path d="M0 70 Q25 30 50 50 T100 40 T150 60 T200 50 T250 60 T300 40 T350 30 T400 50 T450 60 T500 40 L500 100 Q475 80 450 90 T400 80 T350 90 T300 100 T250 90 T200 100 T150 90 T100 100 T50 90 T0 100 Z" class="band-fill" />
+                <!-- Expected Band (dynamic from real data) -->
+                <path :d="anomalyBandPath" class="band-fill" />
                 
-                <!-- Actual Line -->
-                <path d="M0 80 Q25 50 50 70 T100 60 T150 80 T200 70 L250 70 L270 20 L290 70 T350 50 T400 70 T450 80 T500 60" class="actual-line" />
-                
-                <!-- Red Spike Area -->
-                <path d="M250 70 L270 20 L290 70 Z" class="spike-fill" />
-                <!-- Red Spike Line -->
-                <path d="M250 70 L270 20 L290 70" class="spike-line" />
+                <!-- Actual Line (dynamic from real data) -->
+                <path :d="anomalyChartPath" class="actual-line" />
               </svg>
 
-              <!-- Tooltip Pin -->
-              <div class="anomaly-pin">
-                <div class="pin-box">⚠️ ANOMALY DETECTED - 2 Min Ago</div>
+              <!-- Tooltip Pin — only when high-severity anomaly exists -->
+              <div v-if="anomalyPin" class="anomaly-pin">
+                <div class="pin-box">{{ anomalyPin.label }} — {{ anomalyPin.time }}</div>
                 <div class="pin-arrow"></div>
               </div>
 
               <!-- X-Axis Labels -->
               <div class="x-axis">
-                <span>19:00</span>
-                <span>18:00</span>
-                <span>17:00</span>
-                <span>12:00</span>
-                <span>13:00</span>
-                <span>13:00</span>
-                <span>19:00</span>
-                <span>15:00</span>
+                <span v-for="(lbl, i) in chartLabels" :key="i">{{ lbl }}</span>
               </div>
             </div>
           </div>
@@ -223,13 +296,11 @@ async function onToggleRule(rule) {
           <div class="dashboard-card param-card">
             <div class="card-header"><div class="card-title">Anomaly Parameters</div></div>
             <div class="card-body">
-              <div class="mini-chart-title">Detection Rules</div>
+              <div class="mini-chart-title">{{ backendRules.length > 0 ? backendRules.length + ' Detection Rules' : 'Detection Rules' }}</div>
               <div class="mini-chart-svg">
                 <svg viewBox="0 0 200 50" preserveAspectRatio="none">
-                  <path d="M0 40 Q20 30 40 40 T80 20 T120 40 T160 10 T200 30 L200 50 L0 50 Z" class="mini-band" />
+                  <path d="M0 40 Q20 30 40 40 T80 20 T120 40 L140 40 L160 10 L180 30 L200 30 L200 50 L0 50 Z" class="mini-band" />
                   <path d="M0 40 Q20 30 40 40 T80 20 T120 40 L140 40 L160 10 L180 30 L200 30" class="mini-line" />
-                  <path d="M140 40 L160 10 L180 30 L200 30 L200 50 L140 50 Z" class="mini-spike-fill" />
-                  <path d="M140 40 L160 10 L180 30 L200 30" class="mini-spike-line" />
                 </svg>
               </div>
               

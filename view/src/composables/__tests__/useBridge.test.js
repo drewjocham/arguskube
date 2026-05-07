@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import {
   callGo,
   isWails,
+  invalidateCache,
   useAppMode,
   useClusterInfo,
   useContexts,
@@ -177,17 +178,16 @@ describe('useAppMode', () => {
     expect(mode.value).toBe('dashboard')
   })
 
-  it('fetches and updates mode on mount', async () => {
+  it('fetches and updates mode via fetchMode', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({ result: 'terminal' }),
     })
     vi.stubGlobal('fetch', mockFetch)
 
-    const { mode } = useAppMode()
+    const { mode, fetchMode } = useAppMode()
 
-    // Wait for onMounted to execute
-    await new Promise(r => setTimeout(r, 0))
+    await fetchMode()
 
     expect(mode.value).toBe('terminal')
   })
@@ -196,9 +196,9 @@ describe('useAppMode', () => {
     const mockFetch = vi.fn().mockRejectedValue(new Error('Network error'))
     vi.stubGlobal('fetch', mockFetch)
 
-    const { mode } = useAppMode()
+    const { mode, fetchMode } = useAppMode()
 
-    await new Promise(r => setTimeout(r, 0))
+    await fetchMode()
 
     // Should keep default value on error
     expect(mode.value).toBe('dashboard')
@@ -211,9 +211,9 @@ describe('useAppMode', () => {
     })
     vi.stubGlobal('fetch', mockFetch)
 
-    useAppMode()
+    const { fetchMode } = useAppMode()
 
-    await new Promise(r => setTimeout(r, 0))
+    await fetchMode()
 
     const callArgs = mockFetch.mock.calls[0]
     expect(callArgs[0]).toContain('/api/GetAppMode')
@@ -238,7 +238,35 @@ describe('useClusterInfo', () => {
     expect(error.value).toBe(null)
   })
 
-  it('fetches cluster info on mount', async () => {
+  it('fetches cluster info via refresh', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ result: { name: 'k3s-local', version: '1.28.0', nodes: 3 } }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const { info, loading, refresh } = useClusterInfo()
+
+    await refresh()
+
+    expect(info.value).toEqual({ name: 'k3s-local', version: '1.28.0', nodes: 3 })
+    expect(loading.value).toBe(false)
+  })
+
+  it('sets error and loading on fetch failure', async () => {
+    const testError = new Error('Cluster unreachable')
+    const mockFetch = vi.fn().mockRejectedValue(testError)
+    vi.stubGlobal('fetch', mockFetch)
+
+    const { error, loading, refresh } = useClusterInfo()
+
+    await refresh()
+
+    expect(error.value).toBeTruthy()
+    expect(loading.value).toBe(false)
+  })
+
+  it('provides refresh function to re-fetch data', async () => {
     const clusterData = {
       name: 'k3s-local',
       version: '1.28.0',
@@ -250,48 +278,12 @@ describe('useClusterInfo', () => {
     })
     vi.stubGlobal('fetch', mockFetch)
 
-    const { info, loading } = useClusterInfo()
+    const { info, loading, refresh } = useClusterInfo()
 
-    await new Promise(r => setTimeout(r, 0))
+    await refresh()
 
     expect(info.value).toEqual(clusterData)
     expect(loading.value).toBe(false)
-  })
-
-  it('sets error and loading on fetch failure', async () => {
-    const testError = new Error('Cluster unreachable')
-    const mockFetch = vi.fn().mockRejectedValue(testError)
-    vi.stubGlobal('fetch', mockFetch)
-
-    const { error, loading } = useClusterInfo()
-
-    await new Promise(r => setTimeout(r, 0))
-
-    expect(error.value).toBeTruthy()
-    expect(loading.value).toBe(false)
-  })
-
-  it('provides refresh function to re-fetch data', async () => {
-    const initialData = { name: 'old' }
-    const updatedData = { name: 'updated' }
-    const mockFetch = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: vi.fn().mockResolvedValue({ result: initialData }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: vi.fn().mockResolvedValue({ result: updatedData }),
-      })
-    vi.stubGlobal('fetch', mockFetch)
-
-    const { info, refresh } = useClusterInfo()
-
-    await new Promise(r => setTimeout(r, 0))
-    expect(info.value).toEqual(initialData)
-
-    await refresh()
-    expect(info.value).toEqual(updatedData)
   })
 })
 
@@ -299,10 +291,13 @@ describe('useContexts', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     if (window.go) delete window.go
+    // Clear any cached ListContexts from previous tests
+    invalidateCache('ListContexts')
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
+    invalidateCache('ListContexts')
   })
 
   it('returns contexts, loading, switching, error refs and methods', () => {
@@ -339,7 +334,7 @@ describe('useContexts', () => {
     expect(contexts.value).toEqual(contextData)
   })
 
-  it('sets mock contexts on API failure', async () => {
+  it('returns empty array on API failure', async () => {
     const mockFetch = vi.fn().mockRejectedValue(new Error('API down'))
     vi.stubGlobal('fetch', mockFetch)
 
@@ -347,12 +342,10 @@ describe('useContexts', () => {
 
     await listContexts()
 
-    // Should use mock contexts as fallback
-    expect(contexts.value.length).toBeGreaterThan(0)
-    expect(contexts.value[0].name).toBe('k3s-local')
+    expect(contexts.value).toEqual([])
   })
 
-  it('uses mock contexts when API returns empty', async () => {
+  it('returns empty array when API returns empty', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({ result: [] }),
@@ -363,8 +356,7 @@ describe('useContexts', () => {
 
     await listContexts()
 
-    // Should use mock contexts as fallback
-    expect(contexts.value[0].name).toBe('k3s-local')
+    expect(contexts.value).toEqual([])
   })
 
   it('switchContext calls API with context name', async () => {

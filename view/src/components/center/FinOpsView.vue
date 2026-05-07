@@ -260,7 +260,7 @@ function barLabel(item) {
 }
 .cost-card.highlight { border-color: rgba(62, 207, 142, 0.3); }
 .cost-label { font-size: 11px; color: #8b8f96; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
-.cost-value { font-size: 20px; font-weight: 600; color: #e8eaec; font-family: 'SF Mono', Consolas, monospace; }
+.cost-value { font-size: 20px; font-weight: 600; color: #e8eaec; font-family: var(--mono); }
 .cost-value.big { font-size: 28px; color: #3ecf8e; }
 .cost-value.year { font-size: 24px; color: #a78bfa; }
 .cost-value .unit { font-size: 13px; font-weight: 400; color: #8b8f96; }
@@ -287,7 +287,7 @@ function barLabel(item) {
 }
 .chart-y-axis {
   display: flex; flex-direction: column; justify-content: space-between;
-  font-size: 10px; color: #6b7078; font-family: 'SF Mono', Consolas, monospace;
+  font-size: 10px; color: #6b7078; font-family: var(--mono);
   min-width: 50px; text-align: right; padding-bottom: 20px;
 }
 .chart-bars {
@@ -313,7 +313,7 @@ function barLabel(item) {
 }
 .bar-label {
   position: absolute; bottom: -18px; font-size: 9px; color: #6b7078;
-  font-family: 'SF Mono', Consolas, monospace;
+  font-family: var(--mono);
 }
 
 /* Cost Categories */
@@ -324,10 +324,10 @@ function barLabel(item) {
 }
 .cat-header { display: flex; justify-content: space-between; align-items: center; }
 .cat-name { font-size: 13px; font-weight: 500; color: #e8eaec; }
-.cat-pct { font-size: 13px; font-weight: 600; color: #a78bfa; font-family: 'SF Mono', Consolas, monospace; }
+.cat-pct { font-size: 13px; font-weight: 600; color: #a78bfa; font-family: var(--mono); }
 .cat-bar-bg { height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
 .cat-bar-fill { height: 100%; background: linear-gradient(90deg, #a78bfa, #3ecf8e); border-radius: 3px; transition: width 0.5s ease; }
-.cat-cost { font-size: 12px; color: #8b8f96; font-family: 'SF Mono', Consolas, monospace; }
+.cat-cost { font-size: 12px; color: #8b8f96; font-family: var(--mono); }
 
 /* Tables */
 .cost-table { display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; overflow: hidden; }
@@ -343,8 +343,8 @@ function barLabel(item) {
 .table-row:hover { background: rgba(255,255,255,0.02); }
 .table-row:last-child { border-bottom: none; }
 
-.col-name { flex: 2; font-weight: 500; color: #e8eaec; font-family: 'SF Mono', Consolas, monospace; font-size: 12px; }
+.col-name { flex: 2; font-weight: 500; color: #e8eaec; font-family: var(--mono); font-size: 12px; }
 .col-ns { flex: 1.5; font-size: 12px; color: #8b8f96; }
-.col-num { flex: 1; text-align: right; font-family: 'SF Mono', Consolas, monospace; font-size: 12px; }
+.col-num { flex: 1; text-align: right; font-family: var(--mono); font-size: 12px; }
 .cost-val { color: #3ecf8e; font-weight: 600; }
 </style>

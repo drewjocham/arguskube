@@ -6,6 +6,10 @@ export function CheckToolStatus() {
   return window['go']['pkg']['App']['CheckToolStatus']();
 }
 
+export function CloseExecSession() {
+  return window['go']['pkg']['App']['CloseExecSession']();
+}
+
 export function ConnectToAgent(arg1) {
   return window['go']['pkg']['App']['ConnectToAgent'](arg1);
 }
@@ -60,6 +64,10 @@ export function EmitLogLine(arg1) {
 
 export function EstimateCosts(arg1) {
   return window['go']['pkg']['App']['EstimateCosts'](arg1);
+}
+
+export function ExecPodShell(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['pkg']['App']['ExecPodShell'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function GetAgentEventLog() {
@@ -154,6 +162,10 @@ export function GetRunbook(arg1) {
   return window['go']['pkg']['App']['GetRunbook'](arg1);
 }
 
+export function GetServicePods(arg1, arg2) {
+  return window['go']['pkg']['App']['GetServicePods'](arg1, arg2);
+}
+
 export function GetSettings() {
   return window['go']['pkg']['App']['GetSettings']();
 }
@@ -246,6 +258,10 @@ export function RefreshArgusCDApp(arg1, arg2) {
   return window['go']['pkg']['App']['RefreshArgusCDApp'](arg1, arg2);
 }
 
+export function ResizeExec(arg1, arg2) {
+  return window['go']['pkg']['App']['ResizeExec'](arg1, arg2);
+}
+
 export function ResizeTerminal(arg1, arg2) {
   return window['go']['pkg']['App']['ResizeTerminal'](arg1, arg2);
 }
@@ -300,6 +316,10 @@ export function ScanImage(arg1, arg2) {
 
 export function SendChatMessage(arg1, arg2) {
   return window['go']['pkg']['App']['SendChatMessage'](arg1, arg2);
+}
+
+export function SendExecInput(arg1) {
+  return window['go']['pkg']['App']['SendExecInput'](arg1);
 }
 
 export function SendTerminalInput(arg1) {
