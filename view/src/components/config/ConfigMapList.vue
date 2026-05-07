@@ -201,7 +201,7 @@ function scrollExpandedIntoView() {
 </template>
 
 <style scoped>
-.cm-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; flex: 1; min-height: 0; height: 100%; box-sizing: border-box; }
+.cm-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; min-height: 0; flex: 1 1 auto; height: 0; box-sizing: border-box; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
 
@@ -226,6 +226,8 @@ function scrollExpandedIntoView() {
   transition: all 0.3s ease;
 }
 .cm-row-container:last-child { border-bottom: none; }
+
+.cm-expanded { padding: 16px; background: #141517; border-top: 1px dashed rgba(255,255,255,0.08); }
 
 .cm-row {
   display: grid;
@@ -257,12 +259,7 @@ function scrollExpandedIntoView() {
   border-left: 3px solid #a78bfa;
 }
 
-/* Expanded Area */
-.cm-expanded {
-  padding: 16px;
-  background: #141517;
-  border-top: 1px dashed rgba(255,255,255,0.08);
-}
+/* Expanded Area — height is fine, handled by parent scroll */
 .expanded-grid {
   display: flex;
   flex-direction: column;
