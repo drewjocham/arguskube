@@ -447,6 +447,17 @@ func DemoResults() []ScannedImage {
 			AIOpt: AIOptimization{Issue: "Base image is using debian:bullseye which has numerous unpatched CVEs.", Fix: "Rebuild image using distroless/cc-debian12 to reduce attack surface and drop 85% of these vulnerabilities."},
 		},
 		{
+			ID: "img-4", Name: "ingress-nginx:v1.9.0", Namespace: "kube-system", LastScan: "1d ago",
+			Critical: 1, High: 3, Medium: 15, Low: 40, Status: "Vulnerable",
+			CVEs: []Vulnerability{
+				{ID: "CVE-2023-44487", Pkg: "nginx", Severity: "Critical", Desc: "HTTP/2 Rapid Reset Attack.", Fix: "Upgrade to ingress-nginx v1.9.3+"},
+				{ID: "CVE-2024-24989", Pkg: "nginx", Severity: "High", Desc: "Off-by-one in ngx_resolver_copy.", Fix: "Upgrade nginx to 1.25.4"},
+				{ID: "CVE-2024-0007", Pkg: "openssl", Severity: "High", Desc: "Null pointer deref in TLS.", Fix: "Upgrade openssl to 3.1.4"},
+				{ID: "CVE-2024-0008", Pkg: "libnghttp2", Severity: "High", Desc: "HTTP/2 stream memory leak.", Fix: "Upgrade nghttp2 to 1.60"},
+			},
+			AIOpt: AIOptimization{Issue: "Nginx ingress controller is exposed to HTTP/2 Rapid Reset DOS.", Fix: "Patch controller deployment and enable global rate limiting."},
+		},
+		{
 			ID: "img-2", Name: "worker:latest", Namespace: "default", LastScan: "1h ago",
 			Critical: 0, High: 1, Medium: 4, Low: 8, Status: "Warning",
 			CVEs: []Vulnerability{
@@ -459,17 +470,6 @@ func DemoResults() []ScannedImage {
 			Critical: 0, High: 0, Medium: 0, Low: 0, Status: "Clean",
 			CVEs:  []Vulnerability{},
 			AIOpt: AIOptimization{Issue: "None", Fix: "Image is optimal and following least-privilege principles."},
-		},
-		{
-			ID: "img-4", Name: "ingress-nginx:v1.9.0", Namespace: "kube-system", LastScan: "1d ago",
-			Critical: 1, High: 3, Medium: 15, Low: 40, Status: "Vulnerable",
-			CVEs: []Vulnerability{
-				{ID: "CVE-2023-44487", Pkg: "nginx", Severity: "Critical", Desc: "HTTP/2 Rapid Reset Attack.", Fix: "Upgrade to ingress-nginx v1.9.3+"},
-				{ID: "CVE-2024-24989", Pkg: "nginx", Severity: "High", Desc: "Off-by-one in ngx_resolver_copy.", Fix: "Upgrade nginx to 1.25.4"},
-				{ID: "CVE-2024-0007", Pkg: "openssl", Severity: "High", Desc: "Null pointer deref in TLS.", Fix: "Upgrade openssl to 3.1.4"},
-				{ID: "CVE-2024-0008", Pkg: "libnghttp2", Severity: "High", Desc: "HTTP/2 stream memory leak.", Fix: "Upgrade nghttp2 to 1.60"},
-			},
-			AIOpt: AIOptimization{Issue: "Nginx ingress controller is exposed to HTTP/2 Rapid Reset DOS.", Fix: "Patch controller deployment and enable global rate limiting."},
 		},
 	}
 }
