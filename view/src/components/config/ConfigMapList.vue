@@ -1,6 +1,7 @@
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
-import { useResources } from '../../composables/useWails'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { useResources } from '../../composables/useResources'
+import { callGo } from '../../composables/useBridge'
 
 const props = defineProps({
   type: { type: String, default: 'configmaps' }
@@ -8,8 +9,7 @@ const props = defineProps({
 
 const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
 
-const resourceKind = props.type || 'configmaps'
-
+const resourceKind = ref(props.type || 'configmaps')
 
 const configmaps = ref([])
 const cmDetail = ref(null)
@@ -17,8 +17,24 @@ const expandedCm = ref(null)
 const notification = ref(null)
 const viewRef = ref(null)
 
-onMounted(async () => {
-  await listResources(resourceKind, '')
+// AI schooling state
+const schoolLoading = ref(false)
+const schoolingResource = ref(null)
+const schoolResult = ref(null)
+
+// Dynamic title/subtitle based on type
+const title = computed(() => {
+  return props.type === 'secrets' ? 'Secrets' : 'Config Maps'
+})
+
+const subtitle = computed(() => {
+  return props.type === 'secrets'
+    ? 'Sensitive data stored as key-value pairs (values obfuscated)'
+    : 'Non-confidential data stored in key-value pairs'
+})
+
+async function fetchData(kind) {
+  await listResources(kind, '')
   if (result.value && result.value.items && result.value.items.length > 0) {
     configmaps.value = result.value.items.map(item => ({
       name: item.name,
@@ -29,25 +45,69 @@ onMounted(async () => {
   } else {
     configmaps.value = []
   }
+}
+
+onMounted(async () => {
+  await fetchData(resourceKind.value)
+})
+
+// Watch for type prop changes and re-fetch data, reset expanded state
+watch(() => props.type, async (newType) => {
+  resourceKind.value = newType || 'configmaps'
+  expandedCm.value = null
+  cmDetail.value = null
+  schoolResult.value = null
+  schoolingResource.value = null
+  await fetchData(resourceKind.value)
 })
 
 async function toggleExpand(cmName) {
   if (expandedCm.value === cmName) {
     expandedCm.value = null
     cmDetail.value = null
+    schoolResult.value = null
+    schoolingResource.value = null
     return
   }
 
   expandedCm.value = cmName
+  schoolResult.value = null
+  schoolingResource.value = null
   const cm = configmaps.value.find(c => c.name === cmName)
   if (cm) {
-    await getResourceDetail(resourceKind, cm.namespace, cmName)
+    await getResourceDetail(resourceKind.value, cm.namespace, cmName)
     if (detail.value) {
       cmDetail.value = detail.value
     }
   }
   await nextTick()
   scrollExpandedIntoView()
+}
+
+async function schoolMe(cmName) {
+  if (schoolLoading.value) return
+  schoolingResource.value = cmName
+  schoolResult.value = null
+  schoolLoading.value = true
+  try {
+    const cm = configmaps.value.find(c => c.name === cmName)
+    if (!cm) return
+    // Build a brief context string and send to AI backend
+    const kind = props.type === 'secrets' ? 'Secret' : 'ConfigMap'
+    const labelContext = cmDetail.value?.labels
+      ? Object.entries(cmDetail.value.labels).map(([k, v]) => `${k}=${v}`).join(', ')
+      : 'none'
+    const dataKeys = cmDetail.value?.data
+      ? Object.keys(cmDetail.value.data).join(', ')
+      : 'none'
+    const context = `${kind} "${cmName}" in namespace "${cm.namespace}"\nLabels: ${labelContext}\nKeys: ${dataKeys}`
+    const response = await callGo('SendChatMessage', '', `Teach me about this ${kind}: ${context}`)
+    schoolResult.value = response || `I can explain ${kind} "${cmName}". It lives in the ${cm.namespace} namespace with ${cm.data} data fields.`
+  } catch (e) {
+    schoolResult.value = `Could not reach AI agent: ${e?.message || 'unknown error'}`
+  } finally {
+    schoolLoading.value = false
+  }
 }
 
 function scrollExpandedIntoView() {
@@ -61,8 +121,8 @@ function scrollExpandedIntoView() {
 <template>
   <div class="cm-view" ref="viewRef">
     <div class="header">
-      <div class="title">Config Maps</div>
-      <div class="subtitle">Non-confidential data stored in key-value pairs</div>
+      <div class="title">{{ title }}</div>
+      <div class="subtitle">{{ subtitle }}</div>
     </div>
     
     <div v-if="notification" class="agent-notification">
@@ -80,7 +140,7 @@ function scrollExpandedIntoView() {
         <div class="col-age">Age</div>
       </div>
 
-      <div v-for="cm in configmaps" :key="cm.name" class="cm-row-container" :class="{'ai-active-pulse': cm.isApplying}">
+      <div v-for="cm in configmaps" :key="cm.name" class="cm-row-container" :class="{'ai-active-pulse': cm.isApplying || schoolingResource === cm.name}">
         <div class="cm-row" @click="toggleExpand(cm.name)">
           <div class="col-name">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #6ba3f9; margin-right: 8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
@@ -101,11 +161,22 @@ function scrollExpandedIntoView() {
           <div v-if="detailLoading" style="color:#8b8f96; font-size:13px; padding:12px;">Loading…</div>
           <div v-else-if="cmDetail" class="expanded-grid">
             <div class="expanded-card">
-              <h4 class="card-title">Data Keys</h4>
+              <div class="card-title-row">
+                <h4 class="card-title">Data Keys</h4>
+                <button class="school-btn" @click.stop="schoolMe(cm.name)" :disabled="schoolLoading && schoolingResource === cm.name" title="Ask the AI agent to school you about this resource">
+                  <svg v-if="schoolLoading && schoolingResource === cm.name" class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-dashoffset="0"/></svg>
+                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 6.5V2a10 10 0 0 1 10 10h-4.5M6.5 12H2A10 10 0 0 1 12 2v4.5M12 17.5V22A10 10 0 0 1 2 12h4.5M17.5 12H22A10 10 0 0 1 12 22v-4.5"/></svg>
+                  School me
+                </button>
+              </div>
+              <div v-if="schoolingResource === cm.name && schoolResult" class="school-result">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="school-result-icon"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                <span>{{ schoolResult }}</span>
+              </div>
               <div v-if="cmDetail.data && Object.keys(cmDetail.data).length" class="cm-data-grid">
                 <div class="cm-data-row" v-for="(v, k) in cmDetail.data" :key="k">
                   <span class="cm-data-key font-mono">{{ k }}</span>
-                  <pre class="cm-data-val font-mono">{{ v.length > 200 ? v.substring(0, 200) + '…' : v }}</pre>
+                  <pre class="cm-data-val font-mono">{{ props.type === 'secrets' ? '•••••••• (obfuscated)' : (v.length > 200 ? v.substring(0, 200) + '…' : v) }}</pre>
                 </div>
               </div>
               <div v-else class="props-grid">
@@ -130,7 +201,7 @@ function scrollExpandedIntoView() {
 </template>
 
 <style scoped>
-.cm-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; flex: 1; min-height: 0; }
+.cm-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; flex: 1; min-height: 0; height: 100%; box-sizing: border-box; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
 
@@ -204,7 +275,32 @@ function scrollExpandedIntoView() {
   display: flex;
   flex-direction: column;
 }
-.card-title { font-size: 13px; font-weight: 600; color: #fff; margin: 0 0 12px 0; }
+.card-title { font-size: 13px; font-weight: 600; color: #fff; margin: 0; }
+.card-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+
+/* School button */
+.school-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(167, 139, 250, 0.12); border: 1px solid rgba(167, 139, 250, 0.25);
+  color: #a78bfa; font-size: 11px; font-weight: 500;
+  padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.school-btn:hover { background: rgba(167, 139, 250, 0.22); border-color: rgba(167, 139, 250, 0.45); }
+.school-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Spinner animation */
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; }
+
+/* School result */
+.school-result {
+  display: flex; align-items: flex-start; gap: 8px;
+  background: rgba(167, 139, 250, 0.08); border: 1px solid rgba(167, 139, 250, 0.15);
+  border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;
+  font-size: 12px; color: #e8eaec; line-height: 1.5;
+}
+.school-result-icon { color: #a78bfa; flex-shrink: 0; margin-top: 2px; }
 
 /* Data grid */
 .cm-data-grid { display: flex; flex-direction: column; gap: 8px; }
