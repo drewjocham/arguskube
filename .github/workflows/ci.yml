@@ -44,6 +44,7 @@ jobs:
           version: latest
           working-directory: backend
           args: --timeout 3m
+          only-new-issues: true
 
   # --- Go Agent ---
   agent:
