@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useResources } from '../../composables/useWails'
 
 const props = defineProps({
@@ -15,6 +15,7 @@ const configmaps = ref([])
 const cmDetail = ref(null)
 const expandedCm = ref(null)
 const notification = ref(null)
+const viewRef = ref(null)
 
 onMounted(async () => {
   await listResources(resourceKind, '')
@@ -34,21 +35,31 @@ async function toggleExpand(cmName) {
   if (expandedCm.value === cmName) {
     expandedCm.value = null
     cmDetail.value = null
-  } else {
-    expandedCm.value = cmName
-    const cm = configmaps.value.find(c => c.name === cmName)
-    if (cm) {
-      await getResourceDetail(resourceKind, cm.namespace, cmName)
-      if (detail.value) {
-        cmDetail.value = detail.value
-      }
+    return
+  }
+
+  expandedCm.value = cmName
+  const cm = configmaps.value.find(c => c.name === cmName)
+  if (cm) {
+    await getResourceDetail(resourceKind, cm.namespace, cmName)
+    if (detail.value) {
+      cmDetail.value = detail.value
     }
+  }
+  await nextTick()
+  scrollExpandedIntoView()
+}
+
+function scrollExpandedIntoView() {
+  const el = viewRef.value?.querySelector('.cm-expanded')
+  if (el && typeof el.scrollIntoView === 'function') {
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
 }
 </script>
 
 <template>
-  <div class="cm-view">
+  <div class="cm-view" ref="viewRef">
     <div class="header">
       <div class="title">Config Maps</div>
       <div class="subtitle">Non-confidential data stored in key-value pairs</div>

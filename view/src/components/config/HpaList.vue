@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useResources, useVPARecommendations } from '../../composables/useWails'
 
 const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
@@ -10,6 +10,7 @@ const hpas = ref([])
 const hpaDetail = ref(null)
 const expandedHpa = ref(null)
 const notification = ref(null)
+const viewRef = ref(null)
 
 onMounted(async () => {
   await listResources('hpa', '')
@@ -42,21 +43,31 @@ async function toggleExpand(hpaName) {
   if (expandedHpa.value === hpaName) {
     expandedHpa.value = null
     hpaDetail.value = null
-  } else {
-    expandedHpa.value = hpaName
-    const hpa = hpas.value.find(h => h.name === hpaName)
-    if (hpa) {
-      await getResourceDetail('hpa', hpa.namespace, hpaName)
-      if (detail.value) {
-        hpaDetail.value = detail.value
-      }
+    return
+  }
+
+  expandedHpa.value = hpaName
+  const hpa = hpas.value.find(h => h.name === hpaName)
+  if (hpa) {
+    await getResourceDetail('hpa', hpa.namespace, hpaName)
+    if (detail.value) {
+      hpaDetail.value = detail.value
     }
+  }
+  await nextTick()
+  scrollExpandedIntoView()
+}
+
+function scrollExpandedIntoView() {
+  const el = viewRef.value?.querySelector('.hpa-expanded')
+  if (el && typeof el.scrollIntoView === 'function') {
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
 }
 </script>
 
 <template>
-  <div class="hpa-view">
+  <div class="hpa-view" ref="viewRef">
     <div class="header">
       <div class="title">Autoscaling</div>
       <div class="subtitle">HPA horizontal scaling and VPA vertical resource recommendations</div>
@@ -205,7 +216,7 @@ async function toggleExpand(hpaName) {
 </template>
 
 <style scoped>
-.hpa-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; height: 100%; }
+.hpa-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; flex: 1; min-height: 0; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
 
