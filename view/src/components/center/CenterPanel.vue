@@ -218,6 +218,7 @@ async function runArgusScan() {
 
     <!-- Resource browser -->
     <template v-else-if="isResource">
+      <div class="resource-scroll-area">
       <NodeList v-if="activeNav === 'nodes'" />
       <NamespaceList v-else-if="activeNav === 'namespaces'" />
       <EventStream v-else-if="activeNav === 'events'" />
@@ -246,6 +247,7 @@ async function runArgusScan() {
           :name="selectedResource.name"
           @close="closeDetail"
         />
+      </div>
       </div>
     </template>
 
@@ -343,6 +345,8 @@ async function runArgusScan() {
 .editing-dim { opacity: 0.6; pointer-events: none; border: 1px dashed var(--border); border-radius: var(--r); }
 
 /* Resource layout — table + optional detail panel */
+.resource-scroll-area { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; }
+
 .resource-layout {
   flex: 1;
   display: flex;

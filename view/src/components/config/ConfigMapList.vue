@@ -132,6 +132,7 @@ function scrollExpandedIntoView() {
       <div class="notif-text">{{ notification }}</div>
     </div>
 
+    <div class="scroll-area">
     <div class="cm-list">
       <div class="cm-header-row">
         <div class="col-name">Name</div>
@@ -140,7 +141,7 @@ function scrollExpandedIntoView() {
         <div class="col-age">Age</div>
       </div>
 
-      <div v-for="cm in configmaps" :key="cm.name" class="cm-row-container" :class="{'ai-active-pulse': cm.isApplying || schoolingResource === cm.name}">
+      <div v-for="cm in configmaps" :key="cm.namespace + '/' + cm.name" class="cm-row-container" :class="{'ai-active-pulse': cm.isApplying || schoolingResource === cm.name}">
         <div class="cm-row" @click="toggleExpand(cm.name)">
           <div class="col-name">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #6ba3f9; margin-right: 8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
@@ -174,7 +175,7 @@ function scrollExpandedIntoView() {
                 <span>{{ schoolResult }}</span>
               </div>
               <div v-if="cmDetail.data && Object.keys(cmDetail.data).length" class="cm-data-grid">
-                <div class="cm-data-row" v-for="(v, k) in cmDetail.data" :key="k">
+                <div class="cm-data-row" v-for="(v, k) in cmDetail.data" :key="cm.name + '-' + k">
                   <span class="cm-data-key font-mono">{{ k }}</span>
                   <pre class="cm-data-val font-mono">{{ props.type === 'secrets' ? '•••••••• (obfuscated)' : (v.length > 200 ? v.substring(0, 200) + '…' : v) }}</pre>
                 </div>
@@ -190,18 +191,20 @@ function scrollExpandedIntoView() {
             <div class="expanded-card" v-if="cmDetail.labels && Object.keys(cmDetail.labels).length">
               <h4 class="card-title">Labels</h4>
               <div class="labels-grid">
-                <span class="label-chip" v-for="(v, k) in cmDetail.labels" :key="k">{{ k }}={{ v }}</span>
+                <span class="label-chip" v-for="(v, k) in cmDetail.labels" :key="cm.name + '-label-' + k">{{ k }}={{ v }}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
     </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.cm-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; min-height: 0; flex: 1 1 auto; height: 0; box-sizing: border-box; }
+.cm-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; min-height: 0; flex: 1; box-sizing: border-box; }
+.scroll-area { flex: 1; overflow-y: auto; min-height: 0; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
 
