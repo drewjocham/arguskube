@@ -96,6 +96,10 @@ func GenerateCA(org string, validity time.Duration) (*CACert, error) {
 // IssueAgentCert creates a client certificate signed by the CA for the given agent.
 // The certificate is valid for the specified duration.
 func IssueAgentCert(ca *CACert, agentID string, validity time.Duration) (*AgentCert, error) {
+	if ca == nil || ca.Cert == nil || ca.Key == nil {
+		return nil, fmt.Errorf("ca must be non-nil with valid Cert and Key")
+	}
+
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("generate agent key: %w", err)

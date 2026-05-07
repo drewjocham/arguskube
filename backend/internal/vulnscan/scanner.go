@@ -438,6 +438,11 @@ func DemoResults() []ScannedImage {
 			CVEs: []Vulnerability{
 				{ID: "CVE-2023-38545", Pkg: "curl", Severity: "Critical", Desc: "Heap based buffer overflow in SOCKS5 proxy handshake.", Fix: "Upgrade to curl 8.4.0"},
 				{ID: "CVE-2023-4911", Pkg: "glibc", Severity: "Critical", Desc: "Buffer overflow in ld.so (Looney Tunables).", Fix: "Update glibc to 2.38-r1"},
+				{ID: "CVE-2024-23222", Pkg: "libxml2", Severity: "High", Desc: "Type confusion in libxml2 parser.", Fix: "Upgrade libxml2 to 2.10.4"},
+				{ID: "CVE-2024-21803", Pkg: "python3", Severity: "High", Desc: "Heap buffer overflow in email module.", Fix: "Upgrade python3 to 3.11.7"},
+				{ID: "CVE-2024-0001", Pkg: "openssl", Severity: "High", Desc: "Timing side-channel in RSA decryption.", Fix: "Upgrade openssl to 3.0.13"},
+				{ID: "CVE-2024-0002", Pkg: "zlib", Severity: "High", Desc: "Memory corruption in inflate.", Fix: "Upgrade zlib to 1.3.1"},
+				{ID: "CVE-2024-0003", Pkg: "curl", Severity: "High", Desc: "Cookie injection via redirect.", Fix: "Upgrade curl to 8.6.0"},
 			},
 			AIOpt: AIOptimization{Issue: "Base image is using debian:bullseye which has numerous unpatched CVEs.", Fix: "Rebuild image using distroless/cc-debian12 to reduce attack surface and drop 85% of these vulnerabilities."},
 		},
@@ -460,6 +465,9 @@ func DemoResults() []ScannedImage {
 			Critical: 1, High: 3, Medium: 15, Low: 40, Status: "Vulnerable",
 			CVEs: []Vulnerability{
 				{ID: "CVE-2023-44487", Pkg: "nginx", Severity: "Critical", Desc: "HTTP/2 Rapid Reset Attack.", Fix: "Upgrade to ingress-nginx v1.9.3+"},
+				{ID: "CVE-2024-24989", Pkg: "nginx", Severity: "High", Desc: "Off-by-one in ngx_resolver_copy.", Fix: "Upgrade nginx to 1.25.4"},
+				{ID: "CVE-2024-0007", Pkg: "openssl", Severity: "High", Desc: "Null pointer deref in TLS.", Fix: "Upgrade openssl to 3.1.4"},
+				{ID: "CVE-2024-0008", Pkg: "libnghttp2", Severity: "High", Desc: "HTTP/2 stream memory leak.", Fix: "Upgrade nghttp2 to 1.60"},
 			},
 			AIOpt: AIOptimization{Issue: "Nginx ingress controller is exposed to HTTP/2 Rapid Reset DOS.", Fix: "Patch controller deployment and enable global rate limiting."},
 		},

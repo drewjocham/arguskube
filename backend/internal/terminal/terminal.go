@@ -24,6 +24,9 @@ type Terminal struct {
 
 // New creates a new Terminal instance.
 func New(logger *slog.Logger) *Terminal {
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
 	return &Terminal{
 		logger: logger,
 	}

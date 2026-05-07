@@ -4,9 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/argues/kube-watcher/internal/alerts"
 	"github.com/argues/kube-watcher/internal/anomaly"
@@ -71,7 +69,7 @@ func TestAssemble(t *testing.T) {
 		t.Fatal("NewAssembler() returned nil")
 	}
 
-	bundle, err := a.Assemble(testing.WithValue(testing.Background(), "alert", alert), alert, []alerts.Alert{alert})
+	bundle, err := a.Assemble(context.WithValue(context.Background(), "alert", alert), alert, []alerts.Alert{alert})
 	if err != nil {
 		t.Fatalf("Assemble() failed: %v", err)
 	}
