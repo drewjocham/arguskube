@@ -87,6 +87,7 @@ async function toggleExpand(itemName) {
       <div class="notif-text">{{ notification }}</div>
     </div>
 
+    <div class="np-scroll-area">
     <div v-if="loading && !items()" class="state-box">Loading…</div>
     <div v-else-if="error" class="state-box state-error">{{ error }}</div>
     <div v-else-if="!items().length" class="state-box">No {{ type }} found in this cluster.</div>
@@ -163,11 +164,13 @@ async function toggleExpand(itemName) {
         </div>
       </template>
     </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.np-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; height: 100%; }
+.np-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; min-height: 0; flex: 1; box-sizing: border-box; }
+.np-scroll-area { flex: 1; overflow-y: auto; min-height: 0; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
 .header-row { display: flex; justify-content: space-between; align-items: flex-start; }

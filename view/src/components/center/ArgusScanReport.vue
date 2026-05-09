@@ -294,7 +294,7 @@ function fixWithAgent(finding) {
 </template>
 
 <style scoped>
-.popeye-view { display: flex; flex-direction: column; gap: 10px; height: 100%; }
+.popeye-view { display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 0; }
 
 .popeye-header {
   display: flex; align-items: center; justify-content: space-between;

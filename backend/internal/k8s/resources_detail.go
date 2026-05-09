@@ -555,6 +555,63 @@ func (c *Client) getDaemonSetDetail(ctx context.Context, ns, name string) (*Reso
 	}, nil
 }
 
+func (c *Client) getReplicaSetDetail(ctx context.Context, ns, name string) (*ResourceDetailResult, error) {
+	rs, err := c.cs.AppsV1().ReplicaSets(ns).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	desired := ptrInt32(rs.Spec.Replicas)
+	status := "Available"
+	if rs.Status.ReadyReplicas < desired {
+		status = "Progressing"
+	}
+	if rs.Status.ReadyReplicas == 0 && desired > 0 {
+		status = "Unavailable"
+	}
+
+	props := []KeyValue{
+		{Key: "Status", Value: status},
+		{Key: "Replicas", Value: fmt.Sprintf("%d desired / %d ready / %d total",
+			desired, rs.Status.ReadyReplicas, rs.Status.Replicas)},
+		{Key: "Fully Labeled Replicas", Value: fmt.Sprintf("%d", rs.Status.FullyLabeledReplicas)},
+		{Key: "Selector", Value: fmtMapSlice(rs.Spec.Selector.MatchLabels)},
+	}
+
+	if len(rs.OwnerReferences) > 0 {
+		props = append(props, KeyValue{Key: "Controlled By", Value: rs.OwnerReferences[0].Kind + "/" + rs.OwnerReferences[0].Name})
+	}
+
+	for _, ctr := range rs.Spec.Template.Spec.Containers {
+		props = append(props, KeyValue{Key: "Container: " + ctr.Name, Value: ctr.Image})
+	}
+
+	conditions := make([]ResourceCondition, 0)
+	for _, cond := range rs.Status.Conditions {
+		conditions = append(conditions, ResourceCondition{
+			Type:    string(cond.Type),
+			Status:  string(cond.Status),
+			Reason:  orDash(cond.Reason),
+			Message: orDash(cond.Message),
+			Age:     fmtAge(cond.LastTransitionTime.Time),
+		})
+	}
+
+	events := c.getResourceEvents(ctx, ns, "ReplicaSet", name)
+
+	return &ResourceDetailResult{
+		Kind:        "ReplicaSet",
+		Name:        rs.Name,
+		Namespace:   rs.Namespace,
+		Created:     fmtTimestamp(rs.CreationTimestamp.Time),
+		Labels:      rs.Labels,
+		Annotations: rs.Annotations,
+		Properties:  props,
+		Conditions:  conditions,
+		Events:      events,
+	}, nil
+}
+
 func (c *Client) getCronJobDetail(ctx context.Context, ns, name string) (*ResourceDetailResult, error) {
 	cj, err := c.cs.BatchV1().CronJobs(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {

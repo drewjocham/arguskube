@@ -3,6 +3,7 @@ package pkg
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/argues/kube-watcher/internal/anomaly"
 	"github.com/argues/kube-watcher/internal/features"
@@ -189,6 +190,33 @@ func (a *App) RestartDeployment(namespace, name string) error {
 		return errNoCluster
 	}
 	return a.k8s.RestartDeployment(a.ctx, namespace, name)
+}
+
+// GetResourceYaml returns the raw YAML manifest for a resource.
+func (a *App) GetResourceYaml(kind, namespace, name string) (string, error) {
+	if a.k8s == nil {
+		return "", errNoCluster
+	}
+	return a.k8s.GetResourceYaml(a.ctx, kind, namespace, name)
+}
+
+// ApplyYaml applies a raw YAML manifest to the cluster.
+func (a *App) ApplyYaml(yamlContent string) (string, error) {
+	if a.k8s == nil {
+		return "", errNoCluster
+	}
+	if strings.TrimSpace(yamlContent) == "" {
+		return "", fmt.Errorf("empty YAML content")
+	}
+	return a.k8s.ApplyYaml(a.ctx, yamlContent)
+}
+
+// DeleteResource deletes a resource by kind, namespace, and name.
+func (a *App) DeleteResource(kind, namespace, name string) error {
+	if a.k8s == nil {
+		return errNoCluster
+	}
+	return a.k8s.DeleteResource(a.ctx, kind, namespace, name)
 }
 
 // EstimateCosts returns a FinOps cost report based on pod resource requests.

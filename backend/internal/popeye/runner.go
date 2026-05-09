@@ -1,6 +1,7 @@
 package popeye
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,7 +13,12 @@ import (
 	"time"
 )
 
-var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+var (
+	ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	// K9s-style banner: lines starting with decorative ASCII before JSON begins.
+	// Popeye sometimes prints its ASCII logo banner before the JSON output.
+	jsonStartRE = regexp.MustCompile(`(?s)^.*?(\{.*)$`)
+)
 
 type SeverityLevel int
 
@@ -345,12 +351,30 @@ func (r *Runner) execBinary(ctx context.Context) ([]byte, error) {
 	if envKubeconfig != "" {
 		cmd.Env = append(os.Environ(), "KUBECONFIG="+envKubeconfig)
 	}
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
 	output, err := cmd.Output()
 	if err != nil && len(output) == 0 {
+		// Include stderr in error for debugging, but strip ANSI codes from it too.
+		stderr := stripANSI(stderrBuf.Bytes())
+		if len(stderr) > 0 {
+			return nil, fmt.Errorf("popeye exec: %w (stderr: %s)", err, truncateBytes(stderr, 200))
+		}
 		return nil, fmt.Errorf("popeye exec: %w", err)
+	}
+	if stderrBuf.Len() > 0 {
+		r.logger.Warn("popeye stderr output",
+			slog.String("stderr", truncateBytes(stripANSI(stderrBuf.Bytes()), 500)),
+		)
 	}
 	// Strip any ANSI escape codes that leak through despite --no-color.
 	output = stripANSI(output)
+	// Strip any K9s-style ASCII banner that appears before the JSON.
+	if bytes.HasPrefix(output, []byte(" ")) || bytes.HasPrefix(output, []byte("|")) || bytes.HasPrefix(output, []byte("\n")) {
+		if matches := jsonStartRE.FindSubmatch(output); len(matches) >= 2 {
+			output = matches[1]
+		}
+	}
 	return output, nil
 }
 

@@ -163,6 +163,8 @@ func (c *Client) GetResourceDetail(ctx context.Context, kind, namespace, name st
 		return c.getStatefulSetDetail(ctx, namespace, name)
 	case "daemonsets":
 		return c.getDaemonSetDetail(ctx, namespace, name)
+	case "replicasets":
+		return c.getReplicaSetDetail(ctx, namespace, name)
 	case "pvcs":
 		return c.getPVCDetail(ctx, namespace, name)
 	case "ingresses":
