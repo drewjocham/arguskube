@@ -23,11 +23,13 @@ export KUBECONFIG
 APP_NAME    := kubewatcher
 BACKEND_DIR := backend
 VIEW_DIR    := view
+AGENT_DIR   := agent/python_agents
 BUILD_BIN   := $(BACKEND_DIR)/build/bin/$(APP_NAME)
 
 .PHONY: help dev build run frontend frontend-dev deps deps-go deps-vue \
         test test-go test-vue lint lint-go clean doctor \
-        bindings contexts logs
+        bindings contexts logs \
+        agent-deps agent-check agent-clean
 
 # ── Default ──────────────────────────────────────────────────────
 
@@ -59,7 +61,7 @@ run: build-nopackage ## Build then run
 
 # ── Dependencies ─────────────────────────────────────────────────
 
-deps: deps-go deps-vue ## Install all dependencies
+deps: deps-go deps-vue agent-deps ## Install all dependencies
 
 deps-go: ## Go module tidy
 	cd $(BACKEND_DIR) && go mod tidy
@@ -74,7 +76,7 @@ bindings: ## Regenerate Wails TypeScript bindings
 
 # ── Testing ──────────────────────────────────────────────────────
 
-test: test-go test-vue ## Run all tests
+test: test-go test-vue agent-check ## Run all tests
 
 test-go: ## Run Go tests
 	cd $(BACKEND_DIR) && go test ./... -count=1
@@ -105,7 +107,7 @@ pods: ## List all pods across namespaces
 
 # ── Cleanup ──────────────────────────────────────────────────────
 
-clean: ## Remove all build artifacts
+clean: agent-clean ## Remove all build artifacts
 	rm -rf $(BACKEND_DIR)/build/bin
 	rm -rf $(BACKEND_DIR)/view/dist
 	rm -rf $(VIEW_DIR)/dist
@@ -113,6 +115,25 @@ clean: ## Remove all build artifacts
 
 clean-vue: ## Remove Vue node_modules only
 	rm -rf $(VIEW_DIR)/node_modules
+
+# ── Argus Python Agents ──────────────────────────────────────────
+
+AGENT_VENV  := $(AGENT_DIR)/.venv
+AGENT_PYTHON := $(AGENT_VENV)/bin/python
+AGENT_PIP    := $(AGENT_VENV)/bin/pip
+
+agent-deps: ## Install Argus Python agent dependencies
+	@test -d $(AGENT_VENV) || python3 -m venv $(AGENT_VENV)
+	$(AGENT_PIP) install -q -r $(AGENT_DIR)/requirements.txt
+	@echo "  ✓ Argus agent venv ready at $(AGENT_VENV)"
+
+agent-check: agent-deps ## Validate Argus agents (syntax + imports)
+	$(AGENT_PYTHON) -c "from python_agents import *; print('  ✓ All agent imports OK')"
+	$(AGENT_PYTHON) -m py_compile $(AGENT_DIR)/*.py
+	@echo "  ✓ All agent files compile cleanly"
+
+agent-clean: ## Remove Argus Python agent venv
+	rm -rf $(AGENT_VENV)
 
 # ── Doctor ───────────────────────────────────────────────────────
 

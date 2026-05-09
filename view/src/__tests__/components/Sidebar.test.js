@@ -39,11 +39,11 @@ describe('Sidebar.vue — Integration', () => {
     document.body.innerHTML = ''
   })
 
-  it('renders all navigation items (35: 8+3+7+3+4+3+4+1+2)', () => {
+  it('renders all navigation items (36: 9+3+7+3+4+3+4+1+2)', () => {
     const wrapper = createWrapper()
     // All items are in the expanded nav (sidebarCollapsed = false by default).
     const navItems = wrapper.findAll('.nav-item')
-    expect(navItems.length).toBe(35)
+    expect(navItems.length).toBe(36)
   })
 
   it('renders all 9 section headers', () => {
@@ -63,8 +63,8 @@ describe('Sidebar.vue — Integration', () => {
     const navLabels = wrapper.findAll('.nav-label')
 
     // Verify nav items exist with labels
-    expect(navItems.length).toBe(35)
-    expect(navLabels.length).toBe(35)
+    expect(navItems.length).toBe(36)
+    expect(navLabels.length).toBe(36)
   })
 
   it('shows badge with critical count on alerts item', () => {

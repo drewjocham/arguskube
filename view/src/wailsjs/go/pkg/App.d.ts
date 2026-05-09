@@ -19,6 +19,8 @@ import {notebooks} from '../models';
 import {vulnscan} from '../models';
 import {popeye} from '../models';
 
+export function ApplyYaml(arg1:string):Promise<string>;
+
 export function CheckToolStatus():Promise<Array<setup.ToolStatus>>;
 
 export function CloseExecSession():Promise<void>;
@@ -38,6 +40,8 @@ export function DeleteIncident(arg1:string):Promise<void>;
 export function DeleteNotebook(arg1:string):Promise<void>;
 
 export function DeletePod(arg1:string,arg2:string):Promise<void>;
+
+export function DeleteResource(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function DeleteRunbook(arg1:string):Promise<void>;
 
@@ -96,6 +100,8 @@ export function GetNotebook(arg1:string):Promise<string>;
 export function GetPodLogs(arg1:string,arg2:string,arg3:number):Promise<Array<alerts.LogLine>>;
 
 export function GetResourceDetail(arg1:string,arg2:string,arg3:string):Promise<k8s.ResourceDetailResult>;
+
+export function GetResourceYaml(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function GetRunbook(arg1:string):Promise<string>;
 

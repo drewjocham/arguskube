@@ -1,9 +1,26 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useResources, useDeploymentRevisions } from '../../composables/useWails'
+import { useManifestEdit } from '../../composables/useManifestEdit'
+import ManifestEditPopup from '../common/ManifestEditPopup.vue'
 
 const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
 const { revisions, loading: revisionsLoading, error: revisionsError, fetchRevisions } = useDeploymentRevisions()
+
+const {
+  manifestPopup,
+  editingManifest,
+  manifestContent,
+  manifestKind,
+  manifestName,
+  manifestNamespace,
+  manifestLoading,
+  manifestApplying,
+  manifestNotification,
+  openManifest,
+  closeManifest,
+  applyManifest,
+} = useManifestEdit()
 
 
 const deployments = ref([])
@@ -11,7 +28,7 @@ const depDetail = ref(null)
 const expandedDep = ref(null)
 const activeDetailTab = ref('details')
 
-onMounted(async () => {
+async function fetchDeployments() {
   await listResources('deployments', '')
   if (result.value && result.value.items && result.value.items.length > 0) {
     deployments.value = result.value.items.map(item => {
@@ -32,7 +49,22 @@ onMounted(async () => {
   } else {
     deployments.value = []
   }
-})
+}
+
+function editDeployment(dep) {
+  openManifest({
+    resourceType: 'deployments',
+    kind: 'Deployment',
+    namespace: dep.namespace,
+    name: dep.name,
+  })
+}
+
+function onManifestApplied() {
+  applyManifest(fetchDeployments)
+}
+
+onMounted(fetchDeployments)
 
 async function toggleExpand(depName) {
   if (expandedDep.value === depName) {
@@ -66,6 +98,10 @@ function switchDetailTab(tab) {
       <div class="subtitle">Declarative updates for Pods and ReplicaSets</div>
     </div>
 
+    <div v-if="manifestNotification" class="agent-notification">
+      <div class="notif-text">{{ manifestNotification }}</div>
+    </div>
+
     <div class="deployments-grid" :class="{ 'has-expanded': expandedDep !== null }">
       <div v-for="d in deployments" :key="d.name" 
            class="dep-card" 
@@ -93,7 +129,10 @@ function switchDetailTab(tab) {
               </svg>
               <span class="dep-name">{{ d.name }}</span>
             </div>
-            <div class="dep-ns font-mono">{{ d.namespace }}</div>
+            <div class="dep-header-right">
+              <div class="dep-ns font-mono">{{ d.namespace }}</div>
+              <button class="dep-action-btn" @click.stop="editDeployment(d)" title="View/Edit YAML">⚙️ Config</button>
+            </div>
           </div>
 
           <div class="dep-image">
@@ -232,6 +271,21 @@ function switchDetailTab(tab) {
         </div>
       </div>
     </div>
+
+    <ManifestEditPopup
+      :open="manifestPopup"
+      :loading="manifestLoading"
+      :applying="manifestApplying"
+      :editing="editingManifest"
+      :content="manifestContent"
+      :kind="manifestKind"
+      :name="manifestName"
+      :namespace="manifestNamespace"
+      @update:editing="editingManifest = $event"
+      @update:content="manifestContent = $event"
+      @apply="onManifestApplied"
+      @close="closeManifest"
+    />
   </div>
 </template>
 
@@ -280,8 +334,29 @@ function switchDetailTab(tab) {
 .dep-card.degraded { border-color: rgba(245, 166, 35, 0.3); }
 
 .dep-header { display: flex; justify-content: space-between; align-items: center; }
+.dep-header-right { display: flex; align-items: center; gap: 6px; }
 .dep-name { font-size: 15px; font-weight: 600; color: #e8eaec; }
 .dep-ns { font-size: 11px; padding: 2px 6px; background: rgba(255,255,255,0.05); border-radius: 4px; color: #b0b4ba; }
+.dep-action-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #b0b4ba;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.dep-action-btn:hover { background: rgba(167, 139, 250, 0.15); border-color: rgba(167, 139, 250, 0.3); color: #a78bfa; }
+
+.agent-notification {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(167, 139, 250, 0.15);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  padding: 10px 14px; border-radius: 6px;
+  color: #e8eaec; font-size: 13px;
+}
 
 .dep-image { display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.2); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.03); }
 .image-icon { font-size: 12px; }

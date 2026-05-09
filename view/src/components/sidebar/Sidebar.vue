@@ -101,6 +101,7 @@ const navTree = [
     label: 'Monitoring',
     icon: 'M2 12h4l3-9 4 18 3-9h4', // activity/pulse
     items: [
+      { id: 'argusai', label: 'Argus AI' },
       { id: 'metrics', label: 'Metrics Explorer' },
       { id: 'alerts', label: 'Alerts' },
       { id: 'topology', label: 'Topology' },

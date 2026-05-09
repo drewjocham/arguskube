@@ -7,17 +7,20 @@ const mockApps = ref([])
 const mockSelectedApp = ref(null)
 const mockResources = ref([])
 const mockDiffs = ref([])
+const mockProjects = ref([])
 const mockStatus = ref(null)
 const mockLoading = ref(false)
 const mockError = ref(null)
 
 const mockFetchStatus = vi.fn()
 const mockListApps = vi.fn()
+const mockListProjects = vi.fn()
 const mockGetApp = vi.fn()
 const mockGetResources = vi.fn()
 const mockGetDiffs = vi.fn()
 const mockSyncApp = vi.fn()
 const mockRefreshApp = vi.fn()
+const mockRollbackApp = vi.fn()
 const mockTestConnection = vi.fn()
 
 vi.mock('../../composables/useWails', () => ({
@@ -26,16 +29,19 @@ vi.mock('../../composables/useWails', () => ({
     selectedApp: mockSelectedApp,
     resources: mockResources,
     diffs: mockDiffs,
+    projects: mockProjects,
     status: mockStatus,
     loading: mockLoading,
     error: mockError,
     fetchStatus: mockFetchStatus,
     listApps: mockListApps,
+    listProjects: mockListProjects,
     getApp: mockGetApp,
     getResources: mockGetResources,
     getDiffs: mockGetDiffs,
     syncApp: mockSyncApp,
     refreshApp: mockRefreshApp,
+    rollbackApp: mockRollbackApp,
     testConnection: mockTestConnection,
   })),
 }))
@@ -319,6 +325,115 @@ describe('ArgusCDList.vue — Integration', () => {
     expect(text).toContain('Drift Detection')
     expect(text).toContain('1 Drift')
     expect(text).toContain('deployment.yaml')
+  })
+
+  it('hides the project filter when no projects are returned', async () => {
+    mockApps.value = [makeApp('a')]
+    mockProjects.value = []
+    const wrapper = createWrapper()
+    await nextTick()
+    await flushPromises()
+    expect(wrapper.find('select.project-filter').exists()).toBe(false)
+  })
+
+  it('renders the project filter when projects exist and re-lists on change', async () => {
+    mockApps.value = [makeApp('a')]
+    mockProjects.value = ['default', 'platform']
+    const wrapper = createWrapper()
+    await nextTick()
+    await flushPromises()
+
+    const select = wrapper.find('select.project-filter')
+    expect(select.exists()).toBe(true)
+    const options = select.findAll('option').map(o => o.text())
+    expect(options).toContain('All projects')
+    expect(options).toContain('default')
+    expect(options).toContain('platform')
+
+    mockListApps.mockClear()
+    await select.setValue('platform')
+    await flushPromises()
+    expect(mockListApps).toHaveBeenCalledWith('platform')
+  })
+
+  it('shows revision history when selectedApp has history', async () => {
+    const app = makeApp('my-app', {
+      history: [
+        { id: 3, revision: 'cccccccc', deployedAt: '2026-01-03T10:00:00Z' },
+        { id: 2, revision: 'bbbbbbbb', deployedAt: '2026-01-02T10:00:00Z' },
+        { id: 1, revision: 'aaaaaaaa', deployedAt: '2026-01-01T10:00:00Z' },
+      ],
+    })
+    mockApps.value = [app]
+    mockSelectedApp.value = app
+    mockStatus.value = { connected: true, url: 'https://argocd.example.com' }
+    const wrapper = createWrapper()
+    await nextTick()
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('Revision History')
+    const entries = wrapper.findAll('.history-entry')
+    expect(entries.length).toBe(3)
+    // First entry is "current" with no rollback button.
+    expect(entries[0].text()).toContain('Current')
+    expect(entries[0].find('button.rollback-btn').exists()).toBe(false)
+    // Subsequent entries expose a rollback button.
+    expect(entries[1].find('button.rollback-btn').exists()).toBe(true)
+    expect(entries[2].find('button.rollback-btn').exists()).toBe(true)
+  })
+
+  it('rolling back invokes rollbackApp with the entry id when confirmed', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockRollbackApp.mockResolvedValue()
+    const app = makeApp('my-app', {
+      history: [
+        { id: 3, revision: 'cccccccc', deployedAt: '2026-01-03T10:00:00Z' },
+        { id: 2, revision: 'bbbbbbbb', deployedAt: '2026-01-02T10:00:00Z' },
+      ],
+    })
+    mockApps.value = [app]
+    mockSelectedApp.value = app
+    const wrapper = createWrapper()
+    await nextTick()
+    await flushPromises()
+
+    const rollbackBtn = wrapper.findAll('.history-entry')[1].find('button.rollback-btn')
+    await rollbackBtn.trigger('click')
+    await flushPromises()
+    expect(mockRollbackApp).toHaveBeenCalledWith('my-app', 2)
+    confirmSpy.mockRestore()
+  })
+
+  it('rolling back does NOT call rollbackApp when the user cancels the confirm', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const app = makeApp('my-app', {
+      history: [
+        { id: 3, revision: 'cccccccc', deployedAt: '2026-01-03T10:00:00Z' },
+        { id: 2, revision: 'bbbbbbbb', deployedAt: '2026-01-02T10:00:00Z' },
+      ],
+    })
+    mockApps.value = [app]
+    mockSelectedApp.value = app
+    const wrapper = createWrapper()
+    await nextTick()
+    await flushPromises()
+
+    await wrapper.findAll('.history-entry')[1].find('button.rollback-btn').trigger('click')
+    await flushPromises()
+    expect(mockRollbackApp).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('shows an empty-history message when selectedApp has no history', async () => {
+    const app = makeApp('my-app', { history: [] })
+    mockApps.value = [app]
+    mockSelectedApp.value = app
+    mockStatus.value = { connected: true, url: 'https://argocd.example.com' }
+    const wrapper = createWrapper()
+    await nextTick()
+    await flushPromises()
+    expect(wrapper.find('.history-empty').exists()).toBe(true)
   })
 
   it('shows ProGateOverlay when isAllowed returns false', async () => {

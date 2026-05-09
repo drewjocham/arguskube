@@ -115,7 +115,7 @@ func (c *Client) ApplyYaml(ctx context.Context, yamlContent string) (string, err
 	obj.SetResourceVersion("")
 	obj.SetUID("")
 	obj.SetSelfLink("")
-	obj.SetCreationTimestamp(unstructured.Unstructured{}.GetCreationTimestamp())
+	obj.SetCreationTimestamp(metav1.Time{})
 	obj.SetManagedFields(nil)
 
 	// Try create first.
@@ -168,7 +168,7 @@ func cleanForRedeploy(obj *unstructured.Unstructured) {
 	obj.SetResourceVersion("")
 	obj.SetUID("")
 	obj.SetSelfLink("")
-	obj.SetCreationTimestamp(unstructured.Unstructured{}.GetCreationTimestamp())
+	obj.SetCreationTimestamp(metav1.Time{})
 	obj.SetManagedFields(nil)
 
 	// Remove status if present.

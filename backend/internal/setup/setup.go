@@ -5,9 +5,16 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// ansiSGRPattern matches ANSI CSI sequences (color/style codes).
+var ansiSGRPattern = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+// popeyeVersionPattern extracts the version value from popeye's banner output.
+var popeyeVersionPattern = regexp.MustCompile(`(?m)^\s*Version:\s*([^\s]+)`)
 
 // ToolStatus describes the install state of a tool.
 type ToolStatus struct {
@@ -56,7 +63,7 @@ func (m *Manager) CheckAllTools(ctx context.Context) []ToolStatus {
 func (m *Manager) checkPopeye(ctx context.Context) ToolStatus {
 	// Check local binary first.
 	if path, err := exec.LookPath("popeye"); err == nil {
-		ver := runQuiet(ctx, path, "version")
+		ver := parsePopeyeVersion(runQuiet(ctx, path, "version"))
 		return ToolStatus{Name: "popeye", Installed: true, Version: ver, Via: "binary", Message: "Popeye binary found"}
 	}
 
@@ -337,4 +344,25 @@ func runQuiet(ctx context.Context, name string, args ...string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// parsePopeyeVersion extracts the version from popeye's banner output.
+// `popeye version` prints an ANSI-colored ASCII banner with a "Version: X.Y.Z"
+// line; without parsing, the entire banner ends up in the UI's Version field.
+func parsePopeyeVersion(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	cleaned := ansiSGRPattern.ReplaceAllString(raw, "")
+	if m := popeyeVersionPattern.FindStringSubmatch(cleaned); len(m) == 2 {
+		return strings.TrimSpace(m[1])
+	}
+	// Fall back to first non-empty line if the pattern doesn't match,
+	// avoiding the multi-line banner that motivated this helper.
+	for _, line := range strings.Split(cleaned, "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			return s
+		}
+	}
+	return ""
 }

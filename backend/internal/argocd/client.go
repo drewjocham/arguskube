@@ -56,22 +56,31 @@ func (c *Client) Connected() bool {
 
 // App is the KubeWatcher representation of an Argo CD Application.
 type App struct {
-	Name          string       `json:"name"`
-	Namespace     string       `json:"namespace"`
-	Project       string       `json:"project"`
-	SyncStatus    string       `json:"syncStatus"`   // Synced, OutOfSync, Unknown
-	HealthStatus  string       `json:"healthStatus"` // Healthy, Degraded, Progressing, Missing, Unknown
-	Replicas      int32        `json:"replicas"`
-	ReadyReplicas int32        `json:"readyReplicas"`
-	Image         string       `json:"image"`
-	LastSync      string       `json:"lastSync"`
-	RepoURL       string       `json:"repoUrl"`
-	Path          string       `json:"path"`
-	TargetRev     string       `json:"targetRevision"`
-	DestServer    string       `json:"destServer"`
-	DestNamespace string       `json:"destNamespace"`
-	CreatedAt     string       `json:"createdAt"`
-	Resources     []AppResource `json:"resources,omitempty"`
+	Name          string            `json:"name"`
+	Namespace     string            `json:"namespace"`
+	Project       string            `json:"project"`
+	SyncStatus    string            `json:"syncStatus"`   // Synced, OutOfSync, Unknown
+	HealthStatus  string            `json:"healthStatus"` // Healthy, Degraded, Progressing, Missing, Unknown
+	Replicas      int32             `json:"replicas"`
+	ReadyReplicas int32             `json:"readyReplicas"`
+	Image         string            `json:"image"`
+	LastSync      string            `json:"lastSync"`
+	RepoURL       string            `json:"repoUrl"`
+	Path          string            `json:"path"`
+	TargetRev     string            `json:"targetRevision"`
+	DestServer    string            `json:"destServer"`
+	DestNamespace string            `json:"destNamespace"`
+	CreatedAt     string            `json:"createdAt"`
+	Resources     []AppResource     `json:"resources,omitempty"`
+	History       []AppHistoryEntry `json:"history,omitempty"`
+}
+
+// AppHistoryEntry is one deploy in an Argo CD Application's revision history.
+type AppHistoryEntry struct {
+	ID         int64  `json:"id"`
+	Revision   string `json:"revision"`
+	DeployedAt string `json:"deployedAt"`
+	Source     string `json:"source,omitempty"`
 }
 
 // AppResource is a single managed resource inside an Argo CD Application.
@@ -238,6 +247,30 @@ func (c *Client) RefreshApp(ctx context.Context, name string, hard bool) error {
 	return c.get(ctx, "/api/v1/applications/"+name+"?refresh="+refreshType, nil)
 }
 
+// ── List Projects ──────────────────────────────────────────────────
+
+// ListProjects returns the names of Argo CD AppProjects available on the
+// server. Used to populate a project filter dropdown in the UI.
+func (c *Client) ListProjects(ctx context.Context) ([]string, error) {
+	var raw struct {
+		Items []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+		} `json:"items"`
+	}
+	if err := c.get(ctx, "/api/v1/projects", &raw); err != nil {
+		return nil, fmt.Errorf("list projects: %w", err)
+	}
+	names := make([]string, 0, len(raw.Items))
+	for _, p := range raw.Items {
+		if p.Metadata.Name != "" {
+			names = append(names, p.Metadata.Name)
+		}
+	}
+	return names, nil
+}
+
 // ── Test Connection ──────────���───────────────────────────────���─────
 
 func (c *Client) TestConnection(ctx context.Context) error {
@@ -346,6 +379,15 @@ type argoApp struct {
 			Status    string `json:"status"`
 			Health    *struct{ Status string } `json:"health"`
 		} `json:"resources"`
+		History []struct {
+			ID         int64  `json:"id"`
+			Revision   string `json:"revision"`
+			DeployedAt string `json:"deployedAt"`
+			Source     *struct {
+				RepoURL string `json:"repoURL"`
+				Path    string `json:"path"`
+			} `json:"source"`
+		} `json:"history"`
 	} `json:"status"`
 }
 
@@ -379,6 +421,26 @@ func mapApp(raw argoApp) App {
 		})
 	}
 
+	var history []AppHistoryEntry
+	for _, h := range raw.Status.History {
+		entry := AppHistoryEntry{
+			ID:         h.ID,
+			Revision:   h.Revision,
+			DeployedAt: h.DeployedAt,
+		}
+		if h.Source != nil {
+			entry.Source = h.Source.RepoURL
+			if h.Source.Path != "" {
+				entry.Source = h.Source.RepoURL + " · " + h.Source.Path
+			}
+		}
+		history = append(history, entry)
+	}
+	// Newest first.
+	for i, j := 0, len(history)-1; i < j; i, j = i+1, j-1 {
+		history[i], history[j] = history[j], history[i]
+	}
+
 	return App{
 		Name:          raw.Metadata.Name,
 		Namespace:     raw.Metadata.Namespace,
@@ -394,6 +456,7 @@ func mapApp(raw argoApp) App {
 		DestNamespace: raw.Spec.Destination.Namespace,
 		CreatedAt:     raw.Metadata.CreationTimestamp,
 		Resources:     resources,
+		History:       history,
 	}
 }
 

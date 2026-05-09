@@ -6,19 +6,27 @@ import ProGateOverlay from '../shared/ProGateOverlay.vue'
 const isAllowed = inject('isAllowed')
 
 const {
-  apps, selectedApp, resources, diffs, status, loading, error,
-  fetchStatus, listApps, getApp, getResources, getDiffs,
-  syncApp, refreshApp, testConnection,
+  apps, selectedApp, resources, diffs, projects, status, loading, error,
+  fetchStatus, listApps, listProjects, getApp, getResources, getDiffs,
+  syncApp, refreshApp, rollbackApp, testConnection,
 } = useArgusCD()
 
 const syncing = ref(null)
+const rollingBack = ref(null)
 const notification = ref(null)
 const treeCollapsed = ref(false)
 const driftCollapsed = ref(false)
+const historyCollapsed = ref(false)
+const projectFilter = ref('')
 
 onMounted(async () => {
   await fetchStatus()
-  await listApps()
+  await Promise.all([listApps(projectFilter.value), listProjects()])
+})
+
+watch(projectFilter, async (val) => {
+  clearSelection()
+  await listApps(val)
 })
 
 function syncStatusColor(s) {
@@ -78,6 +86,37 @@ async function onRefresh(app) {
   await refreshApp(app.name, false)
 }
 
+async function onRollback(app, entry) {
+  if (!entry || typeof entry.id !== 'number') {
+    notification.value = { type: 'error', text: 'Selected revision has no ID — cannot rollback.' }
+    setTimeout(() => { notification.value = null }, 4000)
+    return
+  }
+  const shortRev = entry.revision ? entry.revision.slice(0, 8) : `id ${entry.id}`
+  if (!confirm(`Rollback ${app.name} to revision ${shortRev}?`)) return
+
+  rollingBack.value = entry.id
+  try {
+    await rollbackApp(app.name, entry.id)
+    notification.value = { type: 'success', text: `${app.name}: rollback to ${shortRev} triggered` }
+    if (selectedApp.value && selectedApp.value.name === app.name) {
+      await getApp(app.name)
+    }
+  } catch (e) {
+    notification.value = { type: 'error', text: `Rollback failed: ${e?.message || e}` }
+  } finally {
+    rollingBack.value = null
+    setTimeout(() => { notification.value = null }, 4000)
+  }
+}
+
+function formatHistoryDate(ts) {
+  if (!ts) return '—'
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return ts
+  return d.toLocaleString()
+}
+
 const filteredResources = computed(() => {
   if (!resources.value) return []
   // Group by kind.
@@ -130,7 +169,16 @@ const degradedCount = computed(() => {
             <span class="stat warn" v-if="outOfSyncCount > 0">{{ outOfSyncCount }} out of sync</span>
             <span class="stat crit" v-if="degradedCount > 0">{{ degradedCount }} degraded</span>
           </div>
-          <button class="refresh-btn" @click="listApps()" :disabled="loading">
+          <select
+            v-if="projects && projects.length > 0"
+            v-model="projectFilter"
+            class="project-filter"
+            :title="'Filter by Argo CD project'"
+          >
+            <option value="">All projects</option>
+            <option v-for="p in projects" :key="p" :value="p">{{ p }}</option>
+          </select>
+          <button class="refresh-btn" @click="listApps(projectFilter)" :disabled="loading">
             {{ loading ? '…' : '↻' }} Refresh
           </button>
         </div>
@@ -359,6 +407,44 @@ const degradedCount = computed(() => {
           </template>
         </div>
       </div>
+
+      <!-- Revision history & rollback -->
+      <div class="history-panel" :class="{ collapsed: historyCollapsed }">
+        <div class="panel-header clickable" @click="historyCollapsed = !historyCollapsed">
+          <svg class="collapse-chevron" :class="{ rotated: historyCollapsed }" width="10" height="10" viewBox="0 0 10 10"><polyline points="2 3 5 7 8 3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Revision History
+          <span class="badge" v-if="selectedApp.history && selectedApp.history.length">{{ selectedApp.history.length }}</span>
+        </div>
+        <template v-if="!historyCollapsed">
+          <div v-if="selectedApp.history && selectedApp.history.length > 0" class="history-list">
+            <div
+              v-for="(h, idx) in selectedApp.history"
+              :key="h.id"
+              class="history-entry"
+            >
+              <div class="history-meta">
+                <div class="history-rev mono">{{ (h.revision || '').slice(0, 12) || '—' }}</div>
+                <div class="history-time">{{ formatHistoryDate(h.deployedAt) }}</div>
+                <div class="history-source mono" v-if="h.source">{{ h.source }}</div>
+              </div>
+              <div class="history-actions">
+                <span v-if="idx === 0" class="current-tag">Current</span>
+                <button
+                  v-else
+                  class="rollback-btn"
+                  :disabled="rollingBack === h.id"
+                  @click="onRollback(selectedApp, h)"
+                >
+                  {{ rollingBack === h.id ? 'Rolling back…' : 'Rollback to this' }}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div v-else class="history-empty">
+            No revision history available{{ status?.connected ? '' : ' — connect ArgusCD to see deploy history' }}.
+          </div>
+        </template>
+      </div>
     </div>
   </div>
 </template>
@@ -381,6 +467,79 @@ const degradedCount = computed(() => {
   padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s;
 }
 .refresh-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+
+.project-filter {
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text2);
+  padding: 6px 28px 6px 10px; border-radius: 6px;
+  font-size: 12px; cursor: pointer;
+  transition: all 0.15s;
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none' stroke='%238b8f96' stroke-width='1.4'><polyline points='2 3 5 7 8 3' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+.project-filter:hover { background-color: rgba(255,255,255,0.12); color: var(--text); }
+.project-filter:focus { outline: none; border-color: rgba(167,139,250,0.5); }
+
+/* History panel */
+.history-panel {
+  margin-top: 16px;
+  background: #1e2023;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.history-panel .panel-header {
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.history-panel .panel-header.clickable { cursor: pointer; user-select: none; }
+.history-panel .panel-header.clickable:hover { background: rgba(255,255,255,0.03); color: var(--text); }
+.history-panel .badge {
+  background: rgba(167,139,250,0.15); color: #a78bfa;
+  border-radius: 10px;
+  padding: 1px 8px; font-size: 11px;
+}
+.history-list { display: flex; flex-direction: column; }
+.history-entry {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  gap: 12px;
+}
+.history-entry:last-child { border-bottom: none; }
+.history-meta {
+  display: flex; flex-direction: column; gap: 2px;
+  flex: 1; min-width: 0;
+}
+.history-rev { font-size: 12px; color: #e8eaec; font-weight: 500; }
+.history-time { font-size: 11px; color: #8b8f96; }
+.history-source { font-size: 11px; color: #6b7078; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.current-tag {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+  background: rgba(16,185,129,0.15); color: #10b981;
+  border: 1px solid rgba(16,185,129,0.25);
+  padding: 3px 8px; border-radius: 4px;
+}
+.rollback-btn {
+  background: rgba(245,166,35,0.12);
+  border: 1px solid rgba(245,166,35,0.3);
+  color: #f5a623;
+  padding: 5px 10px; border-radius: 5px; cursor: pointer;
+  font-size: 11px; font-weight: 500;
+  transition: all 0.15s;
+}
+.rollback-btn:hover { background: rgba(245,166,35,0.2); color: #fbbf24; }
+.rollback-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.history-empty {
+  padding: 16px; color: #8b8f96; font-size: 13px; text-align: center;
+}
 
 .notification {
   position: fixed; top: 60px; right: 20px; z-index: 100;

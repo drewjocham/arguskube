@@ -9,6 +9,7 @@ export function useArgusCD() {
   const selectedApp = ref(null)
   const resources = ref([])
   const diffs = ref([])
+  const projects = ref([])
   const status = ref(null)
   const loading = ref(false)
   const error = ref(null)
@@ -105,10 +106,19 @@ export function useArgusCD() {
     }
   }
 
+  async function listProjects() {
+    try {
+      const result = await cachedCallGo('ListArgusCDProjects', [], DEFAULT_TTL)
+      projects.value = Array.isArray(result) ? result : []
+    } catch (e) {
+      projects.value = []
+    }
+  }
+
   return {
-    apps, selectedApp, resources, diffs, status, loading, error,
+    apps, selectedApp, resources, diffs, projects, status, loading, error,
     fetchStatus, listApps, getApp, getResources, getDiffs,
-    syncApp, refreshApp, rollbackApp, testConnection,
+    syncApp, refreshApp, rollbackApp, testConnection, listProjects,
   }
 }
 

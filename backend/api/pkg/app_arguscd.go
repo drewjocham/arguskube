@@ -120,6 +120,16 @@ func (a *App) TestArgusCDConnection() error {
 	return a.argoCD.TestConnection(a.ctx)
 }
 
+// ListArgusCDProjects returns the Argo CD AppProject names so the UI can
+// populate a project filter. Returns an empty slice when Argo CD is not
+// configured (the UI then hides the filter).
+func (a *App) ListArgusCDProjects() ([]string, error) {
+	if a.argoCD == nil || !a.argoCD.Connected() {
+		return []string{}, nil
+	}
+	return a.argoCD.ListProjects(a.ctx)
+}
+
 // mapK8sAppsToArgoCD converts k8s.Application list to argocd.App for the fallback view.
 func mapK8sAppsToArgoCD(apps []k8s.Application) []argocd.App {
 	result := make([]argocd.App, 0, len(apps))

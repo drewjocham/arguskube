@@ -2,7 +2,41 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useResources, usePodLogs, useLogStream, useTimeSeriesMetrics, usePodExec, callGo } from '../../composables/useWails'
 import { useWailsEvent } from '../../composables/useEvents'
+import { useManifestEdit } from '../../composables/useManifestEdit'
+import ManifestEditPopup from '../common/ManifestEditPopup.vue'
 import { tokenize } from '../../utils/logHighlight'
+
+const {
+  manifestPopup,
+  editingManifest,
+  manifestContent,
+  manifestKind,
+  manifestName,
+  manifestNamespace,
+  manifestLoading,
+  manifestApplying,
+  manifestNotification,
+  openManifest,
+  closeManifest,
+  applyManifest,
+} = useManifestEdit()
+
+function editPod(pod) {
+  openManifest({
+    resourceType: 'pods',
+    kind: 'Pod',
+    namespace: pod.namespace,
+    name: pod.name,
+  })
+}
+
+function onPodManifestApplied() {
+  applyManifest(fetchPods)
+}
+
+watch(manifestNotification, (val) => {
+  if (val) notification.value = val
+})
 
 const { result, detail, loading, detailLoading, error: resourceError, listResources, getResourceDetail, listNamespaces, namespaces } = useResources()
 const { logs: podLogs, loading: logsLoading, fetch: fetchLogs } = usePodLogs()
@@ -446,6 +480,9 @@ onUnmounted(() => {
               <button class="row-shell-btn" @click.stop="toggleExpand(p.name); openShell(p, '')" title="Shell into pod">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
               </button>
+              <button class="row-config-btn" @click.stop="editPod(p)" title="View/Edit YAML">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </button>
               <button class="row-delete-btn" @click.stop="confirmDelete = p" title="Delete pod">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
               </button>
@@ -470,6 +507,9 @@ onUnmounted(() => {
             </button>
 
             <div class="tab-actions">
+              <button class="action-btn" @click.stop="editPod(p)" title="View/Edit YAML">
+                ⚙️ Config
+              </button>
               <button class="action-btn delete-btn" @click.stop="confirmDelete = p">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 Delete Pod
@@ -665,6 +705,21 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <ManifestEditPopup
+      :open="manifestPopup"
+      :loading="manifestLoading"
+      :applying="manifestApplying"
+      :editing="editingManifest"
+      :content="manifestContent"
+      :kind="manifestKind"
+      :name="manifestName"
+      :namespace="manifestNamespace"
+      @update:editing="editingManifest = $event"
+      @update:content="manifestContent = $event"
+      @apply="onPodManifestApplied"
+      @close="closeManifest"
+    />
   </div>
 </template>
 
@@ -1053,6 +1108,13 @@ onUnmounted(() => {
   transition: all 0.15s var(--ease);
 }
 .row-shell-btn:hover { color: var(--accent2); background: rgba(79,142,247,0.12); }
+
+.row-config-btn {
+  background: none; border: none; color: var(--text3); cursor: pointer;
+  padding: 2px; border-radius: 4px; display: flex; align-items: center;
+  transition: all 0.15s var(--ease);
+}
+.row-config-btn:hover { color: #a78bfa; background: rgba(167,139,250,0.12); }
 
 /* Shell tab button accent */
 .tab-btn.shell-tab { display: flex; align-items: center; gap: 5px; }

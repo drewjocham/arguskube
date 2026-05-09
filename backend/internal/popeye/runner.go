@@ -312,14 +312,43 @@ func suggestCommand(resource, message, ns, name string) string {
 }
 
 func (r *Runner) execPopeye(ctx context.Context) ([]byte, error) {
+	binaryAvailable := false
 	if _, err := exec.LookPath(r.binary); err == nil {
-		return r.execBinary(ctx)
+		binaryAvailable = true
+		output, err := r.execBinary(ctx)
+		if err == nil && len(output) > 0 {
+			return output, nil
+		}
+		// Binary failed or returned no output — try docker before giving up.
+		r.logger.Warn("popeye binary attempt did not yield output, falling back to docker",
+			slog.String("binary", r.binary),
+			slog.Any("error", err),
+		)
+		if dockerPath, derr := exec.LookPath("docker"); derr == nil {
+			out, dockerErr := r.execDocker(ctx, dockerPath)
+			if dockerErr == nil && len(out) > 0 {
+				return out, nil
+			}
+			// Both binary and docker failed — return the most informative error we have.
+			if err != nil {
+				return nil, fmt.Errorf("popeye binary failed (%w); docker fallback also failed: %v", err, dockerErr)
+			}
+			return nil, fmt.Errorf("popeye produced no output; docker fallback also failed: %w", dockerErr)
+		}
+		// No docker; return the binary error if any, else a clear empty-output error.
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("popeye produced no output (binary: %s) — verify the cluster is reachable: kubectl get ns", r.binary)
 	}
-	
+
 	if dockerPath, err := exec.LookPath("docker"); err == nil {
 		return r.execDocker(ctx, dockerPath)
 	}
 
+	if binaryAvailable {
+		return nil, fmt.Errorf("popeye binary present but failed; install Docker as a fallback or verify cluster connectivity")
+	}
 	return nil, fmt.Errorf("popeye not found: install the binary (go install github.com/derailed/popeye@latest) or Docker")
 }
 
@@ -354,26 +383,35 @@ func (r *Runner) execBinary(ctx context.Context) ([]byte, error) {
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
 	output, err := cmd.Output()
+	stderr := stripANSI(stderrBuf.Bytes())
 	if err != nil && len(output) == 0 {
-		// Include stderr in error for debugging, but strip ANSI codes from it too.
-		stderr := stripANSI(stderrBuf.Bytes())
 		if len(stderr) > 0 {
-			return nil, fmt.Errorf("popeye exec: %w (stderr: %s)", err, truncateBytes(stderr, 200))
+			return nil, fmt.Errorf("popeye exec: %w (stderr: %s)", err, truncateBytes(stderr, 400))
 		}
 		return nil, fmt.Errorf("popeye exec: %w", err)
 	}
-	if stderrBuf.Len() > 0 {
+	if len(stderr) > 0 {
 		r.logger.Warn("popeye stderr output",
-			slog.String("stderr", truncateBytes(stripANSI(stderrBuf.Bytes()), 500)),
+			slog.String("stderr", truncateBytes(stderr, 500)),
 		)
 	}
 	// Strip any ANSI escape codes that leak through despite --no-color.
 	output = stripANSI(output)
-	// Strip any K9s-style ASCII banner that appears before the JSON.
-	if bytes.HasPrefix(output, []byte(" ")) || bytes.HasPrefix(output, []byte("|")) || bytes.HasPrefix(output, []byte("\n")) {
+	// Strip any banner output before the JSON document (popeye 0.22+ prints
+	// a colored ASCII logo even with --no-color in some environments).
+	trimmed := bytes.TrimSpace(output)
+	if len(trimmed) > 0 && trimmed[0] != '{' {
 		if matches := jsonStartRE.FindSubmatch(output); len(matches) >= 2 {
 			output = matches[1]
+			trimmed = bytes.TrimSpace(output)
 		}
+	}
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		hint := "verify cluster connectivity (kubectl get ns) and that the kubecontext is valid"
+		if len(stderr) > 0 {
+			return nil, fmt.Errorf("popeye produced no parseable output (%s); stderr: %s", hint, truncateBytes(stderr, 400))
+		}
+		return nil, fmt.Errorf("popeye produced no parseable output (%s)", hint)
 	}
 	return output, nil
 }

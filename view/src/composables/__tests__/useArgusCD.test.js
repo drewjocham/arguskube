@@ -8,6 +8,7 @@ describe('useArgusCD', () => {
     if (window.go) delete window.go
     invalidateCachePrefix('GetArgusCDStatus')
     invalidateCachePrefix('ListArgusCDApps')
+    invalidateCachePrefix('ListArgusCDProjects')
   })
 
   afterEach(() => {
@@ -108,5 +109,37 @@ describe('useArgusCD', () => {
 
     expect(mockFetch.mock.calls[0][0]).toContain('/api/TestArgusCDConnection')
     expect(result.success).toBe(true)
+  })
+
+  it('listProjects calls ListArgusCDProjects and populates projects', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ result: ['default', 'platform'] }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const { projects, listProjects } = useArgusCD()
+    await listProjects()
+
+    expect(mockFetch.mock.calls[0][0]).toContain('/api/ListArgusCDProjects')
+    expect(projects.value).toEqual(['default', 'platform'])
+  })
+
+  it('listProjects falls back to an empty array on error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('boom')))
+    const { projects, listProjects } = useArgusCD()
+    await listProjects()
+    expect(projects.value).toEqual([])
+  })
+
+  it('rollbackApp invokes RollbackArgusCDApp with the supplied id', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({ result: null }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    const { rollbackApp } = useArgusCD()
+    await rollbackApp('guestbook', 7)
+    expect(mockFetch.mock.calls.some(call => String(call[0]).includes('/api/RollbackArgusCDApp'))).toBe(true)
   })
 })

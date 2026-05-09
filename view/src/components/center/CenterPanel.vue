@@ -32,6 +32,7 @@ import ArgusScanReport from './ArgusScanReport.vue'
 import FinOpsView from './FinOpsView.vue'
 import SetupPanel from '../setup/SetupPanel.vue'
 import SettingsPanel from '../setup/SettingsPanel.vue'
+import ArgusAIChat from '../ai/ArgusAIChat.vue'
 import { useArgusScan } from '../../composables/useWails'
 import { useBackgroundTasks } from '../../composables/useBackgroundTasks'
 
@@ -85,7 +86,7 @@ function moveDown(index) {
 }
 
 // Monitoring views.
-const monitoringViews = ['metrics', 'alerts', 'topology', 'logs', 'anomalies', 'analysis', 'vulnerabilities', 'finops']
+const monitoringViews = ['metrics', 'alerts', 'topology', 'logs', 'anomalies', 'analysis', 'vulnerabilities', 'finops', 'argusai']
 
 // Resource browser views — these use the generic ResourceTable.
 const resourceViews = [
@@ -138,7 +139,10 @@ async function runArgusScan() {
   <div class="content">
     <!-- Monitoring: Alerts overview -->
     <template v-if="isMonitoring">
-      <template v-if="activeNav === 'metrics'">
+      <template v-if="activeNav === 'argusai'">
+        <ArgusAIChat />
+      </template>
+      <template v-else-if="activeNav === 'metrics'">
         <MetricsExplorer />
       </template>
       <template v-else-if="activeNav === 'vulnerabilities'">
