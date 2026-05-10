@@ -101,7 +101,41 @@ if a feature requires more than two clicks to achieve its primary goal, it is a 
 
 ## Testing Patterns
 
-- **Table-Driven Tests**: Use table-driven testing (`[]struct{name string, args ..., want ...}`) extensively to systematically cover various input scenarios.
+### Mandatory: Table-Driven Tests (Go Only)
+All Go tests MUST be table-driven using `[]struct{name string, args ..., want ...}`. This is a hard repository requirement — no exceptions. Every test function must follow this pattern:
+
+```go
+func TestFoo(t *testing.T) {
+    tests := []struct {
+        name string
+        args Args
+        want Want
+        err  error
+    }{
+        {name: "returns correct value", args: Args{...}, want: Want{...}},
+        {name: "handles empty input", args: Args{...}, want: Want{...}},
+        {name: "errors on invalid input", args: Args{...}, err: ErrInvalid},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := Foo(tt.args)
+            // assert
+        })
+    }
+}
+```
+
+Rationale:
+- Ensures comprehensive coverage of edge cases in a single test function
+- Makes adding new test cases trivial (just append to the slice)
+- Provides clear naming for each scenario via `t.Run`
+- Consistent structure across all Go packages improves readability
+- Enables agents to validate their work systematically
+
+### Frontend Tests (no table requirement)
+Frontend tests (Vitest/Vue) should follow the patterns in `view/TESTING.md` — no table-driven requirement.
+
+### General Principles
 - **DRY Principle**: Avoid repeating test setup. Use helper functions for repetitive test data generation or setup/teardown.
 - **Mocks**: Leverage `mockery`-generated mocks for testing handlers and services in isolation without relying on actual external connections.
 

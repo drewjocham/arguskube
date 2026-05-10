@@ -27,6 +27,14 @@ Thumbs.db
 # Wails
 view/src/wailsjs/
 
+# Terraform local state + provider downloads. The provider binaries are
+# multi-hundred-MB and trip GitHub's 100MB-per-file ceiling.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform.lock.hcl
+
 # Env
 .env
 .env.local
