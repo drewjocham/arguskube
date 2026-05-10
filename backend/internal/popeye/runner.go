@@ -353,7 +353,10 @@ func (r *Runner) execPopeye(ctx context.Context) ([]byte, error) {
 }
 
 func (r *Runner) execBinary(ctx context.Context) ([]byte, error) {
-	args := []string{"--out", "json", "--force-exit-zero", "--no-color"}
+	// Don't pass --no-color: popeye 0.22+ removed that flag and rejects it with
+	// "unknown flag" before producing any output. stripANSI() below cleans any
+	// escapes that leak through.
+	args := []string{"--out", "json", "--force-exit-zero"}
 	// Multi-file kubeconfig (colon-separated) can't be passed via --kubeconfig flag.
 	// Set the KUBECONFIG env var instead and only use --kubeconfig for single files.
 	var envKubeconfig string

@@ -20,24 +20,26 @@ const VolumeCylinder = {
   },
   render() {
     const { pct, color, size, showPct } = this
+    // `height` instead of `h` so we don't shadow the imported h() render
+    // helper from vue. Without this rename, every h(...) call below would
+    // try to invoke a number and throw "h is not a function".
     const w = size
-    const h = size * 1.3
+    const height = size * 1.3
     const rx = w * 0.25
-    const topY = rx * 0.45
-    const bodyH = h - rx
+    const bodyH = height - rx
     const waterH = Math.max(2, (bodyH - rx) * pct)
-    const waterY = h - rx - waterH
+    const waterY = height - rx - waterH
     const pctDisplay = Math.round(pct * 100)
     const uid = this._uid || 0
 
     return h('div', {
       class: 'cylinder-wrap',
-      style: `width:${w}px;height:${h}px;position:relative;flex-shrink:0;`
+      style: `width:${w}px;height:${height}px;position:relative;flex-shrink:0;`
     }, [
-      h('svg', { width: w, height: h, viewBox: `0 0 ${w} ${h}`, style: 'display:block;' }, [
+      h('svg', { width: w, height: height, viewBox: `0 0 ${w} ${height}`, style: 'display:block;' }, [
         // Background cylinder shell
         h('path', {
-          d: `M0,${rx} L0,${h - rx} A${rx},${rx} 0 0,0 ${w},${h - rx} L${w},${rx} A${rx},${rx} 0 0,0 0,${rx} Z`,
+          d: `M0,${rx} L0,${height - rx} A${rx},${rx} 0 0,0 ${w},${height - rx} L${w},${rx} A${rx},${rx} 0 0,0 0,${rx} Z`,
           fill: 'rgba(255,255,255,0.04)',
           stroke: 'rgba(255,255,255,0.1)',
           'stroke-width': 1,
@@ -53,7 +55,7 @@ const VolumeCylinder = {
         h('defs', [
           h('clipPath', { id: `cyl-${uid}` }, [
             h('path', {
-              d: `M0,${rx} L0,${h - rx} A${rx},${rx} 0 0,0 ${w},${h - rx} L${w},${rx} A${rx},${rx} 0 0,0 0,${rx} Z`,
+              d: `M0,${rx} L0,${height - rx} A${rx},${rx} 0 0,0 ${w},${height - rx} L${w},${rx} A${rx},${rx} 0 0,0 0,${rx} Z`,
             }),
           ]),
         ]),
@@ -79,7 +81,7 @@ const VolumeCylinder = {
         ]),
         // Glass highlight
         h('path', {
-          d: `M2,${rx + 6} L2,${h - rx - 6}`,
+          d: `M2,${rx + 6} L2,${height - rx - 6}`,
           stroke: 'rgba(255,255,255,0.15)',
           'stroke-width': 1.5,
           'stroke-linecap': 'round',

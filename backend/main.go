@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -63,8 +64,15 @@ func run() error {
 	}
 
 	var detector anomaly.Detector
-	if cfg.AI.AnomstackURL != "" {
+	switch {
+	case cfg.AI.FlinkURL != "":
+		detector = anomaly.NewFlinkClient(cfg, logger)
+		logger.Info("anomaly detector initialized", slog.String("backend", "flink"), slog.String("url", cfg.AI.FlinkURL))
+	case cfg.AI.AnomstackURL != "":
 		detector = anomaly.NewAnomstackClient(cfg, logger)
+		logger.Info("anomaly detector initialized", slog.String("backend", "anomstack"), slog.String("url", cfg.AI.AnomstackURL))
+	default:
+		logger.Warn("anomaly detection disabled — set KUBEWATCHER_FLINK_URL or ANOMSTACK_URL to enable")
 	}
 
 	assembler := ctxassembly.NewAssembler(cfg, gate, detector, logger)
@@ -143,6 +151,22 @@ func run() error {
 		logger,
 	)
 
+	// KUBEWATCHER_MODE controls which view this binary boots into. When the
+	// user clicks "Pop out" in the dashboard, the app spawns itself with
+	// MODE=terminal so the new process opens its own OS-level window with
+	// just the terminal. Default is "dashboard".
+	appMode := os.Getenv("KUBEWATCHER_MODE")
+	if appMode == "" {
+		appMode = "dashboard"
+	}
+
+	windowTitle := appTitle
+	winW, winH := appWidth, appHeight
+	if appMode == "terminal" {
+		windowTitle = "KubeWatcher Terminal"
+		winW, winH = 960, 600
+	}
+
 	app := pkg.NewApp(pkg.AppConfig{
 		Logger:    logger,
 		Config:    cfg,
@@ -160,17 +184,18 @@ func run() error {
 		Incidents: incidentStore,
 		Workflows: workflowStore,
 		Setup:     setupMgr,
+		AppMode:   appMode,
 	})
 
 	// Start the SaaS API server so the frontend can communicate without Wails
 	app.StartHTTPServer(8080)
 
 	return wails.Run(&options.App{
-		Title:     appTitle,
-		Width:     appWidth,
-		Height:    appHeight,
-		MinWidth:  1024,
-		MinHeight: 600,
+		Title:     windowTitle,
+		Width:     winW,
+		Height:    winH,
+		MinWidth:  640,
+		MinHeight: 400,
 		AssetServer: &assetserver.Options{
 			Assets: view.FS,
 		},

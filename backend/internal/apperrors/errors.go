@@ -17,6 +17,8 @@ const (
 	ErrContextAssembly    Error = "context assembly failed"
 	ErrAnomstackTimeout   Error = "anomstack request timed out"
 	ErrAnomstackFailed    Error = "anomstack request failed"
+	ErrFlinkTimeout       Error = "flink request timed out"
+	ErrFlinkFailed        Error = "flink request failed"
 	ErrFeatureGated       Error = "feature requires pro tier"
 	ErrDecisionLogParse   Error = "decision log parse error"
 	ErrDiagnosisFailed    Error = "diagnosis generation failed"

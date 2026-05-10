@@ -1,5 +1,8 @@
 <script setup>
+import { storeToRefs } from 'pinia'
 import { isWails } from '../../composables/useWails'
+import { useNotificationsStore } from '../../stores/notifications'
+import NotificationsPanel from '../notifications/NotificationsPanel.vue'
 
 defineProps({
   clusterInfo: { type: Object, default: null },
@@ -8,8 +11,15 @@ defineProps({
 
 const emit = defineEmits(['toggle-terminal', 'pop-out'])
 
+const notifications = useNotificationsStore()
+const { unreadCount, panelOpen: notifPanelOpen } = storeToRefs(notifications)
+
 function openDeepLink(path) {
   window.location.href = `kubewatcher://${path}`
+}
+
+function toggleNotifications() {
+  notifications.togglePanel()
 }
 </script>
 
@@ -47,8 +57,22 @@ function openDeepLink(path) {
       </template>
       <div class="env-badge env-prod">PROD</div>
       <div class="env-badge env-qa">QA</div>
+      <button
+        class="tb-bell"
+        :class="{ active: notifPanelOpen }"
+        @click="toggleNotifications"
+        title="Argus notifications"
+        style="--wails-draggable: no-drag"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <span v-if="unreadCount > 0" class="tb-bell-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+      </button>
       <div class="health-dot"></div>
     </div>
+    <NotificationsPanel />
   </div>
 </template>
 
@@ -127,6 +151,36 @@ function openDeepLink(path) {
 }
 .tb-btn:hover { background: var(--bg3); color: var(--text); border-color: var(--border2); }
 .tb-btn.active { background: rgba(79,142,247,0.12); color: var(--accent2); border-color: rgba(79,142,247,0.25); }
+
+/* Notifications bell — same shape as tb-btn but with a small badge for the
+   unread count. Hooked to the global notifications store. */
+.tb-bell {
+  position: relative;
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text2);
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-right: 4px;
+}
+.tb-bell:hover { background: var(--bg3); color: var(--text); border-color: var(--border2); }
+.tb-bell.active { background: rgba(167,139,250,0.12); color: #a78bfa; border-color: rgba(167,139,250,0.25); }
+.tb-bell-badge {
+  position: absolute;
+  top: -3px; right: -3px;
+  min-width: 14px; height: 14px;
+  padding: 0 4px;
+  background: #f05454;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--bg2);
+}
 
 .tb-saas-btn {
   background: rgba(255,255,255,0.05);

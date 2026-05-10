@@ -1,0 +1,30 @@
+# ─── KubeWatcher Terraform Variables ──────────────────────────────
+
+environment = "dev"
+aws_region  = "us-west-2"
+
+cluster_name    = "kubewatcher"
+cluster_version = "1.30"
+
+# Scale to 0 at night, 2 nodes during work hours
+node_group_instance_types = ["t3.medium"]
+node_group_desired_size   = 2
+node_group_min_size       = 0
+node_group_max_size       = 6
+
+# Enable these as needed
+helm_backend_enabled     = true
+helm_frontend_enabled    = true
+helm_agent_enabled       = false
+helm_alert_ingress_enabled = false
+helm_mcp_enabled         = false
+helm_monitoring_enabled  = false
+
+# Container registry
+image_registry = "ghcr.io/drewjocham"
+image_tag      = "latest"
+
+# Secrets
+# deepseek_api_key = "sk-your-key-here"
+# argocd_token     = "your-argocd-token"
+# argocd_url       = "https://argocd.example.com"

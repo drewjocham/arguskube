@@ -262,6 +262,35 @@ func (c *Client) ListApplications(ctx context.Context, namespace string) ([]Appl
 	return apps, nil
 }
 
+// FindDeploymentNamespace searches all namespaces for a Deployment with the
+// given name and returns its namespace. Used by callers that only have a
+// name (e.g. the Argo CD list-as-deployments fallback). Returns an error
+// when no match is found, or when more than one namespace has a Deployment
+// of that name (ambiguous — caller must qualify).
+func (c *Client) FindDeploymentNamespace(ctx context.Context, name string) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("deployment name is empty")
+	}
+	list, err := c.cs.AppsV1().Deployments("").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return "", fmt.Errorf("list deployments cluster-wide: %w", err)
+	}
+	matches := make([]string, 0, 1)
+	for _, d := range list.Items {
+		if d.Name == name {
+			matches = append(matches, d.Namespace)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("no Deployment named %q found in any namespace", name)
+	case 1:
+		return matches[0], nil
+	default:
+		return "", fmt.Errorf("ambiguous Deployment name %q — exists in %v; pass an explicit namespace", name, matches)
+	}
+}
+
 // RestartDeployment triggers a rollout restart by patching the pod template annotation.
 func (c *Client) RestartDeployment(ctx context.Context, namespace, name string) error {
 	deploy, err := c.cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})

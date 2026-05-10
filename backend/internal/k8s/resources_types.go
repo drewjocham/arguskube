@@ -167,6 +167,10 @@ func (c *Client) GetResourceDetail(ctx context.Context, kind, namespace, name st
 		return c.getReplicaSetDetail(ctx, namespace, name)
 	case "pvcs":
 		return c.getPVCDetail(ctx, namespace, name)
+	case "pvs":
+		return c.getPVDetail(ctx, name)
+	case "storageclasses":
+		return c.getStorageClassDetail(ctx, name)
 	case "ingresses":
 		return c.getIngressDetail(ctx, namespace, name)
 	case "cronjobs":

@@ -210,6 +210,10 @@ export function InstallArgusScan() {
   return window['go']['pkg']['App']['InstallArgusScan']();
 }
 
+export function LaunchPopOutTerminal() {
+  return window['go']['pkg']['App']['LaunchPopOutTerminal']();
+}
+
 export function ListAllNamespaces() {
   return window['go']['pkg']['App']['ListAllNamespaces']();
 }
@@ -220,6 +224,10 @@ export function ListApplications(arg1) {
 
 export function ListArgusCDApps(arg1) {
   return window['go']['pkg']['App']['ListArgusCDApps'](arg1);
+}
+
+export function ListArgusCDProjects() {
+  return window['go']['pkg']['App']['ListArgusCDProjects']();
 }
 
 export function ListContexts() {
@@ -370,8 +378,8 @@ export function SyncApplication(arg1, arg2) {
   return window['go']['pkg']['App']['SyncApplication'](arg1, arg2);
 }
 
-export function SyncArgusCDApp(arg1) {
-  return window['go']['pkg']['App']['SyncArgusCDApp'](arg1);
+export function SyncArgusCDApp(arg1, arg2) {
+  return window['go']['pkg']['App']['SyncArgusCDApp'](arg1, arg2);
 }
 
 export function TestArgusCDConnection() {

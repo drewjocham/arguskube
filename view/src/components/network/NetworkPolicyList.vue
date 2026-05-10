@@ -1,12 +1,23 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useResources } from '../../composables/useWails'
+import { ref, onMounted, computed } from 'vue'
+import { useResources, useChat, useNotebooks } from '../../composables/useWails'
+import { useArgusContextStore } from '../../stores/argusContext'
+import { useUIPrefsStore } from '../../stores/uiPrefs'
+import { useNotificationsStore } from '../../stores/notifications'
 
 const props = defineProps({
   type: { type: String, default: 'networkpolicies' }
 })
 
 const { result, detail, loading, error, detailLoading, listResources, getResourceDetail } = useResources()
+const { sendMessage, history: chatHistory } = useChat()
+const { saveFile: saveNotebook } = useNotebooks()
+const argusContext = useArgusContextStore()
+const uiPrefs = useUIPrefsStore()
+const notifications = useNotificationsStore()
+
+const reviewing = ref(false)
+const lastReview = ref(null) // { content, timestamp, savedToS3 }
 
 const policies = ref([])
 const endpoints = ref([])
@@ -66,6 +77,125 @@ async function toggleExpand(itemName) {
     }
   }
 }
+
+// ── Argus AI policy review ───────────────────────────────────────────────
+//
+// "Review my policies" gathers every NetworkPolicy currently in scope,
+// builds a prompt that asks Argus AI to (a) summarize coverage, (b) flag
+// gaps (default-deny missing, dangerous wildcard ingress, namespaces with
+// no policies, etc.), and (c) suggest concrete improvements. Argus's reply
+// streams into the chat AND a notification chip lands top-right so the
+// user can come back to the report later. From there a Save-to-S3 button
+// drops the report into the Notebooks store as a markdown doc.
+
+const canReview = computed(() => props.type === 'networkpolicies' && policies.value.length > 0)
+
+function buildPolicyReviewPrompt() {
+  const lines = [
+    'Review the following NetworkPolicies and produce a prioritized report.',
+    '',
+    'For each namespace covered:',
+    '  - Summarize what traffic the policies allow / deny.',
+    '  - Flag missing default-deny policies.',
+    '  - Call out dangerous patterns (empty podSelector + Ingress allow-all,',
+    '    wildcard CIDRs, Egress without restrictions, etc.).',
+    '',
+    'Then return a "Suggestions" section with concrete, copyable YAML',
+    'patches the user can apply. Keep it actionable; cite policy names.',
+    '',
+    `Cluster has ${policies.value.length} NetworkPolicy resource(s):`,
+    '',
+  ]
+  for (const p of policies.value) {
+    lines.push(`- ${p.namespace}/${p.name}: podSelector=${p.podSelector}, ingress=${p.ingress}, egress=${p.egress}, age=${p.age}`)
+  }
+  return lines.join('\n')
+}
+
+async function reviewPolicies() {
+  if (!canReview.value || reviewing.value) return
+  reviewing.value = true
+  notification.value = `Argus is reviewing ${policies.value.length} NetworkPolicy resource(s)…`
+
+  const prompt = buildPolicyReviewPrompt()
+  // Set Argus context so any follow-up question in the chat panel still
+  // has the policy snapshot in scope.
+  argusContext.setContext({
+    kind: 'network-policy-review',
+    label: `${policies.value.length} NetworkPolicies reviewed`,
+    body: prompt,
+    sourceId: 'np-review-' + Date.now(),
+  })
+
+  uiPrefs.openChatPopOut()
+
+  let reply = ''
+  try {
+    reply = await sendMessage('global', prompt)
+  } catch (e) {
+    notification.value = `Review failed: ${e?.message || e}`
+    setTimeout(() => { notification.value = null }, 6000)
+    reviewing.value = false
+    return
+  }
+
+  // sendMessage returns the latest assistant reply when the agent succeeded.
+  // Fall back to scraping the chat history if the API didn't pass it back.
+  if (!reply || typeof reply !== 'string') {
+    const last = (chatHistory.value || []).filter(m => m.role === 'assistant').slice(-1)[0]
+    reply = last?.content || ''
+  }
+
+  const ts = new Date().toISOString()
+  lastReview.value = { content: reply, timestamp: ts, savedToS3: false }
+  notifications.add({
+    kind: 'spot-check',
+    title: `NetworkPolicy review — ${policies.value.length} resource(s)`,
+    body: reply || 'Argus produced no findings.',
+    rerunnable: true,
+    rerunPayload: { type: 'np-review' },
+    meta: { timestamp: ts, sourceCount: policies.value.length },
+  })
+
+  notification.value = `Review complete. Open the bell or chat to read.`
+  setTimeout(() => { notification.value = null }, 6000)
+  reviewing.value = false
+}
+
+async function saveReviewToS3() {
+  if (!lastReview.value) return
+  const slug = new Date(lastReview.value.timestamp).toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const path = `argus-reports/network-policy-review-${slug}.md`
+  const md = [
+    `# NetworkPolicy review — ${lastReview.value.timestamp}`,
+    '',
+    `Resources reviewed: ${policies.value.length}`,
+    '',
+    '## Argus AI Findings',
+    '',
+    lastReview.value.content,
+    '',
+    '## Source policies (snapshot)',
+    '',
+    ...policies.value.map(p => `- \`${p.namespace}/${p.name}\` — podSelector=\`${p.podSelector}\`, ingress=${p.ingress}, egress=${p.egress}`),
+  ].join('\n')
+
+  try {
+    await saveNotebook(path, md)
+    lastReview.value.savedToS3 = true
+    notification.value = `Saved to s3://${path}`
+    setTimeout(() => { notification.value = null }, 5000)
+    notifications.add({
+      kind: 'info',
+      title: `Saved policy review to ${path}`,
+      body: `Open the Notebooks view to read or share.`,
+      meta: { path },
+    })
+  } catch (e) {
+    notification.value = `Save failed: ${e?.message || e}`
+    setTimeout(() => { notification.value = null }, 6000)
+  }
+}
 </script>
 
 <template>
@@ -76,7 +206,27 @@ async function toggleExpand(itemName) {
           <div class="title" style="text-transform: capitalize;">{{ type }}</div>
           <div class="subtitle">{{ type === 'networkpolicies' ? 'Controls traffic flow at the IP address or port level' : 'Network endpoints for Services' }}</div>
         </div>
-        <button class="refresh-btn" @click="refresh(true)" :disabled="loading">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
+        <div class="np-header-actions">
+          <button
+            v-if="type === 'networkpolicies'"
+            class="review-btn"
+            @click="reviewPolicies"
+            :disabled="!canReview || reviewing"
+            title="Ask Argus AI to audit your NetworkPolicies and suggest improvements"
+          >
+            {{ reviewing ? '⏳ Reviewing…' : '✨ Review my policies' }}
+          </button>
+          <button
+            v-if="lastReview"
+            class="review-save-btn"
+            @click="saveReviewToS3"
+            :disabled="lastReview.savedToS3"
+            :title="lastReview.savedToS3 ? 'Already saved' : 'Save the latest review to S3 Notebooks'"
+          >
+            {{ lastReview.savedToS3 ? '✓ Saved to S3' : '💾 Save to S3' }}
+          </button>
+          <button class="refresh-btn" @click="refresh(true)" :disabled="loading">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
+        </div>
       </div>
     </div>
     
@@ -177,6 +327,35 @@ async function toggleExpand(itemName) {
 .refresh-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #b0b4ba; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
 .refresh-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.np-header-actions { display: flex; align-items: center; gap: 8px; }
+
+.review-btn {
+  background: rgba(167, 139, 250, 0.15);
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  color: #c4b3fd;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.review-btn:hover { background: rgba(167, 139, 250, 0.25); color: #fff; }
+.review-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.review-save-btn {
+  background: rgba(62, 207, 142, 0.12);
+  border: 1px solid rgba(62, 207, 142, 0.35);
+  color: #5edba6;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.review-save-btn:hover { background: rgba(62, 207, 142, 0.2); color: #fff; }
+.review-save-btn:disabled { opacity: 0.6; cursor: default; }
 .state-box { padding: 40px; text-align: center; color: #8b8f96; font-size: 13px; background: #1e2023; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; }
 .state-error { color: #f05454; }
 

@@ -81,19 +81,34 @@ func (a *App) GetArgusCDDiffs(name string) ([]argocd.AppDiff, error) {
 	return a.argoCD.GetAppDiffs(a.ctx, name)
 }
 
-// SyncArgusCDApp triggers a sync on an Argo CD application.
-func (a *App) SyncArgusCDApp(name string) (*argocd.SyncResult, error) {
+// SyncArgusCDApp triggers a sync. With Argo CD configured the call goes
+// straight to the Argo CD API. Otherwise we fall back to restarting the
+// matching Deployment in the Kubernetes API — which requires a namespace.
+//
+// `namespace` is optional. When empty (older callers / Argo CD path) we
+// search across the cluster to find the Deployment by name. The k8s API
+// errors out with "an empty namespace may not be set when a resource name
+// is provided" if we hand it a name without a namespace, so we MUST resolve
+// one here before delegating.
+func (a *App) SyncArgusCDApp(name, namespace string) (*argocd.SyncResult, error) {
 	if a.argoCD != nil && a.argoCD.Connected() {
 		return a.argoCD.SyncApp(a.ctx, name)
 	}
-	// Fallback: restart the deployment.
 	if a.k8s == nil {
 		return nil, errNoCluster
 	}
-	if err := a.k8s.RestartDeployment(a.ctx, "", name); err != nil {
+	ns := namespace
+	if ns == "" {
+		resolved, err := a.k8s.FindDeploymentNamespace(a.ctx, name)
+		if err != nil {
+			return nil, fmt.Errorf("locate deployment %q for sync: %w", name, err)
+		}
+		ns = resolved
+	}
+	if err := a.k8s.RestartDeployment(a.ctx, ns, name); err != nil {
 		return nil, err
 	}
-	return &argocd.SyncResult{Phase: "Succeeded", Message: "Deployment restarted"}, nil
+	return &argocd.SyncResult{Phase: "Succeeded", Message: fmt.Sprintf("Deployment %s/%s restarted", ns, name)}, nil
 }
 
 // RollbackArgusCDApp rolls back an Argo CD application to a previous revision.

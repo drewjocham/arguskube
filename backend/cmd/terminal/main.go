@@ -51,21 +51,24 @@ func run() error {
 		AppMode: "terminal",
 	})
 
-	// Start the Wails instance heavily customized to mimic a modern frameless terminal (e.g., Warp/Raycast)
+	// Standalone terminal — a normal resizable Wails window with traffic
+	// lights. We dropped the Frameless/translucent treatment because it
+	// removed the macOS chrome the user expects from a "real app" (resize
+	// handles, drag, traffic lights). Looks consistent with the dashboard
+	// and is a lot less surprising.
 	return wails.Run(&options.App{
-		Title:             appTitle,
-		Width:             appWidth,
-		Height:            appHeight,
-		DisableResize:     false,
-		Fullscreen:        false,
-		Frameless:         true,  // Remove OS chrome completely
-		AlwaysOnTop:       false,
+		Title:         appTitle,
+		Width:         appWidth,
+		Height:        appHeight,
+		MinWidth:      640,
+		MinHeight:     400,
+		DisableResize: false,
 		AssetServer: &assetserver.Options{
 			Assets: view.FS,
 		},
-		BackgroundColour:  &options.RGBA{R: 0, G: 0, B: 0, A: 0}, // fully transparent backend
-		OnStartup:         app.Startup,
-		OnShutdown:        app.Shutdown,
+		BackgroundColour: &options.RGBA{R: 26, G: 28, B: 30, A: 255},
+		OnStartup:        app.Startup,
+		OnShutdown:       app.Shutdown,
 		Bind: []interface{}{
 			app,
 		},
@@ -73,13 +76,17 @@ func run() error {
 			TitleBar: &mac.TitleBar{
 				TitlebarAppearsTransparent: true,
 				HideTitle:                  true,
-				HideTitleBar:               true,
+				HideTitleBar:               false,
 				FullSizeContent:            true,
 				UseToolbar:                 false,
 			},
-			WebviewIsTransparent: true,
-			WindowIsTranslucent:  true, // Glassmorphism
 			Appearance:           mac.NSAppearanceNameDarkAqua,
+			WebviewIsTransparent: true,
+			WindowIsTranslucent:  true,
+			About: &mac.AboutInfo{
+				Title:   "KubeWatcher Terminal",
+				Message: "© 2026 Argus Infrastructure",
+			},
 		},
 	})
 }

@@ -5,11 +5,15 @@ import { callGo } from './useBridge'
  * Composable for the embedded terminal.
  */
 export function useTerminal() {
+  // startTerminal RETHROWS so the caller (TerminalView) can surface the
+  // failure in the UI. Previously this silently logged and returned, which
+  // left the user staring at an empty black box with no clue what failed.
   async function startTerminal(rows, cols) {
     try {
       await callGo('StartTerminal', rows, cols)
     } catch (e) {
       console.error('[terminal]', e)
+      throw e
     }
   }
 

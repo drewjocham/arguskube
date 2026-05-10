@@ -26,10 +26,10 @@ VIEW_DIR    := view
 AGENT_DIR   := agent/python_agents
 BUILD_BIN   := $(BACKEND_DIR)/build/bin/$(APP_NAME)
 
-.PHONY: help dev build run frontend frontend-dev deps deps-go deps-vue \
+.PHONY: help dev build build-terminal-app build-nopackage run frontend frontend-dev deps deps-go deps-vue \
         test test-go test-vue lint lint-go clean doctor \
         bindings contexts logs \
-        agent-deps agent-check agent-clean
+        agent-deps agent-check agent-test agent-lint agent-format agent-clean
 
 # ── Default ──────────────────────────────────────────────────────
 
@@ -50,8 +50,36 @@ frontend-dev: ## Start Vite dev server standalone (for debugging)
 
 # ── Build ────────────────────────────────────────────────────────
 
-build: frontend ## Production build (macOS app bundle)
+build: frontend ## Production build (macOS app bundle + standalone terminal app)
+	# Wails runs its own codesign step inside `wails build`. If the .app from
+	# a previous run is left in place, the binary may carry stale signatures
+	# or extended attributes, and codesign aborts with "resource fork, Finder
+	# information, or similar detritus not allowed". Wipe the bin dir first,
+	# then re-strip + re-sign after the fresh build for good measure.
+	rm -rf $(BACKEND_DIR)/build/bin
 	cd $(BACKEND_DIR) && wails build && xattr -cr build/bin/kubewatcher.app && codesign --force --deep --sign - build/bin/kubewatcher.app
+	# Build the standalone terminal as a SEPARATE .app bundle with its own
+	# CFBundleIdentifier. macOS treats different bundle ids as different
+	# applications, which gives the terminal its own Dock icon, Cmd+Tab
+	# entry, and Mission Control window — what the user gets when they
+	# click "Pop out".
+	$(MAKE) build-terminal-app
+
+build-terminal-app: ## Build the standalone Terminal as its own .app bundle inside the main app's Resources/
+	@echo "→ Building KubeWatcherTerminal.app …"
+	@TERM_APP="$(BACKEND_DIR)/build/bin/kubewatcher.app/Contents/Resources/KubeWatcherTerminal.app"; \
+	rm -rf "$$TERM_APP"; \
+	mkdir -p "$$TERM_APP/Contents/MacOS" "$$TERM_APP/Contents/Resources"; \
+	cd $(BACKEND_DIR) && go build -trimpath -ldflags '-w -s' \
+		-o "build/bin/kubewatcher.app/Contents/Resources/KubeWatcherTerminal.app/Contents/MacOS/KubeWatcherTerminal" \
+		./cmd/terminal; \
+	cp $(BACKEND_DIR)/build/darwin/Info.terminal.plist "$$TERM_APP/Contents/Info.plist"; \
+	if [ -f $(BACKEND_DIR)/build/bin/kubewatcher.app/Contents/Resources/iconfile.icns ]; then \
+		cp $(BACKEND_DIR)/build/bin/kubewatcher.app/Contents/Resources/iconfile.icns "$$TERM_APP/Contents/Resources/iconfile.icns"; \
+	fi; \
+	xattr -cr "$$TERM_APP"; \
+	codesign --force --deep --sign - "$$TERM_APP"; \
+	echo "  ✓ KubeWatcherTerminal.app at $$TERM_APP"
 
 build-nopackage: frontend ## Production binary (no .app bundle)
 	cd $(BACKEND_DIR) && wails build -nopackage
@@ -76,7 +104,7 @@ bindings: ## Regenerate Wails TypeScript bindings
 
 # ── Testing ──────────────────────────────────────────────────────
 
-test: test-go test-vue agent-check ## Run all tests
+test: test-go test-vue agent-test ## Run all tests
 
 test-go: ## Run Go tests
 	cd $(BACKEND_DIR) && go test ./... -count=1
@@ -107,7 +135,7 @@ pods: ## List all pods across namespaces
 
 # ── Cleanup ──────────────────────────────────────────────────────
 
-clean: agent-clean ## Remove all build artifacts
+clean: agent-clean helm-clean ## Remove all build artifacts
 	rm -rf $(BACKEND_DIR)/build/bin
 	rm -rf $(BACKEND_DIR)/view/dist
 	rm -rf $(VIEW_DIR)/dist
@@ -122,18 +150,98 @@ AGENT_VENV  := $(AGENT_DIR)/.venv
 AGENT_PYTHON := $(AGENT_VENV)/bin/python
 AGENT_PIP    := $(AGENT_VENV)/bin/pip
 
-agent-deps: ## Install Argus Python agent dependencies
+agent-deps: ## Install Argus Python agent dependencies (editable + dev)
 	@test -d $(AGENT_VENV) || python3 -m venv $(AGENT_VENV)
-	$(AGENT_PIP) install -q -r $(AGENT_DIR)/requirements.txt
+	$(AGENT_PIP) install -q -e "$(AGENT_DIR)[dev]"
 	@echo "  ✓ Argus agent venv ready at $(AGENT_VENV)"
 
-agent-check: agent-deps ## Validate Argus agents (syntax + imports)
-	$(AGENT_PYTHON) -c "from python_agents import *; print('  ✓ All agent imports OK')"
-	$(AGENT_PYTHON) -m py_compile $(AGENT_DIR)/*.py
-	@echo "  ✓ All agent files compile cleanly"
+agent-check: agent-deps ## Validate Argus agents (imports + compile)
+	$(AGENT_PYTHON) -c "from argus_agents import *; print('  ✓ All agent imports OK')"
+	$(AGENT_PYTHON) -c "from argus_agents.cli import main; print('  ✓ CLI entry point OK')"
+	@echo "  ✓ All agent modules compile cleanly"
 
-agent-clean: ## Remove Argus Python agent venv
+agent-test: agent-deps ## Run Argus agent tests
+	$(AGENT_PYTHON) -m pytest $(AGENT_DIR)/tests -v
+
+agent-lint: ## Lint Argus agents with ruff
+	$(AGENT_DIR)/.venv/bin/ruff check $(AGENT_DIR)/src
+
+agent-format: ## Format Argus agents with ruff
+	$(AGENT_DIR)/.venv/bin/ruff format $(AGENT_DIR)/src
+
+agent-clean: ## Remove Argus Python agent venv + caches
 	rm -rf $(AGENT_VENV)
+	find $(AGENT_DIR) -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+# ── Deploy (Helm + Terraform) ────────────────────────────────────
+
+DEPLOY_DIR   := deploy
+HELM_DIR     := $(DEPLOY_DIR)/helm
+TERRAFORM_DIR := $(DEPLOY_DIR)/terraform
+
+.PHONY: helm-lint helm-package helm-install helm-uninstall helm-clean \
+        tf-init tf-plan tf-apply tf-destroy tf-fmt
+
+helm-deps: ## Update Helm chart dependencies
+	helm dependency update $(HELM_DIR)/kubewatcher-monitoring 2>/dev/null || true
+
+helm-lint: helm-deps ## Lint all Helm charts
+	@for chart in $(HELM_DIR)/*/; do \
+		echo "  Linting $$chart..."; \
+		helm lint $$chart; \
+	done
+
+helm-package: ## Package all Helm charts
+	@mkdir -p $(DEPLOY_DIR)/packages
+	@for chart in $(HELM_DIR)/*/; do \
+		echo "  Packaging $$chart..."; \
+		helm package $$chart --destination $(DEPLOY_DIR)/packages; \
+	done
+
+helm-install: ## Install all Helm charts into current k8s context
+	@echo "Installing KubeWatcher charts..."
+	kubectl create namespace kubewatcher 2>/dev/null || true
+	helm upgrade --install kubewatcher-backend $(HELM_DIR)/kubewatcher-backend \
+		--namespace kubewatcher --create-namespace
+	helm upgrade --install kubewatcher-frontend $(HELM_DIR)/kubewatcher-frontend \
+		--namespace kubewatcher
+
+helm-install-dev: ## Install Helm charts with dev overrides
+	@echo "Installing KubeWatcher charts (dev mode)..."
+	kubectl create namespace kubewatcher 2>/dev/null || true
+	helm upgrade --install kubewatcher-backend $(HELM_DIR)/kubewatcher-backend \
+		--namespace kubewatcher --create-namespace \
+		-f $(HELM_DIR)/kubewatcher-backend/values-dev.yaml
+	helm upgrade --install kubewatcher-frontend $(HELM_DIR)/kubewatcher-frontend \
+		--namespace kubewatcher \
+		-f $(HELM_DIR)/kubewatcher-frontend/values-dev.yaml
+
+helm-uninstall: ## Uninstall Helm charts
+	helm uninstall kubewatcher-backend --namespace kubewatcher 2>/dev/null || true
+	helm uninstall kubewatcher-frontend --namespace kubewatcher 2>/dev/null || true
+	helm uninstall kubewatcher-agent --namespace kubewatcher 2>/dev/null || true
+	helm uninstall kubewatcher-alert-ingress --namespace kubewatcher 2>/dev/null || true
+	helm uninstall kubewatcher-mcp --namespace kubewatcher 2>/dev/null || true
+	helm uninstall kubewatcher-monitoring --namespace kubewatcher 2>/dev/null || true
+	kubectl delete namespace kubewatcher 2>/dev/null || true
+
+helm-clean: ## Remove packaged charts
+	rm -rf $(DEPLOY_DIR)/packages
+
+tf-init: ## Initialize Terraform
+	cd $(TERRAFORM_DIR) && terraform init
+
+tf-plan: ## Terraform plan
+	cd $(TERRAFORM_DIR) && terraform plan
+
+tf-apply: ## Terraform apply (deploy infrastructure)
+	cd $(TERRAFORM_DIR) && terraform apply
+
+tf-destroy: ## Terraform destroy
+	cd $(TERRAFORM_DIR) && terraform destroy
+
+tf-fmt: ## Format Terraform files
+	cd $(TERRAFORM_DIR) && terraform fmt -recursive
 
 # ── Doctor ───────────────────────────────────────────────────────
 

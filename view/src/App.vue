@@ -1,7 +1,12 @@
 <script setup>
-import { ref, provide, onMounted, onUnmounted } from 'vue'
+import { ref, provide, onMounted, onUnmounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { callGo, useAppMode, useClusterInfo, useMetrics, useAlerts, useDiagnostics, useFeatures } from './composables/useWails'
 import { useWailsEvent, Events } from './composables/useEvents'
+import { useTerminalDispatch } from './composables/useTerminalDispatch'
+import { useUIPrefsStore } from './stores/uiPrefs'
+import { useNotificationsStore } from './stores/notifications'
+import ChatPopOut from './components/ai/ChatPopOut.vue'
 import ToastContainer from './components/ToastContainer.vue'
 import Titlebar from './components/titlebar/Titlebar.vue'
 import Sidebar from './components/sidebar/Sidebar.vue'
@@ -67,10 +72,20 @@ function toggleTerminal() {
   terminalOpen.value = !terminalOpen.value
 }
 
-function openPopOut() {
-  // Close embedded terminal first — shares the same PTY.
-  terminalOpen.value = false
-  popOutOpen.value = true
+async function openPopOut() {
+  // Spawn a real OS-level second window via a fresh process of this same
+  // binary in terminal mode. Falls back to the in-app overlay if the
+  // backend method isn't available (e.g. SaaS/web mode where exec doesn't
+  // make sense).
+  try {
+    await callGo('LaunchPopOutTerminal')
+    // The dashboard's embedded terminal stays running — the new window has
+    // its own PTY, so they don't collide.
+  } catch (e) {
+    console.warn('[popout] backend launch failed, falling back to overlay:', e)
+    terminalOpen.value = false
+    popOutOpen.value = true
+  }
 }
 
 function closePopOut() {
@@ -112,6 +127,33 @@ onUnmounted(() => document.removeEventListener('visibilitychange', onVisibilityC
 
 provide('tier', tier)
 provide('isAllowed', isAllowed)
+
+// When another view (e.g. Argus AI chat) requests a command be sent to the
+// terminal, make sure the terminal panel is visible so the user can see the
+// command land. The actual writing happens inside TerminalView.
+const { requestOpen: terminalOpenRequests } = useTerminalDispatch()
+watch(terminalOpenRequests, () => {
+  if (popOutOpen.value) popOutOpen.value = false
+  terminalOpen.value = true
+})
+
+const uiPrefs = useUIPrefsStore()
+const { chatPopOutOpen } = storeToRefs(uiPrefs)
+
+// Argus notifications: a single Wails event channel so the backend can
+// surface spot-check findings, scan results, and async warnings into the
+// titlebar bell + dropdown without each emitter needing its own bridge.
+//
+// Backend usage (from Go):
+//     runtime.EventsEmit(ctx, "argus:notification", map[string]any{
+//         "kind": "spot-check", "title": "...", "body": "...",
+//         "rerunnable": true, "rerunPayload": "...",
+//     })
+const notifications = useNotificationsStore()
+useWailsEvent('argus:notification', (data) => {
+  if (!data || typeof data !== 'object') return
+  notifications.add(data)
+})
 </script>
 
 <template>
@@ -178,6 +220,7 @@ provide('isAllowed', isAllowed)
     
     <ToastContainer />
     <ProDesktopApp v-if="popOutOpen" @close="closePopOut" />
+    <ChatPopOut v-if="chatPopOutOpen" />
   </template>
 </template>
 

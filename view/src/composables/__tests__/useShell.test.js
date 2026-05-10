@@ -34,13 +34,14 @@ describe('useTerminal', () => {
     expect(body.args).toEqual([24, 80])
   })
 
-  it('startTerminal handles errors gracefully', async () => {
+  it('startTerminal RETHROWS errors so the UI can surface them', async () => {
+    // Previously startTerminal swallowed errors silently, leaving the user
+    // staring at an empty black box. Now it rethrows so TerminalView can
+    // show a visible "session failed to start" panel with a Retry button.
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Terminal error')))
 
     const { startTerminal } = useTerminal()
-
-    // Should not throw
-    await expect(startTerminal(24, 80)).resolves.toBeUndefined()
+    await expect(startTerminal(24, 80)).rejects.toThrow('Terminal error')
   })
 
   it('sendInput calls SendTerminalInput with data', async () => {

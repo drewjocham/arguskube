@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/exec"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/argues/kube-watcher/internal/agentconn"
+	"github.com/argues/kube-watcher/internal/ai"
 	"github.com/argues/kube-watcher/internal/alerts"
 	"github.com/argues/kube-watcher/internal/argocd"
 	"github.com/argues/kube-watcher/internal/config"
@@ -183,6 +186,86 @@ func (a *App) GetTier() config.Tier {
 	return a.gate.Tier()
 }
 
+// LaunchPopOutTerminal opens the standalone terminal as a SEPARATE macOS
+// application — its own Dock icon, its own Cmd+Tab entry, its own Mission
+// Control window. This is what the user wants from "Pop out": not just a
+// new window, but a different app altogether.
+//
+// Strategy:
+//   1. Production: `KubeWatcherTerminal.app` is bundled inside the main
+//      .app at Contents/Resources/. Different CFBundleIdentifier, so macOS
+//      treats it as a separate application. Launched via `open -n` which
+//      forces a fresh instance and respects the bundle's app-ness.
+//   2. Dev (`wails dev` / `make run`): no second .app bundle exists, so
+//      fall back to spawning this same binary with KUBEWATCHER_MODE=terminal.
+//      The user gets a normal multi-window experience but it's still the
+//      same Dock entry. Acceptable for development.
+func (a *App) LaunchPopOutTerminal() error {
+	if path, ok := siblingTerminalAppPath(); ok {
+		// Production path — open as a real macOS app via `open -n`.
+		cmd := exec.Command("open", "-n", "-a", path)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("open terminal app at %s: %w", path, err)
+		}
+		a.logger.Info("launched pop-out terminal as separate app", slog.String("path", path))
+		return nil
+	}
+
+	// Dev fallback — spawn the same binary in terminal mode.
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("locate self: %w", err)
+	}
+	cmd := exec.Command(self)
+	cmd.Env = append(os.Environ(), "KUBEWATCHER_MODE=terminal")
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("launch terminal window: %w", err)
+	}
+	if cmd.Process != nil {
+		_ = cmd.Process.Release()
+	}
+	a.logger.Info("launched pop-out terminal (dev fallback, same binary)",
+		slog.String("path", self),
+	)
+	return nil
+}
+
+// siblingTerminalAppPath looks for the bundled standalone terminal .app
+// next to the running executable. In production the running binary lives at
+//   <App>.app/Contents/MacOS/kubewatcher
+// and the terminal app is at
+//   <App>.app/Contents/Resources/KubeWatcherTerminal.app
+// Returns ("", false) when not present (dev mode, non-mac builds, etc.).
+func siblingTerminalAppPath() (string, bool) {
+	self, err := os.Executable()
+	if err != nil {
+		return "", false
+	}
+	// Walk up from MacOS/kubewatcher to <App>.app, then into Resources.
+	// We don't use filepath.Dir twice because it's clearer to express what
+	// we're matching against and we want to bail on unexpected layouts.
+	const suffix = "/Contents/MacOS/"
+	idx := -1
+	for i := 0; i+len(suffix) <= len(self); i++ {
+		if self[i:i+len(suffix)] == suffix {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return "", false
+	}
+	appBundle := self[:idx+len("/Contents")] // <App>.app/Contents
+	candidate := appBundle + "/Resources/KubeWatcherTerminal.app"
+	if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+		return candidate, true
+	}
+	return "", false
+}
+
 // --- Settings bindings ---
 
 // SettingsPayload is the JSON structure for runtime config visible in the settings view.
@@ -270,14 +353,29 @@ func (a *App) UpdateSettings(s SettingsPayload) error {
 		a.cfg.Kubernetes.Namespace = s.Namespace
 		// Namespace change doesn't need full reconnect, just update config.
 	}
+	rebuildAgent := false
 	if s.DeepSeekAPIKey != "" && !containsMask(s.DeepSeekAPIKey) {
-		a.cfg.AI.DeepSeekAPIKey = s.DeepSeekAPIKey
+		if s.DeepSeekAPIKey != a.cfg.AI.DeepSeekAPIKey {
+			a.cfg.AI.DeepSeekAPIKey = s.DeepSeekAPIKey
+			rebuildAgent = true
+		}
 	}
 	if s.AnomstackURL != "" {
 		a.cfg.AI.AnomstackURL = s.AnomstackURL
 	}
 	if s.PrometheusURL != "" {
 		a.cfg.AI.PrometheusURL = s.PrometheusURL
+	}
+
+	if rebuildAgent {
+		dsClient := ai.NewDeepSeekClient(a.cfg.AI.DeepSeekAPIKey, a.logger)
+		if a.agent != nil {
+			a.agent.SetClient(dsClient)
+			a.logger.Info("AI agent client updated with new DeepSeek API key")
+		} else {
+			a.agent = ai.NewAgent(dsClient, a.logger)
+			a.logger.Info("AI agent initialized from runtime DeepSeek API key")
+		}
 	}
 
 	// Argo CD settings — rebuild client if URL or token changes.
@@ -336,6 +434,15 @@ func (a *App) UpdateSettings(s SettingsPayload) error {
 
 		// Restart event loop with new client.
 		go a.StartEventLoop(a.ctx)
+	}
+
+	// Persist user-customized settings so they survive across restarts.
+	// Failure to persist is logged but not fatal — the in-memory update has
+	// already taken effect for this session.
+	if err := config.SavePersistedSettings(config.FromConfig(a.cfg)); err != nil {
+		a.logger.Warn("failed to persist settings to disk", slog.String("error", err.Error()))
+	} else {
+		a.logger.Info("settings persisted to disk")
 	}
 
 	return nil

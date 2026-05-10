@@ -72,7 +72,10 @@ async function onSync(app, event) {
   if (event) event.stopPropagation()
   syncing.value = app.name
   try {
-    const result = await syncApp(app.name)
+    // destNamespace is where the workload is deployed; namespace is the
+    // Argo CD app's own namespace. The k8s fallback path needs the workload
+    // namespace to find the Deployment.
+    const result = await syncApp(app.name, app.destNamespace || app.namespace || '')
     notification.value = { type: 'success', text: `${app.name}: ${result?.message || 'Sync triggered'}` }
   } catch (e) {
     notification.value = { type: 'error', text: `Sync failed: ${e?.message || e}` }

@@ -20,6 +20,7 @@ const (
 	FeatureTopology    Feature = "topology"
 	FeatureCascadeCorr Feature = "cascade_correlation"
 	FeatureAnomstack   Feature = "anomstack_anomaly"
+	FeatureFlinkAnomaly Feature = "flink_anomaly"
 
 	// Pro tier features
 	FeatureAIDiagnostics   Feature = "ai_diagnostics"
@@ -69,7 +70,7 @@ func (g *Gate) Tier() config.Tier {
 func (g *Gate) AllFeatures() map[Feature]bool {
 	all := []Feature{
 		FeatureAlerts, FeatureClusterView, FeatureLogStream, FeatureTopology,
-		FeatureCascadeCorr, FeatureAnomstack,
+		FeatureCascadeCorr, FeatureAnomstack, FeatureFlinkAnomaly,
 		FeatureAIDiagnostics, FeatureRunbookAuto,
 		FeatureDecisionLog, FeatureMultiCluster, FeatureExtendedHistory, FeatureCustomRunbooks,
 		FeatureArgusCD,

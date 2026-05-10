@@ -1,8 +1,54 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useLogs } from '../../composables/useWails'
 import { useWailsEvent, Events } from '../../composables/useEvents'
 import { tokenize } from '../../utils/logHighlight'
+import { buildSuggestions, fixQuerySyntax } from '../../utils/logQuery'
+import { useSavedFiltersStore } from '../../stores/savedFilters'
+
+const savedFilters = useSavedFiltersStore()
+const { sortedEntries: savedFilterEntries } = storeToRefs(savedFilters)
+const showSaveDialog = ref(false)
+const saveDialogName = ref('')
+
+function openSaveDialog() {
+  // Pre-fill with the most recently loaded set name if any, otherwise blank.
+  saveDialogName.value = ''
+  showSaveDialog.value = true
+}
+
+function confirmSave() {
+  const name = saveDialogName.value.trim()
+  if (!name) return
+  savedFilters.save(name, {
+    query: query.value,
+    filters: filters.value,
+    limit: limit.value,
+  })
+  showSaveDialog.value = false
+}
+
+function loadSavedFilter(id) {
+  const entry = savedFilters.entries.find(e => e.id === id)
+  if (!entry) return
+  query.value = entry.query
+  filters.value = entry.filters.map(f => ({ ...f }))
+  if (entry.limit) limit.value = entry.limit
+  // Re-sync the sidebar checkboxes with the loaded filters.
+  for (const [field, section] of Object.entries(fieldSections.value)) {
+    for (const item of section.items) {
+      const v = parseFieldLabel(item.label).value
+      item.checked = filters.value.some(f => f.field === field && f.value === v)
+    }
+  }
+  executeQuery()
+}
+
+function deleteSavedFilter(id, e) {
+  if (e) e.stopPropagation()
+  savedFilters.remove(id)
+}
 
 const { entries: backendLogs, histogram: backendHistogram, fields: backendFields, total, loading: logLoading, queryTime: backendQueryTime, error: logError, queryLogs } = useLogs()
 
@@ -58,16 +104,56 @@ function toggleFieldSection(key) {
 
 // Filter actions.
 function removeFilter(index) {
+  // Sync the corresponding sidebar checkbox so the UI stays consistent.
+  const removed = filters.value[index]
   filters.value.splice(index, 1)
+  if (removed) {
+    syncSidebarCheckbox(removed.field, removed.value, false)
+  }
 }
 
 function clearFilters() {
+  // Uncheck every sidebar checkbox so removing all filters also clears
+  // the visible state in the side rail.
+  for (const section of Object.values(fieldSections.value)) {
+    for (const item of section.items) {
+      item.checked = false
+    }
+  }
   filters.value = []
 }
 
 function copyFilters() {
   const text = filters.value.map(f => `{${f.field}="${f.value}"}`).join(' ')
   navigator.clipboard.writeText(text)
+}
+
+// Map sidebar section keys to the actual filter `field` names. The sidebar
+// uses long form (kubernetes.pod_namespace) but the filter tag should
+// render the same — both are fine, no translation needed currently.
+function syncSidebarCheckbox(field, value, checked) {
+  const sec = fieldSections.value[field]
+  if (!sec) return
+  const item = sec.items.find(i => parseFieldLabel(i.label).value === value)
+  if (item) item.checked = checked
+}
+
+// fieldSections.items[].label is rendered as `<value> (<count>)` — split it
+// back to get the value when wiring filters from a checkbox.
+function parseFieldLabel(label) {
+  const m = String(label || '').match(/^(.*)\s+\((\d+)\)$/)
+  if (m) return { value: m[1], count: Number(m[2]) }
+  return { value: String(label || ''), count: 0 }
+}
+
+function toggleFilterFromCheckbox(field, item) {
+  const { value } = parseFieldLabel(item.label)
+  const idx = filters.value.findIndex(f => f.field === field && f.value === value)
+  if (item.checked && idx === -1) {
+    filters.value.push({ field, value })
+  } else if (!item.checked && idx !== -1) {
+    filters.value.splice(idx, 1)
+  }
 }
 
 // Execute query.
@@ -84,26 +170,60 @@ function toggleLogRow(index) {
 }
 
 // Pinned logs.
-const pinnedSet = ref(new Set())
+//
+// We keep the FULL pinned log object alongside its key so pinned entries
+// survive when the live-stream truncates `backendLogs` (which would drop
+// the pin and leave only a stale counter). Persist to localStorage so pins
+// survive navigation away and back.
+const PINNED_STORAGE_KEY = 'kubewatcher.logExplorer.pinned.v1'
+const pinnedLogs = ref(loadPinnedLogs())
 const showPinnedOnly = ref(false)
 
-function togglePin(log) {
-  const key = pinKey(log)
-  if (pinnedSet.value.has(key)) {
-    pinnedSet.value.delete(key)
-  } else {
-    pinnedSet.value.add(key)
+function loadPinnedLogs() {
+  try {
+    const raw = window.localStorage?.getItem(PINNED_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch (_) {
+    return []
   }
-  // Force reactivity on the Set.
-  pinnedSet.value = new Set(pinnedSet.value)
 }
 
-function isPinned(log) {
-  return pinnedSet.value.has(pinKey(log))
+function persistPinnedLogs() {
+  try {
+    window.localStorage?.setItem(PINNED_STORAGE_KEY, JSON.stringify(pinnedLogs.value))
+  } catch (_) { /* best effort */ }
 }
 
 function pinKey(log) {
   return `${log.time}::${log.message}`
+}
+
+const pinnedKeys = computed(() => new Set(pinnedLogs.value.map(pinKey)))
+
+function togglePin(log) {
+  const key = pinKey(log)
+  const idx = pinnedLogs.value.findIndex(l => pinKey(l) === key)
+  if (idx >= 0) {
+    pinnedLogs.value.splice(idx, 1)
+  } else {
+    // Snapshot the entry so subsequent stream truncation can't mutate it.
+    pinnedLogs.value.push({
+      time: log.time,
+      message: log.message,
+      pod: log.pod,
+      namespace: log.namespace,
+      container: log.container,
+      node: log.node,
+      level: log.level,
+    })
+  }
+  persistPinnedLogs()
+}
+
+function isPinned(log) {
+  return pinnedKeys.value.has(pinKey(log))
 }
 
 function togglePinnedView() {
@@ -111,17 +231,21 @@ function togglePinnedView() {
 }
 
 function clearPins() {
-  pinnedSet.value = new Set()
+  pinnedLogs.value = []
   showPinnedOnly.value = false
+  persistPinnedLogs()
 }
 
 // Filtered logs view.
+//
+// When the user has filtered to "pinned only", the source is the persistent
+// pinnedLogs list — NOT the truncated live buffer. That way pinned entries
+// don't disappear after ~10s when the stream rolls them out.
 const displayLogs = computed(() => {
-  const sliced = allLogs.value.slice(0, limit.value)
   if (showPinnedOnly.value) {
-    return sliced.filter(l => pinnedSet.value.has(pinKey(l)))
+    return pinnedLogs.value.slice(0, limit.value)
   }
-  return sliced
+  return allLogs.value.slice(0, limit.value)
 })
 
 // Resizable time column.
@@ -165,24 +289,101 @@ onMounted(() => {
   queryLogs('*', '', limit.value)
 })
 
+// Streaming toggle — when paused, new live log lines are dropped. The
+// existing buffer (and any pinned entries) stay visible. The pause flag is
+// also surfaced in the histogram/toolbar so the user can tell at a glance.
+const streamingEnabled = ref(true)
+const droppedWhilePaused = ref(0)
+
+function toggleStreaming() {
+  streamingEnabled.value = !streamingEnabled.value
+  if (streamingEnabled.value) {
+    droppedWhilePaused.value = 0
+  }
+}
+
 // Listen for live log streams
 useWailsEvent(Events.LOG_LINE, (data) => {
-  if (data && backendLogs.value && !logLoading.value) {
-    // Only prepend if we're not actively querying
-    const newEntry = {
-      time: new Date(data.timestamp).toISOString().replace('T', ' ').slice(0, -1),
-      message: data.message,
-      pod: data.source ? data.source.replace(/\[|\]/g, '') : 'unknown',
-      namespace: '', 
-      container: '',
-      node: ''
-    }
-    backendLogs.value.unshift(newEntry)
-    if (backendLogs.value.length > limit.value) {
-      backendLogs.value.pop()
-    }
+  if (!data || !backendLogs.value || logLoading.value) return
+  if (!streamingEnabled.value) {
+    droppedWhilePaused.value++
+    return
+  }
+  const newEntry = {
+    time: new Date(data.timestamp).toISOString().replace('T', ' ').slice(0, -1),
+    message: data.message,
+    pod: data.source ? data.source.replace(/\[|\]/g, '') : 'unknown',
+    namespace: '',
+    container: '',
+    node: ''
+  }
+  backendLogs.value.unshift(newEntry)
+  if (backendLogs.value.length > limit.value) {
+    backendLogs.value.pop()
   }
 })
+
+// ── Suggestions dropdown ─────────────────────────────────────────────────
+//
+// `fieldValueIndex` extracts known values per field from the live log buffer
+// so the dropdown can offer real completions (e.g. typing namespace= surfaces
+// the namespaces actually present right now).
+const queryFocused = ref(false)
+
+const fieldValueIndex = computed(() => {
+  const idx = {}
+  const push = (key, v) => {
+    if (!v) return
+    idx[key] = idx[key] || new Set()
+    idx[key].add(v)
+  }
+  for (const l of allLogs.value) {
+    push('kubernetes.pod_namespace', l.namespace)
+    push('kubernetes.pod_name', l.pod)
+    push('kubernetes.container_name', l.container)
+    push('level', l.level)
+  }
+  // Convert sets to arrays so the suggestion builder can iterate stably.
+  const out = {}
+  for (const [k, set] of Object.entries(idx)) out[k] = Array.from(set)
+  return out
+})
+
+const querySuggestions = computed(() =>
+  buildSuggestions(query.value, fieldValueIndex.value),
+)
+
+function applySuggestion(s) {
+  query.value = s.query
+  queryFocused.value = false
+  executeQuery()
+}
+
+// Delay closing the dropdown so a click on a suggestion fires before the
+// blur handler unmounts it. mousedown.prevent on the suggestion row keeps
+// focus on the input, but we still need a small grace period.
+function onQueryBlur() {
+  setTimeout(() => { queryFocused.value = false }, 150)
+}
+
+// ── Syntax-fix wand ──────────────────────────────────────────────────────
+//
+// Click the ✨ button to run the cheap client-side fixer (balances braces /
+// quotes, normalizes smart quotes, quotes bare values). The user sees a
+// chip listing what changed so the fix isn't a black-box rewrite.
+const lastFixNotes = ref([])
+
+function fixQuery() {
+  const { fixed, changed, notes } = fixQuerySyntax(query.value)
+  if (changed) {
+    query.value = fixed
+    lastFixNotes.value = notes
+    setTimeout(() => { lastFixNotes.value = [] }, 5000)
+  } else {
+    lastFixNotes.value = ['No syntax issues detected.']
+    setTimeout(() => { lastFixNotes.value = [] }, 3000)
+  }
+}
 </script>
 
 <template>
@@ -204,7 +405,7 @@ useWailsEvent(Events.LOG_LINE, (data) => {
         </div>
         <div v-if="section.open && section.items.length" class="field-items">
           <label v-for="(item, i) in section.items" :key="i" class="field-checkbox">
-            <input type="checkbox" v-model="item.checked" /> {{ item.label }}
+            <input type="checkbox" v-model="item.checked" @change="toggleFilterFromCheckbox(key, item)" /> {{ item.label }}
           </label>
         </div>
       </div>
@@ -218,12 +419,45 @@ useWailsEvent(Events.LOG_LINE, (data) => {
         <div class="query-row">
           <div class="query-input-wrap">
             <span class="input-label">Query ({{ queryTime }}ms)</span>
-            <input type="text" class="query-input" v-model="query" @keydown.enter="executeQuery" />
+            <input
+              type="text"
+              class="query-input"
+              v-model="query"
+              @keydown.enter="executeQuery"
+              @focus="queryFocused = true"
+              @blur="onQueryBlur"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button
+              class="query-wand"
+              @click="fixQuery"
+              title="Fix common syntax issues in the query (balance braces/quotes, normalize curly quotes, quote bare values)"
+            >✨ Fix</button>
+            <div v-if="queryFocused && querySuggestions.length" class="suggestions-dropdown">
+              <div
+                v-for="(s, i) in querySuggestions"
+                :key="i"
+                class="suggestion-row"
+                @mousedown.prevent="applySuggestion(s)"
+              >
+                <div class="sugg-main">
+                  <span class="sugg-label">{{ s.label }}</span>
+                  <span class="sugg-tag" :class="s.kind">{{ s.kind === 'curated' ? 'preset' : 'value' }}</span>
+                </div>
+                <code class="sugg-query">{{ s.query }}</code>
+                <div class="sugg-desc" v-if="s.description">{{ s.description }}</div>
+              </div>
+            </div>
           </div>
           <div class="limit-input-wrap">
             <span class="input-label">Limit</span>
             <input type="number" class="limit-input" v-model.number="limit" />
           </div>
+        </div>
+
+        <div v-if="lastFixNotes.length" class="fix-notes">
+          <span v-for="(n, i) in lastFixNotes" :key="i" class="fix-note">{{ n }}</span>
         </div>
 
         <div class="action-row">
@@ -233,6 +467,31 @@ useWailsEvent(Events.LOG_LINE, (data) => {
             </button>
             <button class="action-btn" @click="clearFilters">Clear filters</button>
             <button class="action-btn" @click="copyFilters">Copy filters</button>
+            <button class="action-btn" @click="openSaveDialog" :disabled="!query.trim() && filters.length === 0">
+              💾 Save
+            </button>
+            <div class="saved-filters-wrap" v-if="savedFilterEntries.length">
+              <select
+                class="saved-filters-select"
+                @change="(e) => { if (e.target.value) { loadSavedFilter(e.target.value); e.target.value = '' } }"
+                :title="'Load a saved filter set'"
+              >
+                <option value="">📂 Load saved…</option>
+                <option v-for="e in savedFilterEntries" :key="e.id" :value="e.id">
+                  {{ e.name }}
+                </option>
+              </select>
+            </div>
+            <button
+              class="action-btn"
+              :class="{ 'stream-on': streamingEnabled, 'stream-off': !streamingEnabled }"
+              @click="toggleStreaming"
+              :title="streamingEnabled ? 'Pause live log streaming' : 'Resume live log streaming'"
+            >
+              <span class="stream-dot"></span>
+              {{ streamingEnabled ? 'Live' : 'Paused' }}
+              <span v-if="!streamingEnabled && droppedWhilePaused > 0" class="stream-count">+{{ droppedWhilePaused }}</span>
+            </button>
           </div>
           <div class="action-right">
             <button class="action-btn primary" :class="{ executing }" @click="executeQuery">{{ executing ? '⏳ Running…' : '▶ Execute' }}</button>
@@ -242,6 +501,43 @@ useWailsEvent(Events.LOG_LINE, (data) => {
         <div class="active-filters" v-if="filters.length">
           <div v-for="(f, i) in filters" :key="i" class="filter-tag">
             {{ '{' + f.field + '="' + f.value + '"}' }} <span class="x" @click="removeFilter(i)">×</span>
+          </div>
+        </div>
+
+        <!-- Saved-filters management list — clicking the name loads, × removes. -->
+        <div v-if="savedFilterEntries.length" class="saved-filters-list">
+          <span class="saved-filters-list-label">Saved:</span>
+          <span
+            v-for="e in savedFilterEntries"
+            :key="e.id"
+            class="saved-filter-pill"
+            @click="loadSavedFilter(e.id)"
+            :title="'Click to load — ' + (e.query || '(no query)') + ' · ' + e.filters.length + ' filter' + (e.filters.length === 1 ? '' : 's')"
+          >
+            {{ e.name }}
+            <span class="x" @click="deleteSavedFilter(e.id, $event)" title="Delete saved filter">×</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Save dialog — modal-ish overlay anchored to the query area. -->
+      <div v-if="showSaveDialog" class="save-dialog-backdrop" @click.self="showSaveDialog = false">
+        <div class="save-dialog">
+          <div class="save-dialog-title">Save filter set</div>
+          <input
+            class="save-dialog-input"
+            v-model="saveDialogName"
+            placeholder="Name (e.g. 'kube-system errors')"
+            @keydown.enter="confirmSave"
+            @keydown.escape="showSaveDialog = false"
+            ref="saveInput"
+          />
+          <div class="save-dialog-hint">
+            Saving the query, {{ filters.length }} filter{{ filters.length === 1 ? '' : 's' }}, and limit {{ limit }}.
+          </div>
+          <div class="save-dialog-actions">
+            <button class="action-btn" @click="showSaveDialog = false">Cancel</button>
+            <button class="action-btn primary" @click="confirmSave" :disabled="!saveDialogName.trim()">Save</button>
           </div>
         </div>
       </div>
@@ -285,14 +581,14 @@ useWailsEvent(Events.LOG_LINE, (data) => {
             <div class="toolbar-tab" :class="{ active: activeTab === 'json' }" @click="activeTab = 'json'">JSON</div>
           </div>
           <div class="toolbar-right">
-            <button class="pin-master" :class="{ active: showPinnedOnly }" @click="togglePinnedView" :disabled="pinnedSet.size === 0" :title="showPinnedOnly ? 'Show all logs' : 'Show pinned only (' + pinnedSet.size + ')'">
+            <button class="pin-master" :class="{ active: showPinnedOnly }" @click="togglePinnedView" :disabled="pinnedLogs.length === 0" :title="showPinnedOnly ? 'Show all logs' : 'Show pinned only (' + pinnedLogs.length + ')'">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                 <path d="M12 2L12 22" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" v-if="showPinnedOnly"/>
                 <path d="M15.5 4.5L8.5 4.5C8.5 4.5 7 8 7 10.5C7 11.5 7.5 12 8.5 12.5L10 13V17L12 22L14 17V13L15.5 12.5C16.5 12 17 11.5 17 10.5C17 8 15.5 4.5 15.5 4.5Z" :fill="showPinnedOnly ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
               </svg>
-              <span class="pin-count" v-if="pinnedSet.size > 0">{{ pinnedSet.size }}</span>
+              <span class="pin-count" v-if="pinnedLogs.length > 0">{{ pinnedLogs.length }}</span>
             </button>
-            <button v-if="pinnedSet.size > 0" class="pin-clear" @click="clearPins" title="Clear all pins">×</button>
+            <button v-if="pinnedLogs.length > 0" class="pin-clear" @click="clearPins" title="Clear all pins">×</button>
             <div class="toolbar-stats">
               Total logs returned: <b>{{ displayLogs.length }}</b>
             </div>
@@ -444,6 +740,103 @@ useWailsEvent(Events.LOG_LINE, (data) => {
 }
 .query-input:focus, .limit-input:focus { border-color: var(--accent); }
 
+/* Wand button — sits at the right end of the query input. */
+.query-wand {
+  position: absolute;
+  right: 6px;
+  top: 24px;
+  background: rgba(167, 139, 250, 0.12);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  color: #c4b3fd;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.query-wand:hover { background: rgba(167, 139, 250, 0.22); color: #fff; }
+
+/* Suggestions dropdown — appears below the query input on focus. */
+.suggestions-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.suggestion-row {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.suggestion-row:last-child { border-bottom: none; }
+.suggestion-row:hover { background: rgba(79, 142, 247, 0.08); }
+.sugg-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sugg-label { font-size: 12.5px; font-weight: 500; color: var(--text); }
+.sugg-tag {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 1px 6px; border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06); color: var(--text3);
+}
+.sugg-tag.curated { background: rgba(167, 139, 250, 0.15); color: #a78bfa; }
+.sugg-tag.field-value { background: rgba(79, 142, 247, 0.12); color: var(--accent2); }
+.sugg-query {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+  margin-top: 3px;
+}
+.sugg-desc { font-size: 10.5px; color: var(--text3); margin-top: 2px; }
+
+/* Fix-notes chip below the query input — explains what the wand changed. */
+.fix-notes {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 6px;
+}
+.fix-note {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  color: #c4b3fd;
+}
+
+/* Streaming toggle pill. */
+.action-btn.stream-on,
+.action-btn.stream-off {
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.action-btn.stream-on .stream-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #3ecf8e;
+  animation: stream-pulse 1.4s ease-in-out infinite;
+}
+.action-btn.stream-off .stream-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #6b7078;
+}
+.action-btn.stream-off { color: var(--text3); border-color: rgba(255, 255, 255, 0.08); }
+.action-btn .stream-count {
+  font-family: var(--mono); font-size: 10.5px;
+  background: rgba(245, 166, 35, 0.18);
+  color: #f5a623;
+  padding: 1px 6px; border-radius: 8px;
+  margin-left: 4px;
+}
+@keyframes stream-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
 .action-row {
   display: flex;
   justify-content: space-between;
@@ -467,6 +860,81 @@ useWailsEvent(Events.LOG_LINE, (data) => {
 .action-btn.primary:hover { background: var(--accent2); }
 
 .active-filters { display: flex; gap: 8px; }
+
+/* Saved filter sets — pill list under the active filters, plus a select
+   in the toolbar. Both live in localStorage via the savedFilters store. */
+.saved-filters-wrap { display: inline-flex; align-items: center; }
+.saved-filters-select {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  cursor: pointer;
+  outline: none;
+}
+.saved-filters-select:hover { background: var(--bg4); color: var(--text); }
+.saved-filters-list {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  margin-top: 6px;
+}
+.saved-filters-list-label {
+  font-size: 10.5px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+}
+.saved-filter-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  color: #c4b3fd;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.saved-filter-pill:hover {
+  background: rgba(167, 139, 250, 0.2);
+  color: #fff;
+  border-color: rgba(167, 139, 250, 0.5);
+}
+.saved-filter-pill .x {
+  cursor: pointer;
+  font-size: 13px; line-height: 1;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 0 2px;
+}
+.saved-filter-pill .x:hover { color: #f05454; }
+
+/* Save dialog overlay anchored to the query area. */
+.save-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 60;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 80px;
+  backdrop-filter: blur(2px);
+}
+.save-dialog {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 16px;
+  width: 360px;
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.save-dialog-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.save-dialog-input {
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 5px;
+  padding: 7px 10px; font-size: 12.5px; color: var(--text);
+  outline: none;
+}
+.save-dialog-input:focus { border-color: rgba(167, 139, 250, 0.5); }
+.save-dialog-hint { font-size: 11px; color: var(--text3); }
+.save-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .filter-tag {
   background: rgba(79,142,247,0.1);
   border: 1px solid rgba(79,142,247,0.3);

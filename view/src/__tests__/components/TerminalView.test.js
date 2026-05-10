@@ -175,4 +175,37 @@ describe('TerminalView.vue — Integration', () => {
     wrapper.unmount()
     expect(mockTerminalDispose).toHaveBeenCalled()
   })
+
+  // Regression: TerminalView mounts inside a parent's v-if, so it's normal
+  // for the component to mount with visible=true on first render. Vue's
+  // watch on props.visible doesn't fire for the initial value, so onMounted
+  // must kick off init itself. Without this fix, the xterm UI appears but
+  // no PTY ever starts and the terminal stays blank.
+  it('initializes the terminal when mounted with visible=true (no transition)', async () => {
+    const wrapper = await createWrapper({ visible: true })
+    await nextTick()
+    await flushPromises()
+    await nextTick()
+
+    expect(mockTerminalOpen).toHaveBeenCalled()
+    expect(mockStartTerminal).toHaveBeenCalled()
+  })
+
+  it('flushes a queued command after mount-with-visible init', async () => {
+    // Queue a command BEFORE the terminal panel exists — this simulates the
+    // user clicking "Run in terminal" while the panel was closed.
+    const { useTerminalDispatchStore } = await import('../../stores/terminalDispatch')
+    const dispatch = useTerminalDispatchStore()
+    dispatch.sendToTerminal('kubectl get pods')
+
+    // Now the parent flips terminalOpen=true and TerminalView mounts.
+    const wrapper = await createWrapper({ visible: true })
+    await nextTick()
+    await flushPromises()
+    await nextTick()
+    await flushPromises()
+
+    expect(mockSendInput).toHaveBeenCalledWith('kubectl get pods')
+    expect(dispatch.pendingCommand).toBeNull()
+  })
 })

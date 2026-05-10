@@ -1,10 +1,12 @@
 package pkg
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"reflect"
 	"strings"
 	"time"
@@ -23,18 +25,30 @@ type APIResponse struct {
 }
 
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// CORS for dev and SaaS mode
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
+	// Default-deny CORS: only echo origins explicitly allowed (localhost or
+	// values in KUBEWATCHER_API_ALLOWED_ORIGINS). The previous
+	// `Access-Control-Allow-Origin: *` made every reflective method on App
+	// callable from any browser — including DeletePod, ApplyYaml, etc.
+	if !applyCORS(w, r, allowedOrigins()) {
+		http.Error(w, "origin not allowed", http.StatusForbidden)
+		return
+	}
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if !authenticate(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	path := strings.TrimPrefix(r.URL.Path, "/api/")
 	methodName := path
+
+	if !methodAllowedOverHTTP(methodName) {
+		http.Error(w, "method not exposed via HTTP API", http.StatusForbidden)
+		return
+	}
 
 	method := reflect.ValueOf(a).MethodByName(methodName)
 	if !method.IsValid() {
@@ -99,17 +113,27 @@ type WebhookPayload struct {
 
 // HandleWebhook receives anomaly alerts from external systems (Anomstack, Grafana, etc.)
 // and merges them into the alert stream visible in the frontend.
+//
+// Webhook auth: when KUBEWATCHER_WEBHOOK_TOKEN is set, the inbound request
+// must carry a matching `Authorization: Bearer <token>` OR a
+// `X-Webhook-Token: <token>` header. When unset, only loopback POSTs are
+// accepted — the previous open-CORS path made it trivial to inject fake
+// alerts from any origin.
 func (a *App) HandleWebhook(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
+	if !applyCORS(w, r, allowedOrigins()) {
+		http.Error(w, "origin not allowed", http.StatusForbidden)
+		return
+	}
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if r.Method != "POST" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !authenticateWebhook(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -174,24 +198,127 @@ func (a *App) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 // StartHTTPServer starts the SaaS API server on the specified port.
+//
+// Bind address defaults to 127.0.0.1 — the loopback interface — so a
+// misconfigured firewall can't expose the API to the public internet.
+// Override via KUBEWATCHER_API_BIND="0.0.0.0" once you've also configured
+// KUBEWATCHER_API_TOKEN and KUBEWATCHER_API_ALLOWED_ORIGINS.
 func (a *App) StartHTTPServer(port int) {
 	mux := http.NewServeMux()
-
-	// REST API endpoint
 	mux.HandleFunc("/api/", a.ServeHTTP)
-
-	// Webhook endpoint for external anomaly detectors
 	mux.HandleFunc("/webhooks/anomstack", a.HandleWebhook)
-
-	// WebSocket Hub endpoint for in-cluster Agents
 	go a.hub.Run(a.ctx)
 	mux.HandleFunc("/tunnel", a.hub.HandleTunnel)
 
-	addr := fmt.Sprintf(":%d", port)
-	a.logger.Info("Starting SaaS API Server", slog.String("addr", addr))
+	addr := envBindAddr(port)
+	tokenSet := os.Getenv("KUBEWATCHER_API_TOKEN") != ""
+	bindIsLocal := strings.HasPrefix(addr, "127.0.0.1") || strings.HasPrefix(addr, "[::1]")
+
+	if !bindIsLocal && !tokenSet {
+		a.logger.Warn("SaaS API binding to a non-loopback address WITHOUT KUBEWATCHER_API_TOKEN — refusing to start; set the token or restrict the bind",
+			slog.String("addr", addr),
+		)
+		return
+	}
+
+	a.logger.Info("Starting SaaS API Server",
+		slog.String("addr", addr),
+		slog.Bool("tokenAuth", tokenSet),
+		slog.Bool("loopbackOnly", bindIsLocal),
+	)
 	go func() {
-		if err := http.ListenAndServe(addr, mux); err != nil {
+		srv := &http.Server{
+			Addr:              addr,
+			Handler:           mux,
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+		if err := srv.ListenAndServe(); err != nil {
 			a.logger.Error("SaaS API Server failed", slog.String("error", err.Error()))
 		}
 	}()
+}
+
+// authenticateWebhook gates /webhooks/anomstack. Token can be carried in
+// either Authorization: Bearer or X-Webhook-Token to fit ops tooling that
+// can't easily set arbitrary headers.
+func authenticateWebhook(r *http.Request) bool {
+	token := strings.TrimSpace(os.Getenv("KUBEWATCHER_WEBHOOK_TOKEN"))
+	if token == "" {
+		return remoteIsLocal(r)
+	}
+	if remoteIsLocal(r) {
+		return true
+	}
+	got := strings.TrimSpace(r.Header.Get("X-Webhook-Token"))
+	if got == "" {
+		hdr := r.Header.Get("Authorization")
+		if strings.HasPrefix(hdr, "Bearer ") {
+			got = strings.TrimSpace(hdr[len("Bearer "):])
+		}
+	}
+	return got != "" && subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
+}
+
+// httpExposedMethods is the explicit allowlist of App methods callable via
+// the SaaS HTTP API. Mutating cluster operations stay Wails-only by
+// default; reflection used to expose every public method indiscriminately.
+//
+// The set is curated and conservative — adding to it should be a deliberate
+// security review. Anything dangerous (DeletePod, ApplyYaml, DeleteResource,
+// LaunchPopOutTerminal, StartTerminal, RestartDeployment-style actions,
+// SwitchContext that mutates kubeconfig, UpdateSettings) is intentionally
+// excluded.
+var httpExposedMethods = map[string]struct{}{
+	// Cluster read-only data the SaaS frontend needs to render dashboards.
+	"GetClusterInfo":           {},
+	"GetAppMode":               {},
+	"GetTier":                  {},
+	"GetSettings":              {}, // returns masked tokens; safe to read
+	"GetClusterMetrics":        {},
+	"DetectAlerts":             {},
+	"ListResources":            {},
+	"GetResourceDetail":        {},
+	"GetResourceYaml":          {},
+	"ListAllNamespaces":        {},
+	"ListContexts":             {},
+	"GetTopology":              {},
+	"GetWarningEvents":         {},
+	"GetNamespacePodCounts":    {},
+	"GetTopRestarters":         {},
+	"GetDeploymentRevisions":   {},
+	"GetVPARecommendations":    {},
+	// Diagnostics + AI chat (read-only-ish; conversation history per alert).
+	"DiagnoseAlert":            {},
+	"GetChatHistory":           {},
+	"GetAutoSummary":           {},
+	"GetAgentEventLog":         {},
+	"SendChatMessage":          {}, // produces side-effect: API call to LLM
+	// Argus Scan + Vulnerabilities — read-only reports.
+	"RunArgusScan":             {},
+	"ListVulnerabilities":      {},
+	// Argo CD read-only.
+	"GetArgusCDStatus":         {},
+	"ListArgusCDApps":          {},
+	"GetArgusCDApp":            {},
+	"GetArgusCDResources":      {},
+	"GetArgusCDDiffs":          {},
+	"ListArgusCDProjects":      {},
+	"TestArgusCDConnection":    {},
+	// Notebooks + Runbooks read.
+	"ListNotebooks":            {},
+	"GetNotebook":              {},
+	"ListRunbooks":             {},
+	"GetRunbook":               {},
+	// Setup / tools probes (read-only).
+	"CheckTools":               {},
+	// Pause/unpause is benign — affects only this server's polling cadence.
+	"SetPaused":                {},
+}
+
+func methodAllowedOverHTTP(name string) bool {
+	if name == "" {
+		return false
+	}
+	_, ok := httpExposedMethods[name]
+	return ok
 }

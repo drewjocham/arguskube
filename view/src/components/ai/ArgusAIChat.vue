@@ -1,6 +1,14 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useChat } from '../../composables/useWails'
+import { parseCodeBlocks } from '../../utils/parseCodeBlocks'
+import { renderMarkdown } from '../../utils/renderMarkdown'
+import { useArgusContextStore } from '../../stores/argusContext'
+import CodeBlock from './CodeBlock.vue'
+
+const argusContext = useArgusContextStore()
+const { pending: pendingContext } = storeToRefs(argusContext)
 
 const GLOBAL_ALERT_ID = 'global'
 
@@ -37,8 +45,12 @@ async function onSend() {
   if (!val || sending.value) return
   question.value = ''
   errorMessage.value = null
+  // Prepend any pending Argus context (a selected finding, network policy,
+  // etc.) so the agent has scope without forcing the user to re-type it.
+  const ctx = argusContext.consumeForSend()
+  const payload = ctx ? `${ctx}\n\nUser question: ${val}` : val
   try {
-    await sendMessage(GLOBAL_ALERT_ID, val)
+    await sendMessage(GLOBAL_ALERT_ID, payload)
   } catch (e) {
     errorMessage.value = e?.message || String(e)
   }
@@ -104,7 +116,21 @@ function formatTime(ts) {
               <span class="message-author">{{ msg.role === 'assistant' ? 'Argus AI' : 'You' }}</span>
               <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
             </div>
-            <div class="message-body">{{ msg.content }}</div>
+            <div class="message-body">
+              <template v-for="(seg, segIdx) in parseCodeBlocks(msg.content)" :key="segIdx">
+                <div
+                  v-if="seg.type === 'text'"
+                  class="message-text markdown-body"
+                  v-html="renderMarkdown(seg.text)"
+                ></div>
+                <CodeBlock
+                  v-else
+                  :code="seg.text"
+                  :language="seg.language"
+                  :allow-run="msg.role === 'assistant'"
+                />
+              </template>
+            </div>
           </div>
           <div v-if="sending" class="message assistant typing">
             <div class="message-meta">
@@ -121,6 +147,12 @@ function formatTime(ts) {
         <span class="error-icon">!</span>
         <span class="error-text">{{ errorMessage }}</span>
         <button class="error-close" @click="errorMessage = null">×</button>
+      </div>
+
+      <div v-if="pendingContext" class="context-chip">
+        <span class="context-chip-kind">{{ pendingContext.kind }}</span>
+        <span class="context-chip-label" :title="pendingContext.label">{{ pendingContext.label }}</span>
+        <button class="context-chip-close" @click="argusContext.clearContext()" title="Detach this context">×</button>
       </div>
 
       <div class="composer">
@@ -249,9 +281,53 @@ function formatTime(ts) {
   border-radius: 10px;
   font-size: 13px;
   line-height: 1.55;
-  white-space: pre-wrap;
   word-break: break-word;
 }
+.markdown-body :deep(p) { margin: 0 0 8px 0; }
+.markdown-body :deep(p:last-child) { margin-bottom: 0; }
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  font-weight: 600; color: #fff; margin: 10px 0 4px 0; line-height: 1.25;
+}
+.markdown-body :deep(h1) { font-size: 16px; }
+.markdown-body :deep(h2) { font-size: 15px; }
+.markdown-body :deep(h3) { font-size: 14px; }
+.markdown-body :deep(h4) { font-size: 13px; }
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  padding-left: 18px; margin: 4px 0;
+}
+.markdown-body :deep(li) { margin: 2px 0; }
+.markdown-body :deep(strong) { font-weight: 600; color: #fff; }
+.markdown-body :deep(em) { font-style: italic; }
+.markdown-body :deep(blockquote) {
+  border-left: 2px solid rgba(167, 139, 250, 0.5);
+  padding: 2px 10px; margin: 6px 0;
+  color: #b0b4ba; background: rgba(167, 139, 250, 0.06);
+}
+.markdown-body :deep(code) {
+  background: rgba(255, 255, 255, 0.07);
+  padding: 1px 5px; border-radius: 3px;
+  font-family: var(--mono); font-size: 11.5px;
+  color: #c9d1d9;
+}
+.markdown-body :deep(a) {
+  color: #6ba3f9; text-decoration: underline;
+}
+.markdown-body :deep(a:hover) { color: #8dbafd; }
+.markdown-body :deep(hr) {
+  border: none; border-top: 1px solid rgba(255, 255, 255, 0.08); margin: 8px 0;
+}
+.markdown-body :deep(table) {
+  border-collapse: collapse; margin: 6px 0; font-size: 12px;
+}
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  border: 1px solid rgba(255, 255, 255, 0.1); padding: 4px 8px; text-align: left;
+}
+.markdown-body :deep(th) { background: rgba(255, 255, 255, 0.04); font-weight: 600; }
 .message.user .message-body {
   background: rgba(79, 142, 247, 0.18);
   border: 1px solid rgba(79, 142, 247, 0.3);
@@ -302,6 +378,47 @@ function formatTime(ts) {
   background: none; border: none; color: #c9d1d9;
   font-size: 16px; cursor: pointer; line-height: 1;
 }
+
+/* Context chip — when another view (Config Audit finding, network policy, etc.)
+   has set a pending context, this sits just above the composer so the user
+   sees what scope Argus has. Click × to detach. */
+.context-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(167, 139, 250, 0.08);
+  border-top: 1px solid rgba(167, 139, 250, 0.25);
+  font-size: 11.5px;
+  color: #c4b3fd;
+}
+.context-chip-kind {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  font-size: 10px;
+  padding: 2px 6px;
+  background: rgba(167, 139, 250, 0.18);
+  border-radius: 3px;
+}
+.context-chip-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #e8eaec;
+}
+.context-chip-close {
+  background: none;
+  border: none;
+  color: #b0b4ba;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+.context-chip-close:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
 
 .composer {
   display: flex;

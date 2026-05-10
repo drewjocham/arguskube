@@ -2,6 +2,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useToast } from '../../composables/useToast'
 import { useBackgroundTasks } from '../../composables/useBackgroundTasks'
+import { useChat } from '../../composables/useWails'
+import { useUIPrefsStore } from '../../stores/uiPrefs'
+import { useArgusContextStore } from '../../stores/argusContext'
+import { watch } from 'vue'
+
+const { sendMessage } = useChat()
+const uiPrefs = useUIPrefsStore()
+const argusContext = useArgusContextStore()
 
 const props = defineProps({
   report: { type: Object, default: null },
@@ -113,8 +121,61 @@ function isSectionOpen(key) {
   return collapsedSections.value[key] !== true
 }
 
-function fixWithAgent(finding) {
-  addToast(`The AI Agent has been prompted to resolve: "${finding.name}".\n\nIt will execute: ${finding.command || 'Auto-generated remediation script'}`, 6000)
+function buildFindingContext(finding) {
+  return [
+    `Argus Scan flagged this finding — please diagnose and recommend a fix:`,
+    '',
+    `Finding: ${finding.name || finding.id || 'unknown'}`,
+    finding.resource ? `Resource: ${finding.resource}` : null,
+    finding.namespace ? `Namespace: ${finding.namespace}` : null,
+    finding.severity ? `Severity: ${finding.severity}` : null,
+    finding.message ? `Message: ${finding.message}` : null,
+    finding.explanation ? `Explanation: ${finding.explanation}` : null,
+    finding.fix ? `Suggested fix: ${finding.fix}` : null,
+    finding.command ? `Existing remediation command: ${finding.command}` : null,
+  ].filter(Boolean).join('\n')
+}
+
+// Whenever the user selects a finding, broadcast it as the active Argus
+// context. The right-rail / chat-popout reads this and shows a chip above
+// the composer. So if the user selects a finding and then types "explain
+// further" into the chat manually, Argus already has the right context
+// without the user needing to retype it.
+watch(selectedFinding, (finding) => {
+  if (!finding) {
+    argusContext.clearContext()
+    return
+  }
+  argusContext.setContext({
+    kind: 'config-audit-finding',
+    label: `${finding.severity?.toUpperCase() || 'finding'}: ${finding.name || finding.id || 'unknown'}`,
+    body: buildFindingContext(finding),
+    sourceId: finding.id,
+  })
+}, { immediate: true })
+
+async function fixWithAgent(finding) {
+  // The "Ask Argus" button always sends an explicit "diagnose this" message
+  // for the finding so the user sees an answer immediately. The shared
+  // argusContext store guarantees the right context is attached even if a
+  // race or user error triggered this without a select event firing first.
+  const body = buildFindingContext(finding)
+  argusContext.setContext({
+    kind: 'config-audit-finding',
+    label: `${finding.severity?.toUpperCase() || 'finding'}: ${finding.name}`,
+    body,
+    sourceId: finding.id,
+  })
+  uiPrefs.openChatPopOut()
+  addToast(`Asked Argus about "${finding.name}"…`, 3000)
+  try {
+    // consumeForSend() pulls the body and clears it so follow-up messages
+    // from the user don't re-prepend the whole finding context every time.
+    const ctx = argusContext.consumeForSend()
+    await sendMessage('global', ctx || body)
+  } catch (e) {
+    addToast(`Argus chat error: ${e?.message || e}`, 6000)
+  }
 }
 </script>
 

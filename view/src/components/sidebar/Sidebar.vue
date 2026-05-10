@@ -43,7 +43,8 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 // Sidebar collapse state.
 const sidebarCollapsed = ref(false)
 const popoverSection = ref(null) // ID of section whose popover is open.
-const popoverTop = ref(0) // Pixel offset from top of sidebar for popover position.
+const popoverTop = ref(0) // Viewport-absolute top in px (popover is teleported to <body>).
+const popoverLeft = ref(0) // Viewport-absolute left in px.
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
@@ -57,10 +58,15 @@ function openPopover(sectionId, event) {
     return
   }
   popoverSection.value = sectionId
-  // Position popover relative to clicked icon.
+  // The popover is teleported to <body> to escape the sidebar's overflow:hidden
+  // (and .nav-scroll's overflow-x:hidden) — without teleport the popover is
+  // clipped to the 48px wide collapsed sidebar and looks like clicks do
+  // nothing. So we compute viewport-absolute coordinates here.
   const rect = event.currentTarget.getBoundingClientRect()
-  const sidebarRect = event.currentTarget.closest('.sidebar').getBoundingClientRect()
-  popoverTop.value = rect.top - sidebarRect.top
+  const sidebar = event.currentTarget.closest('.sidebar')
+  const sidebarRect = sidebar.getBoundingClientRect()
+  popoverTop.value = rect.top
+  popoverLeft.value = sidebarRect.right + 4
 }
 
 function closePopover(e) {
@@ -316,11 +322,15 @@ const warningCount = computed(() =>
         </svg>
       </div>
 
-      <!-- Popover for collapsed section -->
+    </div>
+
+    <!-- Popover for collapsed section, teleported so overflow:hidden on the
+         sidebar root doesn't clip it. -->
+    <Teleport to="body">
       <div
         v-if="popoverSection"
         class="sidebar-popover"
-        :style="{ top: popoverTop + 'px' }"
+        :style="{ top: popoverTop + 'px', left: popoverLeft + 'px' }"
         @click.stop
       >
         <div class="popover-header">{{ getPopoverLabel() }}</div>
@@ -335,7 +345,7 @@ const warningCount = computed(() =>
           <span v-if="item.pro && !isAllowed(item.id)" class="pro-badge">PRO</span>
         </div>
       </div>
-    </div>
+    </Teleport>
 
     <!-- AI Context card -->
     <div class="ai-context-card" v-if="!sidebarCollapsed">
@@ -615,22 +625,25 @@ const warningCount = computed(() =>
 .icon-item.active { background: rgba(79,142,247,0.1); color: var(--accent2); }
 .icon-item.popover-open { background: var(--bg4); color: var(--text); }
 
-/* Popover */
+@keyframes pop-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
+</style>
+
+<!-- Popover styles must be unscoped because the popover is teleported to
+     <body> and would otherwise lose Vue's data-v-xxxxx scoping attribute. -->
+<style>
 .sidebar-popover {
-  position: absolute;
-  left: 48px;
+  position: fixed;
   min-width: 180px;
   background: var(--bg3);
   border: 1px solid var(--border2);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 1100;
   overflow: hidden;
   animation: pop-in 0.12s ease-out;
 }
-@keyframes pop-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
 
-.popover-header {
+.sidebar-popover .popover-header {
   padding: 8px 12px 6px;
   font-size: 10px;
   font-weight: 600;
@@ -640,7 +653,7 @@ const warningCount = computed(() =>
   border-bottom: 1px solid var(--border);
 }
 
-.popover-item {
+.sidebar-popover .popover-item {
   padding: 7px 12px;
   font-size: 12.5px;
   color: var(--text2);
@@ -650,8 +663,18 @@ const warningCount = computed(() =>
   align-items: center;
   justify-content: space-between;
 }
-.popover-item:hover { background: var(--bg4); color: var(--text); }
-.popover-item.active { background: rgba(79,142,247,0.08); color: var(--accent2); }
-.popover-item.pro-locked { opacity: 0.4; cursor: default; }
-.popover-item.pro-locked:hover { background: transparent; }
+.sidebar-popover .popover-item:hover { background: var(--bg4); color: var(--text); }
+.sidebar-popover .popover-item.active { background: rgba(79, 142, 247, 0.08); color: var(--accent2); }
+.sidebar-popover .popover-item.pro-locked { opacity: 0.4; cursor: default; }
+.sidebar-popover .popover-item.pro-locked:hover { background: transparent; }
+
+.sidebar-popover .pro-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(245, 166, 35, 0.15);
+  color: var(--amber);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
 </style>

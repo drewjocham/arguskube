@@ -15,6 +15,17 @@ This document provides instructions for agentic coding agents operating in the A
 - **Test (Single)**: Run a specific test with `go test -run TestName ./path/to/package -v`.
 - **Test (Coverage)**: Generate test coverage with `go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out`.
 
+## Deploy Commands
+
+- **Helm Lint**: Lint all Helm charts with `make helm-lint`.
+- **Helm Install (Dev)**: Install minimal dev setup with `make helm-install-dev`.
+- **Helm Install (Prod)**: Install all charts with `make helm-install`.
+- **Helm Uninstall**: Remove all resources with `make helm-uninstall`.
+- **Terraform Init**: Initialize Terraform with `make tf-init`.
+- **Terraform Plan**: Review changes with `make tf-plan`.
+- **Terraform Apply**: Deploy infrastructure with `make tf-apply`.
+- **Terraform Destroy**: Tear down with `make tf-destroy`.
+
 ## Code Style Guidelines
 
 ### Imports

@@ -123,11 +123,15 @@ export function HandleWebhook(arg1:http.ResponseWriter,arg2:http.Request):Promis
 
 export function InstallArgusScan():Promise<setup.SetupResult>;
 
+export function LaunchPopOutTerminal():Promise<void>;
+
 export function ListAllNamespaces():Promise<Array<string>>;
 
 export function ListApplications(arg1:string):Promise<Array<k8s.Application>>;
 
 export function ListArgusCDApps(arg1:string):Promise<Array<argocd.App>>;
+
+export function ListArgusCDProjects():Promise<Array<string>>;
 
 export function ListContexts():Promise<Array<k8s.ContextInfo>>;
 
@@ -203,7 +207,7 @@ export function SwitchContext(arg1:string):Promise<void>;
 
 export function SyncApplication(arg1:string,arg2:string):Promise<void>;
 
-export function SyncArgusCDApp(arg1:string):Promise<argocd.SyncResult>;
+export function SyncArgusCDApp(arg1:string,arg2:string):Promise<argocd.SyncResult>;
 
 export function TestArgusCDConnection():Promise<void>;
 

@@ -145,6 +145,40 @@ func TestExecBinaryEmptyOutputReturnsHelpfulError(t *testing.T) {
 	}
 }
 
+// TestExecBinaryDoesNotPassNoColor regression-tests for popeye 0.22+ which
+// rejects the --no-color flag with "unknown flag" before producing any output.
+// The stub records its args to a file; the test asserts --no-color is absent.
+func TestExecBinaryDoesNotPassNoColor(t *testing.T) {
+	if _, err := exec.LookPath("/bin/sh"); err != nil {
+		t.Skip("/bin/sh not available")
+	}
+	tmp := t.TempDir()
+	stub := filepath.Join(tmp, "popeye-stub")
+	argsFile := filepath.Join(tmp, "args.txt")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + argsFile + "\nprintf '{\"popeye\":{\"score\":80}}\\n'\nexit 0\n"
+	if err := os.WriteFile(stub, []byte(script), 0755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r := NewRunner(stub, "", "", "", logger)
+
+	if _, err := r.execBinary(context.Background()); err != nil {
+		t.Fatalf("execBinary() error: %v", err)
+	}
+	recorded, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatalf("read recorded args: %v", err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(recorded)), "\n") {
+		if line == "--no-color" {
+			t.Errorf("execBinary should not pass --no-color (popeye 0.22+ rejects it); recorded args:\n%s", string(recorded))
+		}
+	}
+	if !strings.Contains(string(recorded), "--out") || !strings.Contains(string(recorded), "json") {
+		t.Errorf("expected --out json in args, got:\n%s", string(recorded))
+	}
+}
+
 // TestExecBinaryBannerThenJSONIsParsedCleanly verifies banner-stripping still
 // works: when popeye prints a banner before the JSON, only the JSON portion is
 // returned.

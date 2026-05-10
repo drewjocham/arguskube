@@ -1,0 +1,56 @@
+# ── Image ──────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/drewjocham/kubewatcher-agent
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# ── Naming ─────────────────────────────────────────────────────────
+nameOverride: ""
+fullnameOverride: ""
+
+# ── Service ────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 8080
+
+# ── Agent Environment ──────────────────────────────────────────────
+env:
+  saasToken: false
+  saasServerURL: ""
+
+existingSecret: ""
+
+# ── DaemonSet Settings ─────────────────────────────────────────────
+hostNetwork: false
+
+# ── Resource Limits ────────────────────────────────────────────────
+resources:
+  limits:
+    cpu: 200m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 32Mi
+
+# ── ServiceAccount ─────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: ""
+
+# ── Security Contexts ──────────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# ── Scheduling ─────────────────────────────────────────────────────
+nodeSelector: {}
+tolerations:
+  - operator: Exists
+    effect: NoSchedule

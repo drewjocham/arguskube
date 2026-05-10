@@ -1,7 +1,10 @@
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount, inject } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount, inject, computed } from 'vue'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import { useRunbooks } from '../../composables/useWails'
+import { parseRunbookSegments } from '../../utils/parseRunbookSegments'
+import RunbookCodeBlock from './RunbookCodeBlock.vue'
 import ProGateOverlay from '../shared/ProGateOverlay.vue'
 
 const isAllowed = inject('isAllowed')
@@ -95,8 +98,22 @@ async function handleDelete() {
   editMode.value = false
 }
 
-function renderedMarkdown(content) {
-  return marked.parse(content || '')
+// Preview-mode segments. We split the runbook into text + code segments so
+// each code block becomes an interactive <RunbookCodeBlock> with Copy / Run
+// / per-section terminal routing. Text segments are still rendered as
+// markdown HTML, sanitized via DOMPurify before injection.
+const previewSegments = computed(() => parseRunbookSegments(editorContent.value))
+
+const currentRunbookId = computed(() => selectedRunbook.value?.id || 'untitled')
+
+function renderTextSegment(text) {
+  if (!text) return ''
+  // marked outputs block HTML; DOMPurify ensures no script / on* / javascript:
+  // sneaks in via a runbook authored elsewhere.
+  const html = marked.parse(text)
+  return DOMPurify.sanitize(html, {
+    ADD_ATTR: ['target'],
+  })
 }
 </script>
 
@@ -180,8 +197,27 @@ function renderedMarkdown(content) {
           spellcheck="false"
         ></textarea>
 
-        <!-- Preview mode: rendered markdown -->
-        <div v-else class="rb-preview" v-html="renderedMarkdown(editorContent)"></div>
+        <!-- Preview mode: walk parsed segments so code blocks become
+             interactive RunbookCodeBlock components (Copy + Run + session
+             routing) while prose stays as sanitized markdown. -->
+        <div v-else class="rb-preview">
+          <template v-for="(seg, i) in previewSegments" :key="i">
+            <div
+              v-if="seg.type === 'text'"
+              class="rb-text"
+              v-html="renderTextSegment(seg.text)"
+            ></div>
+            <RunbookCodeBlock
+              v-else
+              :code="seg.code"
+              :language="seg.language"
+              :section="seg.section"
+              :section-id="seg.sectionId"
+              :code-index="seg.codeIndex"
+              :runbook-id="currentRunbookId"
+            />
+          </template>
+        </div>
       </template>
 
       <div v-else class="empty-editor">

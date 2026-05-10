@@ -69,6 +69,32 @@ func NewAgent(client *DeepSeekClient, logger *slog.Logger) *Agent {
 	}
 }
 
+// SetClient swaps the DeepSeek client backing this agent. Used when the user
+// updates their API key at runtime — conversation history is preserved, but
+// subsequent requests go through the new client. Pass nil to disable LLM calls
+// (e.g. when the user clears the key).
+func (a *Agent) SetClient(client *DeepSeekClient) {
+	a.mu.Lock()
+	a.client = client
+	a.mu.Unlock()
+}
+
+// HasClient reports whether the agent currently has a DeepSeek client wired up.
+func (a *Agent) HasClient() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.client != nil
+}
+
+// currentClient returns a stable reference to the client under a read lock, so
+// callers can issue an HTTP request without holding the agent mutex. Returns
+// nil when the agent has no client (no API key configured).
+func (a *Agent) currentClient() *DeepSeekClient {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.client
+}
+
 // AutoInvestigate is called when a new alert arrives. It builds context and
 // sends the alert to DeepSeek for automatic analysis. Non-blocking — runs
 // in a goroutine and stores the result.
@@ -125,8 +151,9 @@ func (a *Agent) investigate(ctx context.Context, alert alerts.Alert, metrics *al
 		alertContext += "\n\nRecent patterns observed:\n" + recentPatterns
 	}
 
-	if a.client == nil {
-		return nil, fmt.Errorf("DeepSeek client is nil")
+	client := a.currentClient()
+	if client == nil {
+		return nil, fmt.Errorf("AI agent not configured — set the DeepSeek API key in Settings → AI & Integrations")
 	}
 
 	messages := []Message{
@@ -137,7 +164,7 @@ func (a *Agent) investigate(ctx context.Context, alert alerts.Alert, metrics *al
 		)},
 	}
 
-	response, err := a.client.Chat(ctx, messages)
+	response, err := client.Chat(ctx, messages)
 	if err != nil {
 		return nil, err
 	}
@@ -209,11 +236,12 @@ func (a *Agent) SendMessage(ctx context.Context, alertID string, userMessage str
 	// Build messages for the API (keep last 20 messages to stay within token limits).
 	messages := historyToMessages(history, 20)
 
-	if a.client == nil {
-		return "", fmt.Errorf("DeepSeek client is nil")
+	client := a.currentClient()
+	if client == nil {
+		return "", fmt.Errorf("AI agent not configured — set the DeepSeek API key in Settings → AI & Integrations")
 	}
 
-	response, err := a.client.Chat(ctx, messages)
+	response, err := client.Chat(ctx, messages)
 	if err != nil {
 		return "", err
 	}

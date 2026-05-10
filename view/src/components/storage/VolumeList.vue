@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useResources } from '../../composables/useWails'
 import VolumeCylinder from './VolumeCylinder.js'
 
@@ -11,9 +11,28 @@ const { result, detail, loading, error, detailLoading, listResources, getResourc
 
 const resourceKind = props.type || 'pvcs'
 
+// PVs are cluster-scoped (no namespace, no usage estimate via storage class
+// binding). PVCs are namespaced and bind to a PV. The view differentiates
+// title, columns, and empty-state copy so it's obvious which one is rendered.
+const isPV = computed(() => resourceKind === 'pvs')
+
+const headerTitle = computed(() => isPV.value ? 'Persistent Volumes' : 'Volume Claims')
+const headerSubtitle = computed(() =>
+  isPV.value
+    ? 'Cluster-scoped storage backing PersistentVolumeClaims.'
+    : 'Namespaced storage requests bound to a PersistentVolume.'
+)
+const emptyText = computed(() =>
+  isPV.value
+    ? 'No PersistentVolumes found in this cluster.'
+    : 'No PersistentVolumeClaims found in this cluster.'
+)
+const iconColor = computed(() => isPV.value ? '#a78bfa' : '#3ecf8e')
+
 const volumes = ref([])
 const volDetail = ref(null)
 const expandedVol = ref(null)
+const viewRef = ref(null)
 
 function mapItems() {
   if (result.value && result.value.items && result.value.items.length > 0) {
@@ -71,26 +90,41 @@ async function toggleExpand(volName) {
   if (expandedVol.value === volName) {
     expandedVol.value = null
     volDetail.value = null
-  } else {
-    expandedVol.value = volName
-    const vol = volumes.value.find(v => v.name === volName)
-    if (vol) {
-      await getResourceDetail(resourceKind, vol.namespace, volName)
-      if (detail.value) {
-        volDetail.value = detail.value
-      }
+    return
+  }
+
+  expandedVol.value = volName
+  const vol = volumes.value.find(v => v.name === volName)
+  if (vol) {
+    await getResourceDetail(resourceKind, vol.namespace, volName)
+    if (detail.value) {
+      volDetail.value = detail.value
     }
+  }
+  await nextTick()
+  scrollExpandedIntoView()
+}
+
+function scrollExpandedIntoView() {
+  const el = viewRef.value?.querySelector('.vol-expanded')
+  if (el && typeof el.scrollIntoView === 'function') {
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
 }
 </script>
 
 <template>
-  <div class="vol-view">
+  <div class="vol-view" ref="viewRef">
     <div class="header">
       <div class="header-row">
         <div>
-          <div class="title">Persistent Volumes & Claims</div>
-          <div class="subtitle">Storage resources available to your workloads</div>
+          <div class="title">
+            {{ headerTitle }}
+            <span class="scope-chip" :class="{ 'scope-cluster': isPV, 'scope-ns': !isPV }">
+              {{ isPV ? 'Cluster-scoped' : 'Namespaced' }}
+            </span>
+          </div>
+          <div class="subtitle">{{ headerSubtitle }}</div>
         </div>
         <button class="refresh-btn" @click="refresh(true)" :disabled="loading">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
       </div>
@@ -98,12 +132,12 @@ async function toggleExpand(volName) {
 
     <div v-if="loading && !volumes.length" class="state-box">Loading volumes…</div>
     <div v-else-if="error" class="state-box state-error">{{ error }}</div>
-    <div v-else-if="!volumes.length" class="state-box">No {{ resourceKind === 'pvs' ? 'persistent volumes' : 'volume claims' }} found in this cluster.</div>
+    <div v-else-if="!volumes.length" class="state-box">{{ emptyText }}</div>
 
-    <div v-else class="vol-list">
+    <div v-else class="vol-list" :class="{ 'is-pv': isPV }">
       <div class="vol-header-row">
         <div class="col-name">Name</div>
-        <div class="col-ns">Namespace</div>
+        <div v-if="!isPV" class="col-ns">Namespace</div>
         <div class="col-status">Status</div>
         <div class="col-cap">Capacity</div>
         <div class="col-modes">Access Modes</div>
@@ -113,19 +147,19 @@ async function toggleExpand(volName) {
       <div v-for="v in volumes" :key="v.name" class="vol-row-container">
         <div class="vol-row" @click="toggleExpand(v.name)">
           <div class="col-name">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #3ecf8e; margin-right: 8px;"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :style="{ color: iconColor, marginRight: '8px' }"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
             {{ v.name }}
           </div>
-          <div class="col-ns font-mono">{{ v.namespace }}</div>
+          <div v-if="!isPV" class="col-ns font-mono">{{ v.namespace || '—' }}</div>
           <div class="col-status">
             <span class="status-badge" :class="v.status.toLowerCase()">{{ v.status }}</span>
           </div>
-          
+
           <div class="col-cap">
             <VolumeCylinder :pct="usagePct(v)" :color="cylinderColor(v)" :size="32" />
             <span class="cap-text font-mono">{{ v.capacity }}</span>
           </div>
-          
+
           <div class="col-modes font-mono">{{ v.accessModes }}</div>
           <div class="col-sc font-mono" style="display:flex; justify-content:space-between; align-items:center;">
             {{ v.storageClass }}
@@ -194,9 +228,30 @@ async function toggleExpand(volName) {
 </template>
 
 <style scoped>
-.vol-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; height: 100%; }
-.header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
+.vol-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; flex: 1; min-height: 0; }
+.header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
+
+/* Scope chip — gives the user an unmistakable signal which list they're
+   looking at. PVs are cluster-scoped, PVCs are per-namespace. */
+.scope-chip {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.scope-chip.scope-cluster {
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+}
+.scope-chip.scope-ns {
+  background: rgba(62, 207, 142, 0.12);
+  color: #3ecf8e;
+  border: 1px solid rgba(62, 207, 142, 0.3);
+}
 .header-row { display: flex; justify-content: space-between; align-items: flex-start; }
 .refresh-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #b0b4ba; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
 .refresh-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
@@ -205,6 +260,10 @@ async function toggleExpand(volName) {
 .state-error { color: #f05454; }
 
 .vol-list { background: #1e2023; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; overflow: hidden; }
+
+/* PV variant collapses the namespace column since PVs are cluster-scoped. */
+.vol-list.is-pv .vol-header-row,
+.vol-list.is-pv .vol-row { grid-template-columns: 2fr 100px 180px 120px 1.5fr; }
 
 .vol-header-row {
   display: grid;

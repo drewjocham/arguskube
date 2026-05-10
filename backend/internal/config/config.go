@@ -42,6 +42,8 @@ type AIConfig struct {
 	DeepSeekAPIKey  string `env:"DEEPSEEK_API_KEY"`
 	AnomstackURL    string `env:"ANOMSTACK_URL"`
 	AnomstackAPIKey string `env:"ANOMSTACK_API_KEY"`
+	FlinkURL        string `env:"KUBEWATCHER_FLINK_URL"`
+	FlinkAPIKey     string `env:"KUBEWATCHER_FLINK_API_KEY"`
 	VertexProject   string `env:"VERTEX_PROJECT"`
 	VertexLocation  string `env:"VERTEX_LOCATION"`
 	PrometheusURL   string `env:"PROMETHEUS_URL"` // optional: enhances metrics if available
@@ -111,6 +113,8 @@ func New() (*OnlineDataConfig, error) {
 			DeepSeekAPIKey:  env("DEEPSEEK_API_KEY", ""),
 			AnomstackURL:    env("ANOMSTACK_URL", "http://localhost:8087"),
 			AnomstackAPIKey: env("ANOMSTACK_API_KEY", ""),
+			FlinkURL:        env("KUBEWATCHER_FLINK_URL", ""),
+			FlinkAPIKey:     env("KUBEWATCHER_FLINK_API_KEY", ""),
 			VertexProject:   env("VERTEX_PROJECT", ""),
 			VertexLocation:  env("VERTEX_LOCATION", "europe-west3"),
 			PrometheusURL:   env("PROMETHEUS_URL", ""), // auto-detected if empty
@@ -152,6 +156,14 @@ func New() (*OnlineDataConfig, error) {
 			AccessKey: env("KUBEWATCHER_S3_ACCESS_KEY", ""),
 			SecretKey: env("KUBEWATCHER_S3_SECRET_KEY", ""),
 		},
+	}
+
+	// Layer in user-customized settings persisted from the desktop UI. Persisted
+	// values override env vars where both are set, because the UI is the user's
+	// most recent explicit choice. Failing to read the file is non-fatal: we
+	// log later via the application logger; here we just fall back to env.
+	if persisted, err := LoadPersistedSettings(); err == nil && persisted != nil {
+		persisted.MergeInto(cfg)
 	}
 
 	if err := cfg.validate(); err != nil {

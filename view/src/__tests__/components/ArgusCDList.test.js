@@ -245,7 +245,7 @@ describe('ArgusCDList.vue — Integration', () => {
     await syncBtn.trigger('click')
     await nextTick()
 
-    expect(mockSyncApp).toHaveBeenCalledWith('my-app')
+    expect(mockSyncApp).toHaveBeenCalledWith('my-app', expect.any(String))
   })
 
   it('shows success notification after sync', async () => {

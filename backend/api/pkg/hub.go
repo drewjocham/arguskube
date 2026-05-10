@@ -13,9 +13,21 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// upgrader gates which origins can establish a WebSocket tunnel. The
+// previous implementation accepted any origin, which would have let any
+// website JS open a tunnel to a misconfigured server. We now defer to the
+// same allowlist used by the REST API: localhost / loopback always, plus
+// anything in KUBEWATCHER_API_ALLOWED_ORIGINS.
+//
+// Agents that connect machine-to-machine over mTLS don't carry an Origin
+// header (it's a browser concept) and pass through cleanly.
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		return originAllowed(origin, allowedOrigins())
 	},
 }
 

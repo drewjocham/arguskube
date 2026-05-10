@@ -61,9 +61,9 @@ export function useArgusCD() {
     }
   }
 
-  async function syncApp(name) {
+  async function syncApp(name, namespace = '') {
     try {
-      const result = await callGo('SyncArgusCDApp', name)
+      const result = await callGo('SyncArgusCDApp', name, namespace)
       invalidateCachePrefix('ListArgusCDApps')
       invalidateCachePrefix('GetArgusCDApp')
       await listApps()
@@ -128,6 +128,6 @@ export function useApplications() {
   return {
     applications, loading, error,
     listApplications: listApps,
-    syncApplication: (ns, name) => syncApp(name),
+    syncApplication: (ns, name) => syncApp(name, ns),
   }
 }

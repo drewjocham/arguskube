@@ -3,6 +3,11 @@ build/
 view/dist/
 view/node_modules/
 
+# Terraform
+**/*.tfstate
+**/*.tfstate.backup
+
+
 # IDE
 .idea/
 .vscode/

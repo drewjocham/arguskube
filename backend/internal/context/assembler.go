@@ -93,7 +93,7 @@ func (a *Assembler) Assemble(ctx context.Context, alert alerts.Alert, allAlerts 
 	}()
 
 	go func() {
-		if !a.gate.Allowed(features.FeatureAnomstack) || a.detector == nil {
+		if (!a.gate.Allowed(features.FeatureAnomstack) && !a.gate.Allowed(features.FeatureFlinkAnomaly)) || a.detector == nil {
 			done <- result{name: "anomaly"}
 			return
 		}

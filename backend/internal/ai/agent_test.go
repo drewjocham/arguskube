@@ -227,3 +227,69 @@ func TestAgentEventTimestampNotOverwritten(t *testing.T) {
 		t.Error("expected timestamp to be overwritten to current time")
 	}
 }
+
+// TestAgentHasClientReflectsConstruction confirms the agent reports whether a
+// DeepSeek client is wired up. Drives the UI surfacing of "AI not configured".
+func TestAgentHasClientReflectsConstruction(t *testing.T) {
+	logger := slog.New(slog.DiscardHandler)
+	agentNil := ai.NewAgent(nil, logger)
+	if agentNil.HasClient() {
+		t.Error("expected HasClient() == false for nil client")
+	}
+
+	agent := ai.NewAgent(ai.NewDeepSeekClient("k", logger), logger)
+	if !agent.HasClient() {
+		t.Error("expected HasClient() == true for non-nil client")
+	}
+}
+
+// TestAgentSetClientHotSwap verifies that updating the API key at runtime via
+// SetClient() flips HasClient() and surfaces a useful error before swap.
+func TestAgentSetClientHotSwap(t *testing.T) {
+	logger := slog.New(slog.DiscardHandler)
+	agent := ai.NewAgent(nil, logger)
+
+	// Before swap: SendMessage should return a "not configured" error rather
+	// than panic on nil client.
+	_, err := agent.SendMessage(context.Background(), "global", "ping", nil, nil)
+	if err == nil {
+		t.Fatal("expected error from SendMessage when no client is configured")
+	}
+	if !strings.Contains(err.Error(), "AI agent not configured") {
+		t.Errorf("expected user-facing error message, got %q", err.Error())
+	}
+
+	// Hot-swap a new client.
+	agent.SetClient(ai.NewDeepSeekClient("new-key", logger))
+	if !agent.HasClient() {
+		t.Error("expected HasClient() == true after SetClient")
+	}
+
+	// And clearing it again should return us to the nil-client path.
+	agent.SetClient(nil)
+	if agent.HasClient() {
+		t.Error("expected HasClient() == false after SetClient(nil)")
+	}
+}
+
+// TestAgentSetClientPreservesHistory confirms that swapping the client does
+// not wipe out conversation history — important so users don't lose context
+// when they finally configure an API key.
+func TestAgentSetClientPreservesHistory(t *testing.T) {
+	logger := slog.New(slog.DiscardHandler)
+	agent := ai.NewAgent(nil, logger)
+
+	// Seed a fake conversation by calling SendMessage; it'll error on the
+	// missing client but should still record the user message in history.
+	_, _ = agent.SendMessage(context.Background(), "global", "early question", nil, nil)
+	before := len(agent.GetChatHistory("global"))
+	if before == 0 {
+		t.Fatal("expected history to contain the user message even when the client is nil")
+	}
+
+	agent.SetClient(ai.NewDeepSeekClient("k", logger))
+	after := len(agent.GetChatHistory("global"))
+	if after != before {
+		t.Errorf("history changed after SetClient (%d → %d); should be preserved", before, after)
+	}
+}

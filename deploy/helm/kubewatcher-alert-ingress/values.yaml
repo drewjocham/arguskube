@@ -1,0 +1,53 @@
+# ── Image ──────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/drewjocham/kubewatcher-alert-ingress
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# ── Replicas ───────────────────────────────────────────────────────
+replicaCount: 1
+nameOverride: ""
+fullnameOverride: ""
+
+# ── Service ────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 8080
+
+# ── Configuration ──────────────────────────────────────────────────
+config:
+  mode: stdout
+  gcpProject: ""
+  gcpTopic: ""
+
+# ── Autoscaling ────────────────────────────────────────────────────
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# ── Resource Limits ────────────────────────────────────────────────
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 32Mi
+
+# ── Security Contexts ──────────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# ── Scheduling ─────────────────────────────────────────────────────
+nodeSelector: {}
+tolerations: []

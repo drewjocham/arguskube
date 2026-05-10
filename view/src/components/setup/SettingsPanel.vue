@@ -74,7 +74,7 @@ async function saveSettings() {
       trivyBinary: form.value.trivyBinary,
       falcoUrl: form.value.falcoUrl,
     })
-    saveMessage.value = 'Settings saved. Cluster reconnected.'
+    saveMessage.value = 'Settings saved and applied immediately.'
     // Reload settings to get updated masked values.
     await loadSettings()
     // Reload contexts with new kubeconfig.
@@ -175,7 +175,7 @@ onMounted(() => {
             class="field-input mono"
             placeholder="sk-…"
           />
-          <div class="field-hint">Used for AI diagnostics and auto-investigation. Set <code>DEEPSEEK_API_KEY</code> env var to persist across restarts.</div>
+          <div class="field-hint">Used for AI diagnostics, auto-investigation, and the Argus AI chat. Saved to your local config file and applied immediately — no restart needed. <code>DEEPSEEK_API_KEY</code> is also honored as an env-var override.</div>
         </div>
 
         <div class="field">

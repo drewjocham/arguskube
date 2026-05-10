@@ -544,6 +544,24 @@ export namespace anomaly {
 
 export namespace argocd {
 	
+	export class AppHistoryEntry {
+	    id: number;
+	    revision: string;
+	    deployedAt: string;
+	    source?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppHistoryEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.revision = source["revision"];
+	        this.deployedAt = source["deployedAt"];
+	        this.source = source["source"];
+	    }
+	}
 	export class AppResource {
 	    kind: string;
 	    name: string;
@@ -585,6 +603,7 @@ export namespace argocd {
 	    destNamespace: string;
 	    createdAt: string;
 	    resources?: AppResource[];
+	    history?: AppHistoryEntry[];
 	
 	    static createFrom(source: any = {}) {
 	        return new App(source);
@@ -608,6 +627,7 @@ export namespace argocd {
 	        this.destNamespace = source["destNamespace"];
 	        this.createdAt = source["createdAt"];
 	        this.resources = this.convertValues(source["resources"], AppResource);
+	        this.history = this.convertValues(source["history"], AppHistoryEntry);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -646,6 +666,7 @@ export namespace argocd {
 	        this.diff = source["diff"];
 	    }
 	}
+	
 	
 	export class SyncResult {
 	    phase: string;

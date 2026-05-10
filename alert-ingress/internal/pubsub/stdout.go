@@ -25,7 +25,6 @@ func (s *StdoutPublisher) Close() error { return nil }
 
 var _ Publisher = (*StdoutPublisher)(nil)
 
-// Ensure the interface is fully satisfied.
 var _ fmt.Stringer = (*StdoutPublisher)(nil)
 
 func (s *StdoutPublisher) String() string { return "stdout" }

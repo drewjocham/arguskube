@@ -56,8 +56,15 @@ func run() error {
 	}
 
 	var detector anomaly.Detector
-	if cfg.AI.AnomstackURL != "" {
+	switch {
+	case cfg.AI.FlinkURL != "":
+		detector = anomaly.NewFlinkClient(cfg, logger)
+		logger.Info("anomaly detector initialized", slog.String("backend", "flink"), slog.String("url", cfg.AI.FlinkURL))
+	case cfg.AI.AnomstackURL != "":
 		detector = anomaly.NewAnomstackClient(cfg, logger)
+		logger.Info("anomaly detector initialized", slog.String("backend", "anomstack"), slog.String("url", cfg.AI.AnomstackURL))
+	default:
+		logger.Warn("anomaly detection disabled — set KUBEWATCHER_FLINK_URL or ANOMSTACK_URL to enable")
 	}
 
 	assembler := ctxassembly.NewAssembler(cfg, gate, detector, logger)

@@ -796,6 +796,151 @@ func (c *Client) getJobDetail(ctx context.Context, ns, name string) (*ResourceDe
 	}, nil
 }
 
+// getPVDetail builds the detail view for a PersistentVolume. PVs are
+// cluster-scoped, so namespace is unused and the lookup goes through
+// the cluster-wide PersistentVolumes() API.
+func (c *Client) getPVDetail(ctx context.Context, name string) (*ResourceDetailResult, error) {
+	pv, err := c.cs.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	capacity := "—"
+	if q, ok := pv.Spec.Capacity[corev1.ResourceStorage]; ok {
+		capacity = q.String()
+	}
+
+	claimRef := "—"
+	if pv.Spec.ClaimRef != nil {
+		claimRef = fmt.Sprintf("%s/%s", pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
+	}
+
+	source := pvSourceSummary(pv)
+
+	props := []KeyValue{
+		{Key: "Status", Value: string(pv.Status.Phase)},
+		{Key: "Capacity", Value: capacity},
+		{Key: "Access Modes", Value: fmtAccessModes(pv.Spec.AccessModes)},
+		{Key: "Reclaim Policy", Value: string(pv.Spec.PersistentVolumeReclaimPolicy)},
+		{Key: "Storage Class", Value: orDash(pv.Spec.StorageClassName)},
+		{Key: "Volume Mode", Value: pvVolumeMode(pv)},
+		{Key: "Claim", Value: claimRef},
+		{Key: "Source", Value: source},
+	}
+
+	if pv.Status.Reason != "" {
+		props = append(props, KeyValue{Key: "Reason", Value: pv.Status.Reason})
+	}
+	if pv.Status.Message != "" {
+		props = append(props, KeyValue{Key: "Message", Value: pv.Status.Message})
+	}
+
+	events := c.getResourceEvents(ctx, "", "PersistentVolume", name)
+
+	return &ResourceDetailResult{
+		Kind:        "PersistentVolume",
+		Name:        pv.Name,
+		Namespace:   "", // cluster-scoped
+		Created:     fmtTimestamp(pv.CreationTimestamp.Time),
+		Labels:      pv.Labels,
+		Annotations: pv.Annotations,
+		Properties:  props,
+		Events:      events,
+	}, nil
+}
+
+// pvSourceSummary returns a short string describing the underlying volume
+// source (csi driver, hostPath, nfs, etc.) so the detail view shows where
+// the data actually lives.
+func pvSourceSummary(pv *corev1.PersistentVolume) string {
+	src := pv.Spec.PersistentVolumeSource
+	switch {
+	case src.CSI != nil:
+		s := fmt.Sprintf("CSI %s", src.CSI.Driver)
+		if src.CSI.VolumeHandle != "" {
+			s += " (" + src.CSI.VolumeHandle + ")"
+		}
+		return s
+	case src.HostPath != nil:
+		return "hostPath: " + src.HostPath.Path
+	case src.NFS != nil:
+		return fmt.Sprintf("NFS %s:%s", src.NFS.Server, src.NFS.Path)
+	case src.Local != nil:
+		return "local: " + src.Local.Path
+	case src.AWSElasticBlockStore != nil:
+		return "AWS EBS: " + src.AWSElasticBlockStore.VolumeID
+	case src.GCEPersistentDisk != nil:
+		return "GCE PD: " + src.GCEPersistentDisk.PDName
+	case src.AzureDisk != nil:
+		return "Azure Disk: " + src.AzureDisk.DiskName
+	case src.AzureFile != nil:
+		return "Azure File: " + src.AzureFile.ShareName
+	case src.ISCSI != nil:
+		return fmt.Sprintf("iSCSI %s/%s", src.ISCSI.TargetPortal, src.ISCSI.IQN)
+	case src.Cinder != nil:
+		return "Cinder: " + src.Cinder.VolumeID
+	case src.FlexVolume != nil:
+		return "FlexVolume: " + src.FlexVolume.Driver
+	default:
+		return "—"
+	}
+}
+
+func pvVolumeMode(pv *corev1.PersistentVolume) string {
+	if pv.Spec.VolumeMode == nil {
+		return "Filesystem"
+	}
+	return string(*pv.Spec.VolumeMode)
+}
+
+// getStorageClassDetail builds the detail view for a StorageClass. Like PVs,
+// StorageClasses are cluster-scoped.
+func (c *Client) getStorageClassDetail(ctx context.Context, name string) (*ResourceDetailResult, error) {
+	sc, err := c.cs.StorageV1().StorageClasses().Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	reclaim := "Delete"
+	if sc.ReclaimPolicy != nil {
+		reclaim = string(*sc.ReclaimPolicy)
+	}
+	bindingMode := "Immediate"
+	if sc.VolumeBindingMode != nil {
+		bindingMode = string(*sc.VolumeBindingMode)
+	}
+	allowExpand := "false"
+	if sc.AllowVolumeExpansion != nil && *sc.AllowVolumeExpansion {
+		allowExpand = "true"
+	}
+
+	isDefault := "false"
+	if v, ok := sc.Annotations["storageclass.kubernetes.io/is-default-class"]; ok && v == "true" {
+		isDefault = "true"
+	}
+
+	props := []KeyValue{
+		{Key: "Provisioner", Value: sc.Provisioner},
+		{Key: "Reclaim Policy", Value: reclaim},
+		{Key: "Volume Binding Mode", Value: bindingMode},
+		{Key: "Allow Volume Expansion", Value: allowExpand},
+		{Key: "Default", Value: isDefault},
+	}
+	for k, v := range sc.Parameters {
+		props = append(props, KeyValue{Key: "param: " + k, Value: v})
+	}
+
+	return &ResourceDetailResult{
+		Kind:        "StorageClass",
+		Name:        sc.Name,
+		Namespace:   "",
+		Created:     fmtTimestamp(sc.CreationTimestamp.Time),
+		Labels:      sc.Labels,
+		Annotations: sc.Annotations,
+		Properties:  props,
+	}, nil
+}
+
 func (c *Client) getGenericDetail(ctx context.Context, kind, ns, name string) (*ResourceDetailResult, error) {
 	return &ResourceDetailResult{
 		Kind:      kind,

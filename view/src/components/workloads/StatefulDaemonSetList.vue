@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { callGo, cachedCallGo, invalidateCache, DEFAULT_TTL } from '../../composables/useBridge'
 
 const props = defineProps({
@@ -22,6 +22,7 @@ const expandedWs = ref(null)
 const loading = ref(false)
 const error = ref(null)
 const notification = ref(null)
+const viewRef = ref(null)
 
 // Manifest popup state
 const manifestPopup = ref(false)
@@ -79,18 +80,28 @@ async function toggleExpand(wsName) {
   if (expandedWs.value === wsName) {
     expandedWs.value = null
     wsDetail.value = null
-  } else {
-    expandedWs.value = wsName
-    const ws = workloads.value.find(w => w.name === wsName)
-    if (ws) {
-      try {
-        const d = await cachedCallGo('GetResourceDetail', [resourceType.value, ws.namespace, wsName], DEFAULT_TTL)
-        wsDetail.value = d
-      } catch (e) {
-        console.error('[SDSList] detail:', e)
-        wsDetail.value = null
-      }
+    return
+  }
+
+  expandedWs.value = wsName
+  const ws = workloads.value.find(w => w.name === wsName)
+  if (ws) {
+    try {
+      const d = await cachedCallGo('GetResourceDetail', [resourceType.value, ws.namespace, wsName], DEFAULT_TTL)
+      wsDetail.value = d
+    } catch (e) {
+      console.error('[SDSList] detail:', e)
+      wsDetail.value = null
     }
+  }
+  await nextTick()
+  scrollExpandedIntoView()
+}
+
+function scrollExpandedIntoView() {
+  const el = viewRef.value?.querySelector('.ws-expanded')
+  if (el && typeof el.scrollIntoView === 'function') {
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
 }
 
@@ -156,7 +167,7 @@ async function deleteResource(ws) {
 </script>
 
 <template>
-  <div class="ws-view">
+  <div class="ws-view" ref="viewRef">
     <div class="header">
       <div class="title">{{ resourceLabelPlural }}</div>
       <div class="subtitle">{{ subtitle }}</div>

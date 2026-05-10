@@ -1,0 +1,59 @@
+# ── Image ──────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/drewjocham/kubewatcher-mcp
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# ── Replicas ───────────────────────────────────────────────────────
+replicaCount: 1
+nameOverride: ""
+fullnameOverride: ""
+
+# ── Service ────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 8080
+
+# ── Configuration ──────────────────────────────────────────────────
+config:
+  debug: false
+  pollInterval: 30s
+
+# ── Autoscaling ────────────────────────────────────────────────────
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+# ── Persistence ────────────────────────────────────────────────────
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+
+# ── Resource Limits ────────────────────────────────────────────────
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# ── Security Contexts ──────────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# ── Scheduling ─────────────────────────────────────────────────────
+nodeSelector: {}
+tolerations: []

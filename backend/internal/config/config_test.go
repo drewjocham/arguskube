@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -284,4 +285,20 @@ func clearEnv(t testing.TB) {
 	for _, v := range vars {
 		os.Unsetenv(v)
 	}
+}
+
+// TestMain isolates the persisted-settings file under a temp dir so that the
+// developer's real ~/.config/kubewatcher/settings.json (or macOS equivalent)
+// cannot leak into config tests.
+func TestMain(m *testing.M) {
+	tmp, err := os.MkdirTemp("", "kubewatcher-config-tests-*")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "TestMain: failed to create temp dir:", err)
+		os.Exit(1)
+	}
+	SetSettingsDirForTest(tmp)
+	code := m.Run()
+	SetSettingsDirForTest("")
+	os.RemoveAll(tmp)
+	os.Exit(code)
 }
