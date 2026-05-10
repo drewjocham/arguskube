@@ -192,14 +192,14 @@ func (a *App) GetTier() config.Tier {
 // new window, but a different app altogether.
 //
 // Strategy:
-//   1. Production: `KubeWatcherTerminal.app` is bundled inside the main
-//      .app at Contents/Resources/. Different CFBundleIdentifier, so macOS
-//      treats it as a separate application. Launched via `open -n` which
-//      forces a fresh instance and respects the bundle's app-ness.
-//   2. Dev (`wails dev` / `make run`): no second .app bundle exists, so
-//      fall back to spawning this same binary with KUBEWATCHER_MODE=terminal.
-//      The user gets a normal multi-window experience but it's still the
-//      same Dock entry. Acceptable for development.
+//  1. Production: `KubeWatcherTerminal.app` is bundled inside the main
+//     .app at Contents/Resources/. Different CFBundleIdentifier, so macOS
+//     treats it as a separate application. Launched via `open -n` which
+//     forces a fresh instance and respects the bundle's app-ness.
+//  2. Dev (`wails dev` / `make run`): no second .app bundle exists, so
+//     fall back to spawning this same binary with KUBEWATCHER_MODE=terminal.
+//     The user gets a normal multi-window experience but it's still the
+//     same Dock entry. Acceptable for development.
 func (a *App) LaunchPopOutTerminal() error {
 	if path, ok := siblingTerminalAppPath(); ok {
 		// Production path — open as a real macOS app via `open -n`.
@@ -235,9 +235,13 @@ func (a *App) LaunchPopOutTerminal() error {
 
 // siblingTerminalAppPath looks for the bundled standalone terminal .app
 // next to the running executable. In production the running binary lives at
-//   <App>.app/Contents/MacOS/kubewatcher
+//
+//	<App>.app/Contents/MacOS/kubewatcher
+//
 // and the terminal app is at
-//   <App>.app/Contents/Resources/KubeWatcherTerminal.app
+//
+//	<App>.app/Contents/Resources/KubeWatcherTerminal.app
+//
 // Returns ("", false) when not present (dev mode, non-mac builds, etc.).
 func siblingTerminalAppPath() (string, bool) {
 	self, err := os.Executable()
@@ -270,80 +274,171 @@ func siblingTerminalAppPath() (string, bool) {
 
 // SettingsPayload is the JSON structure for runtime config visible in the settings view.
 type SettingsPayload struct {
-	KubeconfigPath   string `json:"kubeconfigPath"`
-	CurrentContext   string `json:"currentContext"`
-	Namespace        string `json:"namespace"`
-	DeepSeekAPIKey   string `json:"deepseekApiKey"` // masked for display
-	AnomstackURL     string `json:"anomstackUrl"`
-	MCPServersConfig string `json:"mcpServersConfig"`
-	AgentInstructions string `json:"agentInstructions"`
-	PrometheusURL    string `json:"prometheusUrl"`
-	ArgoCDURL        string `json:"argocdUrl"`
-	ArgoCDToken      string `json:"argocdToken"`    // masked for display
-	ArgoCDInsecure   bool   `json:"argocdInsecure"`
+	KubeconfigPath string `json:"kubeconfigPath"`
+	CurrentContext string `json:"currentContext"`
+	Namespace      string `json:"namespace"`
+	DeepSeekAPIKey string `json:"deepseekApiKey"` // masked for display
+	LLMBaseURL     string `json:"llmBaseUrl"`     // override for self-hosted vLLM (vast.ai/GCP)
+	LLMModel       string `json:"llmModel"`       // model id served by the endpoint
+	AnomstackURL   string `json:"anomstackUrl"`
+	PrometheusURL  string `json:"prometheusUrl"`
+	ArgoCDURL      string `json:"argocdUrl"`
+	ArgoCDToken    string `json:"argocdToken"` // masked for display
+	ArgoCDInsecure bool   `json:"argocdInsecure"`
 	// Security scanning tools (all optional).
 	SnykToken   string `json:"snykToken"`   // masked for display
 	TrivyBinary string `json:"trivyBinary"` // path to trivy binary
 	FalcoURL    string `json:"falcoUrl"`    // Falco gRPC/HTTP endpoint
-	Tier        string `json:"tier"`
-	LogLevel    string `json:"logLevel"`
+	// Pipelines / CI-CD (all optional).
+	PipelinesEnabled    bool   `json:"pipelinesEnabled"`
+	PipelinesProvider   string `json:"pipelinesProvider"` // "" | github | gitlab | aws-codebuild | gcp-cloudbuild | circleci
+	GitHubToken         string `json:"githubToken"`       // masked for display
+	GitHubOwner         string `json:"githubOwner"`
+	GitHubRepo          string `json:"githubRepo"`
+	GitHubWorkflow      string `json:"githubWorkflow"`
+	GitLabURL           string `json:"gitlabUrl"`
+	GitLabToken         string `json:"gitlabToken"` // masked for display
+	GitLabProjectID     string `json:"gitlabProjectId"`
+	GitLabRef           string `json:"gitlabRef"`
+	AWSRegion           string `json:"awsRegion"`
+	AWSAccessKey        string `json:"awsAccessKey"`
+	AWSSecretKey        string `json:"awsSecretKey"` // masked for display
+	AWSProject          string `json:"awsProject"`
+	GCPProject          string `json:"gcpProject"`
+	GCPRegion           string `json:"gcpRegion"`
+	GCPCredentials      string `json:"gcpCredentials"`
+	CircleCIToken       string `json:"circleciToken"` // masked for display
+	CircleCIProjectSlug string `json:"circleciProjectSlug"`
+	AzureOrganization   string `json:"azureOrganization"`
+	AzureProject        string `json:"azureProject"`
+	AzurePipelineID     string `json:"azurePipelineId"`
+	AzureToken          string `json:"azureToken"` // masked for display
+	AzureBranch         string `json:"azureBranch"`
+	// PR notification toggles.
+	NotifyOnPROpened    bool `json:"notifyOnPrOpened"`
+	NotifyOnPRUpdated   bool `json:"notifyOnPrUpdated"`
+	NotifyOnPRCommented bool `json:"notifyOnPrCommented"`
+	NotifyOnPRMerged    bool `json:"notifyOnPrMerged"`
+	// Auto code review.
+	AutoCodeReview        bool   `json:"autoCodeReview"`
+	CodeReviewDestination string `json:"codeReviewDestination"`
+	GDriveFolderID        string `json:"gdriveFolderId"`
+	CodeReviewS3Prefix    string `json:"codeReviewS3Prefix"`
+	CodeReviewEmailTo     string `json:"codeReviewEmailTo"`
+	// Documentation destinations (all optional, tokens masked on read).
+	ConfluenceURL          string `json:"confluenceUrl"`
+	ConfluenceEmail        string `json:"confluenceEmail"`
+	ConfluenceToken        string `json:"confluenceToken"`
+	ConfluenceSpaceKey     string `json:"confluenceSpaceKey"`
+	ConfluenceParentPageID string `json:"confluenceParentPageId"`
+	NotionToken            string `json:"notionToken"`
+	NotionDatabaseID       string `json:"notionDatabaseId"`
+	EvernoteToken          string `json:"evernoteToken"`
+	EvernoteNotebookGUID   string `json:"evernoteNotebookGuid"`
+	OneNoteToken           string `json:"onenoteToken"`
+	OneNoteSectionID       string `json:"onenoteSectionId"`
+	AmplenoteAPIKey        string `json:"amplenoteApiKey"`
+	StandardNotesURL       string `json:"standardNotesUrl"`
+	StandardNotesToken     string `json:"standardNotesToken"`
+	ObsidianVaultPath      string `json:"obsidianVaultPath"`
+	JoplinURL              string `json:"joplinUrl"`
+	JoplinToken            string `json:"joplinToken"`
+	LogseqGraphPath        string `json:"logseqGraphPath"`
+	BearToken              string `json:"bearToken"`
+	Tier                   string `json:"tier"`
+	LogLevel               string `json:"logLevel"`
 }
 
-// TriggerAgentAnalysis manually fires the periodic agent analysis.
-func (a *App) TriggerAgentAnalysis() {
-	if a.periodicAgent != nil {
-		a.periodicAgent.TriggerAnalysis()
+// maskSecret returns a display-safe rendering of a secret string. Empty input
+// returns empty (so the UI can show "Not configured"); short secrets become
+// "••••"; longer secrets show the first and last four characters.
+func maskSecret(s string) string {
+	if s == "" {
+		return ""
 	}
+	if len(s) > 8 {
+		return s[:4] + "…" + s[len(s)-4:]
+	}
+	return "••••"
 }
 
 // GetSettings returns the current runtime configuration for display in the settings view.
 func (a *App) GetSettings() SettingsPayload {
-	masked := ""
-	if a.cfg.AI.DeepSeekAPIKey != "" {
-		k := a.cfg.AI.DeepSeekAPIKey
-		if len(k) > 8 {
-			masked = k[:4] + "…" + k[len(k)-4:]
-		} else {
-			masked = "••••"
-		}
-	}
-	maskedArgoToken := ""
-	if a.cfg.ArgoCD.Token != "" {
-		t := a.cfg.ArgoCD.Token
-		if len(t) > 8 {
-			maskedArgoToken = t[:4] + "…" + t[len(t)-4:]
-		} else {
-			maskedArgoToken = "••••"
-		}
-	}
-
-	maskedSnyk := ""
-	if a.cfg.Security.SnykToken != "" {
-		s := a.cfg.Security.SnykToken
-		if len(s) > 8 {
-			maskedSnyk = s[:4] + "…" + s[len(s)-4:]
-		} else {
-			maskedSnyk = "••••"
-		}
-	}
-
+	p := a.cfg.Pipelines
 	return SettingsPayload{
-		KubeconfigPath:   a.cfg.Kubernetes.Config,
-		CurrentContext:   a.cfg.Kubernetes.Context,
-		Namespace:        a.cfg.Kubernetes.Namespace,
-		DeepSeekAPIKey:    masked,
-		AnomstackURL:      a.cfg.AI.AnomstackURL,
-		MCPServersConfig:  a.cfg.AI.MCPServersConfig,
-		AgentInstructions: a.cfg.AI.AgentInstructions,
-		PrometheusURL:     a.cfg.AI.PrometheusURL,
+		KubeconfigPath: a.cfg.Kubernetes.Config,
+		CurrentContext: a.cfg.Kubernetes.Context,
+		Namespace:      a.cfg.Kubernetes.Namespace,
+		DeepSeekAPIKey: maskSecret(a.cfg.AI.DeepSeekAPIKey),
+		LLMBaseURL:     a.cfg.AI.LLMBaseURL,
+		LLMModel:       a.cfg.AI.LLMModel,
+		AnomstackURL:   a.cfg.AI.AnomstackURL,
+		PrometheusURL:  a.cfg.AI.PrometheusURL,
 		ArgoCDURL:      a.cfg.ArgoCD.URL,
-		ArgoCDToken:    maskedArgoToken,
+		ArgoCDToken:    maskSecret(a.cfg.ArgoCD.Token),
 		ArgoCDInsecure: a.cfg.ArgoCD.Insecure,
-		SnykToken:      maskedSnyk,
+		SnykToken:      maskSecret(a.cfg.Security.SnykToken),
 		TrivyBinary:    a.cfg.Security.TrivyBinary,
 		FalcoURL:       a.cfg.Security.FalcoURL,
-		Tier:           string(a.cfg.Features.Tier),
-		LogLevel:       a.cfg.Logging.Level,
+
+		PipelinesEnabled:    p.Enabled,
+		PipelinesProvider:   p.Provider,
+		GitHubToken:         maskSecret(p.GitHubToken),
+		GitHubOwner:         p.GitHubOwner,
+		GitHubRepo:          p.GitHubRepo,
+		GitHubWorkflow:      p.GitHubWorkflow,
+		GitLabURL:           p.GitLabURL,
+		GitLabToken:         maskSecret(p.GitLabToken),
+		GitLabProjectID:     p.GitLabProjectID,
+		GitLabRef:           p.GitLabRef,
+		AWSRegion:           p.AWSRegion,
+		AWSAccessKey:        p.AWSAccessKey, // identifier, not a secret — shown as-is
+		AWSSecretKey:        maskSecret(p.AWSSecretKey),
+		AWSProject:          p.AWSProject,
+		GCPProject:          p.GCPProject,
+		GCPRegion:           p.GCPRegion,
+		GCPCredentials:      p.GCPCredentials,
+		CircleCIToken:       maskSecret(p.CircleCIToken),
+		CircleCIProjectSlug: p.CircleCIProjectSlug,
+		AzureOrganization:   p.AzureOrganization,
+		AzureProject:        p.AzureProject,
+		AzurePipelineID:     p.AzurePipelineID,
+		AzureToken:          maskSecret(p.AzureToken),
+		AzureBranch:         p.AzureBranch,
+
+		NotifyOnPROpened:    p.NotifyOnPROpened,
+		NotifyOnPRUpdated:   p.NotifyOnPRUpdated,
+		NotifyOnPRCommented: p.NotifyOnPRCommented,
+		NotifyOnPRMerged:    p.NotifyOnPRMerged,
+
+		AutoCodeReview:        p.AutoCodeReview,
+		CodeReviewDestination: p.CodeReviewDestination,
+		GDriveFolderID:        p.GDriveFolderID,
+		CodeReviewS3Prefix:    p.CodeReviewS3Prefix,
+		CodeReviewEmailTo:     p.CodeReviewEmailTo,
+
+		ConfluenceURL:          p.ConfluenceURL,
+		ConfluenceEmail:        p.ConfluenceEmail,
+		ConfluenceToken:        maskSecret(p.ConfluenceToken),
+		ConfluenceSpaceKey:     p.ConfluenceSpaceKey,
+		ConfluenceParentPageID: p.ConfluenceParentPageID,
+		NotionToken:            maskSecret(p.NotionToken),
+		NotionDatabaseID:       p.NotionDatabaseID,
+		EvernoteToken:          maskSecret(p.EvernoteToken),
+		EvernoteNotebookGUID:   p.EvernoteNotebookGUID,
+		OneNoteToken:           maskSecret(p.OneNoteToken),
+		OneNoteSectionID:       p.OneNoteSectionID,
+		AmplenoteAPIKey:        maskSecret(p.AmplenoteAPIKey),
+		StandardNotesURL:       p.StandardNotesURL,
+		StandardNotesToken:     maskSecret(p.StandardNotesToken),
+		ObsidianVaultPath:      p.ObsidianVaultPath,
+		JoplinURL:              p.JoplinURL,
+		JoplinToken:            maskSecret(p.JoplinToken),
+		LogseqGraphPath:        p.LogseqGraphPath,
+		BearToken:              maskSecret(p.BearToken),
+
+		Tier:     string(a.cfg.Features.Tier),
+		LogLevel: a.cfg.Logging.Level,
 	}
 }
 
@@ -370,6 +465,12 @@ func (a *App) UpdateSettings(s SettingsPayload) error {
 			a.cfg.AI.DeepSeekAPIKey = s.DeepSeekAPIKey
 			rebuildAgent = true
 		}
+	}
+	if s.LLMBaseURL != "" {
+		a.cfg.AI.LLMBaseURL = s.LLMBaseURL
+	}
+	if s.LLMModel != "" {
+		a.cfg.AI.LLMModel = s.LLMModel
 	}
 	if s.AnomstackURL != "" {
 		a.cfg.AI.AnomstackURL = s.AnomstackURL
@@ -429,6 +530,169 @@ func (a *App) UpdateSettings(s SettingsPayload) error {
 	}
 	if s.FalcoURL != "" {
 		a.cfg.Security.FalcoURL = s.FalcoURL
+	}
+
+	// Pipelines / CI-CD (all optional). Booleans and the provider selector
+	// are always applied; tokens skip the masked sentinel; other fields apply
+	// when non-empty so an empty payload doesn't silently wipe stored config.
+	a.cfg.Pipelines.Enabled = s.PipelinesEnabled
+	a.cfg.Pipelines.Provider = s.PipelinesProvider
+
+	if s.GitHubToken != "" && !containsMask(s.GitHubToken) {
+		a.cfg.Pipelines.GitHubToken = s.GitHubToken
+	}
+	if s.GitHubOwner != "" {
+		a.cfg.Pipelines.GitHubOwner = s.GitHubOwner
+	}
+	if s.GitHubRepo != "" {
+		a.cfg.Pipelines.GitHubRepo = s.GitHubRepo
+	}
+	if s.GitHubWorkflow != "" {
+		a.cfg.Pipelines.GitHubWorkflow = s.GitHubWorkflow
+	}
+
+	if s.GitLabURL != "" {
+		a.cfg.Pipelines.GitLabURL = s.GitLabURL
+	}
+	if s.GitLabToken != "" && !containsMask(s.GitLabToken) {
+		a.cfg.Pipelines.GitLabToken = s.GitLabToken
+	}
+	if s.GitLabProjectID != "" {
+		a.cfg.Pipelines.GitLabProjectID = s.GitLabProjectID
+	}
+	if s.GitLabRef != "" {
+		a.cfg.Pipelines.GitLabRef = s.GitLabRef
+	}
+
+	if s.AWSRegion != "" {
+		a.cfg.Pipelines.AWSRegion = s.AWSRegion
+	}
+	if s.AWSAccessKey != "" {
+		a.cfg.Pipelines.AWSAccessKey = s.AWSAccessKey
+	}
+	if s.AWSSecretKey != "" && !containsMask(s.AWSSecretKey) {
+		a.cfg.Pipelines.AWSSecretKey = s.AWSSecretKey
+	}
+	if s.AWSProject != "" {
+		a.cfg.Pipelines.AWSProject = s.AWSProject
+	}
+
+	if s.GCPProject != "" {
+		a.cfg.Pipelines.GCPProject = s.GCPProject
+	}
+	if s.GCPRegion != "" {
+		a.cfg.Pipelines.GCPRegion = s.GCPRegion
+	}
+	if s.GCPCredentials != "" {
+		a.cfg.Pipelines.GCPCredentials = s.GCPCredentials
+	}
+
+	if s.CircleCIToken != "" && !containsMask(s.CircleCIToken) {
+		a.cfg.Pipelines.CircleCIToken = s.CircleCIToken
+	}
+	if s.CircleCIProjectSlug != "" {
+		a.cfg.Pipelines.CircleCIProjectSlug = s.CircleCIProjectSlug
+	}
+
+	if s.AzureOrganization != "" {
+		a.cfg.Pipelines.AzureOrganization = s.AzureOrganization
+	}
+	if s.AzureProject != "" {
+		a.cfg.Pipelines.AzureProject = s.AzureProject
+	}
+	if s.AzurePipelineID != "" {
+		a.cfg.Pipelines.AzurePipelineID = s.AzurePipelineID
+	}
+	if s.AzureToken != "" && !containsMask(s.AzureToken) {
+		a.cfg.Pipelines.AzureToken = s.AzureToken
+	}
+	if s.AzureBranch != "" {
+		a.cfg.Pipelines.AzureBranch = s.AzureBranch
+	}
+
+	// PR notification toggles — booleans applied unconditionally so users can
+	// turn each off again from a previous on state.
+	a.cfg.Pipelines.NotifyOnPROpened = s.NotifyOnPROpened
+	a.cfg.Pipelines.NotifyOnPRUpdated = s.NotifyOnPRUpdated
+	a.cfg.Pipelines.NotifyOnPRCommented = s.NotifyOnPRCommented
+	a.cfg.Pipelines.NotifyOnPRMerged = s.NotifyOnPRMerged
+
+	// Auto code review — bool + string selector applied unconditionally; the
+	// destination-specific config strings overwrite when non-empty so a
+	// partial save doesn't wipe a previously-set folder/recipient list.
+	a.cfg.Pipelines.AutoCodeReview = s.AutoCodeReview
+	if s.CodeReviewDestination != "" {
+		a.cfg.Pipelines.CodeReviewDestination = s.CodeReviewDestination
+	}
+	if s.GDriveFolderID != "" {
+		a.cfg.Pipelines.GDriveFolderID = s.GDriveFolderID
+	}
+	if s.CodeReviewS3Prefix != "" {
+		a.cfg.Pipelines.CodeReviewS3Prefix = s.CodeReviewS3Prefix
+	}
+	if s.CodeReviewEmailTo != "" {
+		a.cfg.Pipelines.CodeReviewEmailTo = s.CodeReviewEmailTo
+	}
+
+	// Documentation destinations — strings apply when non-empty, tokens skip
+	// the masked sentinel so reading-then-saving an unedited form preserves
+	// the existing secret on disk.
+	if s.ConfluenceURL != "" {
+		a.cfg.Pipelines.ConfluenceURL = s.ConfluenceURL
+	}
+	if s.ConfluenceEmail != "" {
+		a.cfg.Pipelines.ConfluenceEmail = s.ConfluenceEmail
+	}
+	if s.ConfluenceToken != "" && !containsMask(s.ConfluenceToken) {
+		a.cfg.Pipelines.ConfluenceToken = s.ConfluenceToken
+	}
+	if s.ConfluenceSpaceKey != "" {
+		a.cfg.Pipelines.ConfluenceSpaceKey = s.ConfluenceSpaceKey
+	}
+	if s.ConfluenceParentPageID != "" {
+		a.cfg.Pipelines.ConfluenceParentPageID = s.ConfluenceParentPageID
+	}
+	if s.NotionToken != "" && !containsMask(s.NotionToken) {
+		a.cfg.Pipelines.NotionToken = s.NotionToken
+	}
+	if s.NotionDatabaseID != "" {
+		a.cfg.Pipelines.NotionDatabaseID = s.NotionDatabaseID
+	}
+	if s.EvernoteToken != "" && !containsMask(s.EvernoteToken) {
+		a.cfg.Pipelines.EvernoteToken = s.EvernoteToken
+	}
+	if s.EvernoteNotebookGUID != "" {
+		a.cfg.Pipelines.EvernoteNotebookGUID = s.EvernoteNotebookGUID
+	}
+	if s.OneNoteToken != "" && !containsMask(s.OneNoteToken) {
+		a.cfg.Pipelines.OneNoteToken = s.OneNoteToken
+	}
+	if s.OneNoteSectionID != "" {
+		a.cfg.Pipelines.OneNoteSectionID = s.OneNoteSectionID
+	}
+	if s.AmplenoteAPIKey != "" && !containsMask(s.AmplenoteAPIKey) {
+		a.cfg.Pipelines.AmplenoteAPIKey = s.AmplenoteAPIKey
+	}
+	if s.StandardNotesURL != "" {
+		a.cfg.Pipelines.StandardNotesURL = s.StandardNotesURL
+	}
+	if s.StandardNotesToken != "" && !containsMask(s.StandardNotesToken) {
+		a.cfg.Pipelines.StandardNotesToken = s.StandardNotesToken
+	}
+	if s.ObsidianVaultPath != "" {
+		a.cfg.Pipelines.ObsidianVaultPath = s.ObsidianVaultPath
+	}
+	if s.JoplinURL != "" {
+		a.cfg.Pipelines.JoplinURL = s.JoplinURL
+	}
+	if s.JoplinToken != "" && !containsMask(s.JoplinToken) {
+		a.cfg.Pipelines.JoplinToken = s.JoplinToken
+	}
+	if s.LogseqGraphPath != "" {
+		a.cfg.Pipelines.LogseqGraphPath = s.LogseqGraphPath
+	}
+	if s.BearToken != "" && !containsMask(s.BearToken) {
+		a.cfg.Pipelines.BearToken = s.BearToken
 	}
 
 	if reconnect {

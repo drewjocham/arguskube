@@ -11,6 +11,7 @@ import IncidentLog from '../operations/IncidentLog.vue'
 import ConfigAudit from '../operations/ConfigAudit.vue'
 // WorkflowEditor deprecated — duplicates Argo Workflows.
 import ArgusCDList from '../operations/ArgusCDList.vue'
+import PipelinesView from '../operations/PipelinesView.vue'
 import LogExplorer from './LogExplorer.vue'
 import AnomalyDetection from './AnomalyDetection.vue'
 import MetricsExplorer from './MetricsExplorer.vue'
@@ -99,7 +100,7 @@ const resourceViews = [
 ]
 
 // Operations views.
-const operationViews = ['runbooks', 'incidents', 'audit', 'arguscd']
+const operationViews = ['runbooks', 'incidents', 'audit', 'arguscd', 'pipelines']
 
 // Knowledge views.
 const knowledgeViews = ['notebooks', 'documents']
@@ -112,6 +113,15 @@ const isResource = computed(() => resourceViews.includes(props.activeNav))
 const isOperations = computed(() => operationViews.includes(props.activeNav))
 const isKnowledge = computed(() => knowledgeViews.includes(props.activeNav))
 const isAdmin = computed(() => adminViews.includes(props.activeNav))
+
+const OPS_TITLES = {
+  runbooks: 'Runbooks',
+  incidents: 'Incident Log',
+  audit: 'Config Audit',
+  arguscd: 'ArgusCD',
+  pipelines: 'Pipelines',
+}
+const opsTitle = computed(() => OPS_TITLES[props.activeNav] || '')
 
 // Argus Scan logic — real backend only, persisted across navigation.
 const reportData = computed(() => {
@@ -260,7 +270,7 @@ async function runArgusScan() {
     <template v-else-if="isOperations">
       <div class="ops-header">
         <div class="ops-title">
-          {{ activeNav === 'runbooks' ? 'Runbooks' : activeNav === 'incidents' ? 'Incident Log' : activeNav === 'audit' ? 'Config Audit' : 'ArgusCD' }}
+          {{ opsTitle }}
         </div>
       </div>
 
@@ -269,6 +279,7 @@ async function runArgusScan() {
         <IncidentLog v-if="activeNav === 'incidents'" />
         <ConfigAudit v-if="activeNav === 'audit'" />
         <ArgusCDList v-if="activeNav === 'arguscd'" />
+        <PipelinesView v-if="activeNav === 'pipelines'" />
       </div>
     </template>
 

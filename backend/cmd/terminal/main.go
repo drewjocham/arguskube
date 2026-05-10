@@ -12,6 +12,7 @@ import (
 	"github.com/argues/kube-watcher/internal/ai"
 	"github.com/argues/kube-watcher/internal/config"
 	applogger "github.com/argues/kube-watcher/internal/logger"
+	"github.com/argues/kube-watcher/internal/usage"
 	"github.com/argues/kube-watcher/view"
 )
 
@@ -37,9 +38,25 @@ func run() error {
 
 	// For the standalone terminal, we only strictly need the PTY/terminal integrations
 	// and potentially the AI Agent for the "Magic Wand" features.
+	usageStore, _ := usage.New()
+
 	var agent *ai.Agent
 	if cfg.AI.DeepSeekAPIKey != "" {
-		dsClient := ai.NewDeepSeekClient(cfg.AI.DeepSeekAPIKey, logger)
+		dsClient := ai.NewOpenAICompatibleClient(
+			cfg.AI.DeepSeekAPIKey,
+			cfg.AI.LLMBaseURL,
+			cfg.AI.LLMModel,
+			logger,
+		)
+		if usageStore != nil {
+			dsClient.SetUsageRecorder(func(model string, in, out int) {
+				_ = usageStore.Record(usage.Record{
+					Model:            model,
+					PromptTokens:     in,
+					CompletionTokens: out,
+				})
+			})
+		}
 		agent = ai.NewAgent(dsClient, logger)
 		logger.Info("AI agent initialized for terminal context")
 	}
@@ -48,6 +65,7 @@ func run() error {
 		Logger:  logger,
 		Config:  cfg,
 		Agent:   agent,
+		Usage:   usageStore,
 		AppMode: "terminal",
 	})
 

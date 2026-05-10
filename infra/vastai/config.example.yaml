@@ -1,0 +1,45 @@
+# vast.ai instance specification.
+# Copy to config.yaml and edit. config.yaml is gitignored.
+
+# What to serve.
+model:
+  name: meta-llama/Llama-3.1-8B-Instruct
+  # Bearer token clients must present. Generate with: openssl rand -hex 32
+  api_key: ${LLM_API_KEY}
+  # GPU memory fraction reserved for KV cache + weights.
+  gpu_mem_fraction: 0.92
+  # Optional — only needed for gated/private HF models.
+  hf_token: ${HF_TOKEN}
+
+# Hardware filter — applied to vast.ai's offer search.
+# See https://vast.ai/docs/cli/queries for the full filter language.
+gpu:
+  # Names match what vast.ai surfaces, e.g. "RTX_4090", "RTX_3090", "A6000",
+  # "A100_PCIE", "H100_PCIE". A list = match any.
+  allowed: ["RTX_4090", "RTX_3090", "A6000"]
+  count: 1
+  # Minimum total VRAM in GB across the requested GPU(s).
+  min_vram_gb: 24
+
+# Host filter.
+host:
+  # Maximum hourly bid in USD (vast.ai is a marketplace).
+  max_dph: 0.50
+  # "verified" hosts pass vast.ai's reliability tests; "all" includes everyone.
+  verified_only: true
+  # Minimum reliability score (0.0–1.0). 0.95 is conservative.
+  min_reliability: 0.95
+  # Minimum disk space in GB (model weights + HF cache).
+  min_disk_gb: 60
+  # Minimum download bandwidth in Mbps. Big models pull tens of GB.
+  min_inet_down_mbps: 200
+
+# Bootstrap.
+bootstrap:
+  # Path to the cloud-init script, relative to the repo root.
+  script: infra/cloud-init/llm-server.sh
+  # Port the script exposes vLLM on. vast.ai will rewrite this to a public port.
+  internal_port: 8000
+
+# Tag every instance we create so `llm_down.py` knows which ones are ours.
+tag: kube-watcher-llm

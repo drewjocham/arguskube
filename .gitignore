@@ -76,8 +76,18 @@ go.work.sum
 # env file
 .env
 
--e 
+-e
 # Tests
 view/test-results/
 view/e2e/playwright-report/
 node_modules/.vite/
+
+# Infra — keep examples, ignore real config / state
+infra/vastai/config.yaml
+infra/vastai/.venv/
+infra/vastai/__pycache__/
+infra/gcp/terraform.tfvars
+infra/gcp/.terraform/
+infra/gcp/.terraform.lock.hcl
+infra/gcp/terraform.tfstate
+infra/gcp/terraform.tfstate.backup

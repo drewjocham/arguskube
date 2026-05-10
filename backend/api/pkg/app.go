@@ -8,12 +8,13 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/argues/kube-watcher/internal/agentconn"
 	"github.com/argues/kube-watcher/internal/agentanalysis"
-	"github.com/argues/kube-watcher/internal/argocd"
+	"github.com/argues/kube-watcher/internal/agentconn"
 	"github.com/argues/kube-watcher/internal/ai"
+	"github.com/argues/kube-watcher/internal/alertproc"
 	"github.com/argues/kube-watcher/internal/alerts"
 	"github.com/argues/kube-watcher/internal/anomaly"
+	"github.com/argues/kube-watcher/internal/argocd"
 	"github.com/argues/kube-watcher/internal/config"
 	ctxassembly "github.com/argues/kube-watcher/internal/context"
 	"github.com/argues/kube-watcher/internal/features"
@@ -21,60 +22,68 @@ import (
 	"github.com/argues/kube-watcher/internal/k8s"
 	"github.com/argues/kube-watcher/internal/notebooks"
 	"github.com/argues/kube-watcher/internal/popeye"
-	"github.com/argues/kube-watcher/internal/alertproc"
 	"github.com/argues/kube-watcher/internal/runbooks"
 	"github.com/argues/kube-watcher/internal/setup"
 	"github.com/argues/kube-watcher/internal/spotcheck"
 	"github.com/argues/kube-watcher/internal/terminal"
+	"github.com/argues/kube-watcher/internal/usage"
 	"github.com/argues/kube-watcher/internal/vulnscan"
 	"github.com/argues/kube-watcher/internal/workflows"
 )
 
 // AppConfig holds all dependencies for the application. Flat, explicit.
 type AppConfig struct {
-	Logger    *slog.Logger
-	Config    *config.OnlineDataConfig
-	K8sClient *k8s.Client
-	Gate      *features.Gate
-	Assembler *ctxassembly.Assembler
+	Logger          *slog.Logger
+	Config          *config.OnlineDataConfig
+	K8sClient       *k8s.Client
+	Gate            *features.Gate
+	Assembler       *ctxassembly.Assembler
 	Detector        anomaly.Detector
 	AnomalySettings *anomaly.SettingsStore
 	Agent           *ai.Agent
-	Popeye    *popeye.Runner
-	Scanner   *vulnscan.Scanner
-	ArgoCD    *argocd.Client
-	Notebooks *notebooks.Store
-	Runbooks  *runbooks.Store
-	Setup     *setup.Manager
-	Incidents *incidents.Store
-	Workflows *workflows.Store
-	DB        *sql.DB
-	AppMode   string
+	Popeye          *popeye.Runner
+	Scanner         *vulnscan.Scanner
+	ArgoCD          *argocd.Client
+	Notebooks       *notebooks.Store
+	Runbooks        *runbooks.Store
+	Setup           *setup.Manager
+	Incidents       *incidents.Store
+	Workflows       *workflows.Store
+	Usage           *usage.Store
+	DB              *sql.DB
+	AppMode         string
 }
 
 // App is the main application struct exposed to Wails as bindings.
 type App struct {
-	ctx       context.Context
-	logger    *slog.Logger
-	cfg       *config.OnlineDataConfig
-	k8s       *k8s.Client
-	gate      *features.Gate
-	assembler *ctxassembly.Assembler
-	detector       anomaly.Detector
+	ctx             context.Context
+	logger          *slog.Logger
+	cfg             *config.OnlineDataConfig
+	k8s             *k8s.Client
+	gate            *features.Gate
+	assembler       *ctxassembly.Assembler
+	detector        anomaly.Detector
 	anomalySettings *anomaly.SettingsStore
-	agent          *ai.Agent
-	periodicAgent  *agentanalysis.Agent
-	popeye    *popeye.Runner
-	scanner   *vulnscan.Scanner
-	argoCD    *argocd.Client
-	notebooks *notebooks.Store
-	runbooks  *runbooks.Store
-	agentConn *agentconn.Connector
-	term      *terminal.Terminal
-	setup     *setup.Manager
-	incidents *incidents.Store
-	hub       *Hub
-	workflows *workflows.Store
+	agent           *ai.Agent
+	periodicAgent   *agentanalysis.Agent
+	popeye          *popeye.Runner
+	scanner         *vulnscan.Scanner
+	argoCD          *argocd.Client
+	notebooks       *notebooks.Store
+	runbooks        *runbooks.Store
+	agentConn       *agentconn.Connector
+	term            *terminal.Terminal
+	setup           *setup.Manager
+	incidents       *incidents.Store
+	hub             *Hub
+	workflows       *workflows.Store
+	usage           *usage.Store
+
+	// routesTbl is the typed HTTP dispatch table populated lazily on first
+	// /api/* request. Built per-App (see ensureRoutes) so tests and any
+	// future multi-tenant deployment don't share closures across instances.
+	routesOnce sync.Once
+	routesTbl  map[string]apiHandler
 
 	appMode string
 
@@ -113,27 +122,28 @@ type App struct {
 // NewApp constructs and initializes the main application.
 func NewApp(ac AppConfig) *App {
 	app := &App{
-		ctx:       context.Background(),
-		logger:    ac.Logger,
-		cfg:       ac.Config,
-		k8s:       ac.K8sClient,
-		gate:      features.NewGate(ac.Config),
-		assembler: ac.Assembler,
+		ctx:             context.Background(),
+		logger:          ac.Logger,
+		cfg:             ac.Config,
+		k8s:             ac.K8sClient,
+		gate:            features.NewGate(ac.Config),
+		assembler:       ac.Assembler,
 		detector:        ac.Detector,
 		anomalySettings: ac.AnomalySettings,
 		agent:           ac.Agent,
-		popeye:    ac.Popeye,
-		scanner:   ac.Scanner,
-		argoCD:    ac.ArgoCD,
-		notebooks: ac.Notebooks,
-		runbooks:  ac.Runbooks,
-		term:      terminal.New(ac.Logger),
-		setup:     ac.Setup,
-		incidents: ac.Incidents,
-		workflows: ac.Workflows,
-		db:        ac.DB,
-		appMode:   ac.AppMode,
-		hub:       NewHub(ac.Logger.With("component", "saas-hub")),
+		popeye:          ac.Popeye,
+		scanner:         ac.Scanner,
+		argoCD:          ac.ArgoCD,
+		notebooks:       ac.Notebooks,
+		runbooks:        ac.Runbooks,
+		term:            terminal.New(ac.Logger),
+		setup:           ac.Setup,
+		incidents:       ac.Incidents,
+		workflows:       ac.Workflows,
+		db:              ac.DB,
+		usage:           ac.Usage,
+		appMode:         ac.AppMode,
+		hub:             NewHub(ac.Logger.With("component", "saas-hub")),
 	}
 
 	// Initialize agent connector if k8s client is available.
