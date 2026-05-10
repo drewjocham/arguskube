@@ -27,7 +27,8 @@ BUILD_BIN   := $(BACKEND_DIR)/build/bin/$(APP_NAME)
 
 .PHONY: help dev build run frontend frontend-dev deps deps-go deps-vue \
         test test-go test-vue lint lint-go clean doctor \
-        bindings contexts logs
+        bindings contexts logs \
+        llm-up llm-down llm-status llm-gcp-up llm-gcp-down llm-gcp-endpoint
 
 # ── Default ──────────────────────────────────────────────────────
 
@@ -113,6 +114,30 @@ clean: ## Remove all build artifacts
 
 clean-vue: ## Remove Vue node_modules only
 	rm -rf $(VIEW_DIR)/node_modules
+
+# ── Self-hosted LLM (infra/) ─────────────────────────────────────
+
+llm-up: ## Spin up an on-demand LLM endpoint on vast.ai (primary)
+	@: $${VAST_API_KEY:?VAST_API_KEY is required}
+	@: $${LLM_API_KEY:?LLM_API_KEY is required (openssl rand -hex 32)}
+	@test -f infra/vastai/config.yaml || (echo "Run: cp infra/vastai/config.example.yaml infra/vastai/config.yaml" && exit 1)
+	cd infra/vastai && python3 llm_up.py
+
+llm-down: ## Destroy our vast.ai LLM instances
+	cd infra/vastai && python3 llm_down.py --yes
+
+llm-status: ## List vast.ai LLM instances + their endpoints
+	cd infra/vastai && python3 llm_status.py
+
+llm-gcp-up: ## Stand up the GCP backup LLM (terraform apply)
+	@test -f infra/gcp/terraform.tfvars || (echo "Run: cp infra/gcp/terraform.tfvars.example infra/gcp/terraform.tfvars" && exit 1)
+	cd infra/gcp && terraform init && terraform apply
+
+llm-gcp-down: ## Tear down the GCP LLM (terraform destroy)
+	cd infra/gcp && terraform destroy
+
+llm-gcp-endpoint: ## Print the GCP LLM endpoint URL
+	@cd infra/gcp && terraform output -raw endpoint && echo
 
 # ── Doctor ───────────────────────────────────────────────────────
 

@@ -28,6 +28,7 @@ import (
 	"github.com/argues/kube-watcher/internal/setup"
 	"github.com/argues/kube-watcher/internal/sqlitedb"
 	"github.com/argues/kube-watcher/internal/vulnscan"
+	"github.com/argues/kube-watcher/internal/usage"
 	"github.com/argues/kube-watcher/internal/workflows"
 )
 
@@ -62,13 +63,43 @@ func run() error {
 
 	assembler := ctxassembly.NewAssembler(cfg, gate, detector, logger)
 
+	usageStore, err := usage.New()
+	if err != nil {
+		logger.Warn("usage tracking disabled — failed to open store",
+			slog.String("error", err.Error()))
+		usageStore = nil
+	}
+
 	var agent *ai.Agent
 	if cfg.AI.DeepSeekAPIKey != "" {
-		dsClient := ai.NewDeepSeekClient(cfg.AI.DeepSeekAPIKey, logger)
+		dsClient := ai.NewOpenAICompatibleClient(
+			cfg.AI.DeepSeekAPIKey,
+			cfg.AI.LLMBaseURL,
+			cfg.AI.LLMModel,
+			logger,
+		)
+		if usageStore != nil {
+			dsClient.SetUsageRecorder(func(model string, in, out int) {
+				if err := usageStore.Record(usage.Record{
+					Model:            model,
+					PromptTokens:     in,
+					CompletionTokens: out,
+				}); err != nil {
+					logger.Warn("usage record dropped", slog.String("error", err.Error()))
+				}
+			})
+		}
 		agent = ai.NewAgent(dsClient, logger)
-		logger.Info("AI agent initialized (DeepSeek)")
+		if cfg.AI.LLMBaseURL != "" {
+			logger.Info("AI agent initialized (self-hosted)",
+				slog.String("base_url", cfg.AI.LLMBaseURL),
+				slog.String("model", cfg.AI.LLMModel),
+			)
+		} else {
+			logger.Info("AI agent initialized (DeepSeek)")
+		}
 	} else {
-		logger.Warn("AI agent disabled — set DEEPSEEK_API_KEY to enable")
+		logger.Warn("AI agent disabled — set DEEPSEEK_API_KEY (or LLM bearer) to enable")
 	}
 
 	popeyeRunner := popeye.NewRunner(
@@ -145,6 +176,7 @@ func run() error {
 		Incidents:       incidentStore,
 		Workflows:       workflowStore,
 		Setup:           setupMgr,
+		Usage:           usageStore,
 	})
 
 	// Call Startup to initialise background goroutines (event loops, polling, etc.)

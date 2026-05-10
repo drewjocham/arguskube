@@ -175,6 +175,7 @@ const navTree = [
       { id: 'incidents', label: 'Incident Log' },
       { id: 'audit', label: 'Config Audit' },
       { id: 'arguscd', label: 'ArgusCD', pro: true },
+      { id: 'pipelines', label: 'Pipelines' },
     ],
   },
   {

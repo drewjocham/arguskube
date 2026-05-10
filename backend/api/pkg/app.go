@@ -22,6 +22,7 @@ import (
 	"github.com/argues/kube-watcher/internal/runbooks"
 	"github.com/argues/kube-watcher/internal/setup"
 	"github.com/argues/kube-watcher/internal/terminal"
+	"github.com/argues/kube-watcher/internal/usage"
 	"github.com/argues/kube-watcher/internal/vulnscan"
 	"github.com/argues/kube-watcher/internal/workflows"
 )
@@ -44,6 +45,7 @@ type AppConfig struct {
 	Setup     *setup.Manager
 	Incidents *incidents.Store
 	Workflows *workflows.Store
+	Usage     *usage.Store
 	AppMode   string
 }
 
@@ -69,6 +71,13 @@ type App struct {
 	incidents *incidents.Store
 	hub       *Hub
 	workflows *workflows.Store
+	usage     *usage.Store
+
+	// routesTbl is the typed HTTP dispatch table populated lazily on first
+	// /api/* request. Built per-App (see ensureRoutes) so tests and any
+	// future multi-tenant deployment don't share closures across instances.
+	routesOnce sync.Once
+	routesTbl  map[string]apiHandler
 
 	appMode string
 
@@ -108,6 +117,7 @@ func NewApp(ac AppConfig) *App {
 		setup:     ac.Setup,
 		incidents: ac.Incidents,
 		workflows: ac.Workflows,
+		usage:     ac.Usage,
 		appMode:   ac.AppMode,
 		hub:       NewHub(ac.Logger.With("component", "saas-hub")),
 	}

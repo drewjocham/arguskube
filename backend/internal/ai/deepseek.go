@@ -53,6 +53,11 @@ const (
 	maxBackoff     = 10 * time.Second
 )
 
+// UsageRecorder is the hook the client calls after every successful chat
+// completion. It receives the model name and the OpenAI-style token counts.
+// The recorder must be safe to call from any goroutine. nil disables metering.
+type UsageRecorder func(model string, promptTokens, completionTokens int)
+
 // DeepSeekClient is an OpenAI-compatible HTTP client for DeepSeek.
 type DeepSeekClient struct {
 	baseURL    string
@@ -60,14 +65,40 @@ type DeepSeekClient struct {
 	model      string
 	httpClient *http.Client
 	logger     *slog.Logger
+
+	// recorder is set via SetUsageRecorder; nil-safe.
+	recorder UsageRecorder
 }
 
-// NewDeepSeekClient creates a DeepSeek API client.
+// SetUsageRecorder installs (or clears, with nil) the usage callback. It is
+// intentionally a separate setter rather than a constructor argument so the
+// existing callsites compile unchanged.
+func (c *DeepSeekClient) SetUsageRecorder(rec UsageRecorder) {
+	c.recorder = rec
+}
+
+// NewDeepSeekClient creates a DeepSeek API client pointing at DeepSeek's
+// hosted endpoint. Use NewOpenAICompatibleClient to target a self-hosted
+// vLLM (vast.ai/GCP) or any other OpenAI-compatible server.
 func NewDeepSeekClient(apiKey string, logger *slog.Logger) *DeepSeekClient {
+	return NewOpenAICompatibleClient(apiKey, "", "", logger)
+}
+
+// NewOpenAICompatibleClient builds a chat client against any server that
+// speaks OpenAI's /v1/chat/completions schema. baseURL and model fall back
+// to DeepSeek's defaults when empty, so the same client wraps both the
+// hosted SaaS and a self-hosted vLLM behind one shared call site.
+func NewOpenAICompatibleClient(apiKey, baseURL, model string, logger *slog.Logger) *DeepSeekClient {
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
+	if model == "" {
+		model = defaultModel
+	}
 	return &DeepSeekClient{
-		baseURL: defaultBaseURL,
+		baseURL: baseURL,
 		apiKey:  apiKey,
-		model:   defaultModel,
+		model:   model,
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
@@ -178,6 +209,10 @@ func (c *DeepSeekClient) Chat(ctx context.Context, messages []Message) (string, 
 		slog.Int("promptTokens", chatResp.Usage.PromptTokens),
 		slog.Int("completionTokens", chatResp.Usage.CompletionTokens),
 	)
+
+	if c.recorder != nil {
+		c.recorder(c.model, chatResp.Usage.PromptTokens, chatResp.Usage.CompletionTokens)
+	}
 
 	return chatResp.Choices[0].Message.Content, nil
 }
