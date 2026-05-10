@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"reflect"
 	"strings"
 	"time"
 
@@ -13,75 +12,89 @@ import (
 	"github.com/google/uuid"
 )
 
+// APIRequest is the JSON body of every /api/<MethodName> POST. Args are
+// captured as raw JSON so each typed adapter can decode its own positional
+// arguments without relying on reflection at dispatch time.
 type APIRequest struct {
-	Args []interface{} `json:"args"`
+	Args []json.RawMessage `json:"args"`
 }
 
+// APIResponse is what every successful /api call returns. Error is populated
+// when the underlying handler returned a non-nil error; in that case Result
+// is omitted (omitempty handles untyped nil).
 type APIResponse struct {
-	Result interface{} `json:"result,omitempty"`
-	Error  string      `json:"error,omitempty"`
+	Result any    `json:"result,omitempty"`
+	Error  string `json:"error,omitempty"`
 }
 
+// ensureRoutes lazily builds this App's dispatch table. The table is per-App
+// (not package-global) so multiple App instances — and tests — don't share
+// closures bound to the wrong receiver.
+func (a *App) ensureRoutes() {
+	a.routesOnce.Do(func() {
+		a.routesTbl = a.routes()
+	})
+}
+
+// ServeHTTP dispatches /api/<MethodName> calls to the typed adapter
+// registered in routes(). Any method name not in the table returns 404 —
+// no reflection is involved, so unregistered methods are unreachable
+// regardless of what's exported on *App.
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// CORS for dev and SaaS mode
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
-	if r.Method == "OPTIONS" {
+	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	path := strings.TrimPrefix(r.URL.Path, "/api/")
-	methodName := path
+	a.ensureRoutes()
 
-	method := reflect.ValueOf(a).MethodByName(methodName)
-	if !method.IsValid() {
-		http.Error(w, "Method not found", http.StatusNotFound)
+	method := strings.TrimPrefix(r.URL.Path, "/api/")
+	handler, ok := a.routesTbl[method]
+	if !ok {
+		http.Error(w, "method not found", http.StatusNotFound)
 		return
 	}
 
 	var req APIRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	methodType := method.Type()
-	in := make([]reflect.Value, methodType.NumIn())
-	for i := 0; i < methodType.NumIn(); i++ {
-		argType := methodType.In(i)
-		if i < len(req.Args) {
-			// Serialize and deserialize to handle proper type mapping (e.g., float64 to int, map to struct)
-			b, _ := json.Marshal(req.Args[i])
-			newVal := reflect.New(argType)
-			if err := json.Unmarshal(b, newVal.Interface()); err == nil {
-				in[i] = newVal.Elem()
-			} else {
-				in[i] = reflect.Zero(argType)
-			}
-		} else {
-			in[i] = reflect.Zero(argType)
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+			return
 		}
 	}
 
-	// Safely call the method
-	out := method.Call(in)
-
-	var res APIResponse
-	if len(out) > 0 {
-		res.Result = out[0].Interface()
-	}
-	if len(out) > 1 && !out[1].IsNil() {
-		errInterface := out[1].Interface()
-		if err, ok := errInterface.(error); ok {
-			res.Error = err.Error()
+	res := APIResponse{}
+	defer func() {
+		if rec := recover(); rec != nil {
+			a.logger.Error("api handler panicked",
+				slog.String("method", method),
+				slog.Any("panic", rec),
+			)
+			res = APIResponse{Error: "internal error"}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(res)
 		}
+	}()
+
+	result, err := handler(req.Args)
+	if err != nil {
+		res.Error = err.Error()
+	} else {
+		res.Result = result
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(res)
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		a.logger.Warn("api response encode failed",
+			slog.String("method", method),
+			slog.String("error", err.Error()),
+		)
+	}
 }
 
 // WebhookPayload is the JSON body from an anomaly detection webhook.
