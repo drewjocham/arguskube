@@ -16,6 +16,7 @@ import AnomalyDetection from './AnomalyDetection.vue'
 import MetricsExplorer from './MetricsExplorer.vue'
 import VulnerabilityList from './VulnerabilityList.vue'
 import S3Notebook from './S3Notebook.vue'
+import DocumentsView from '../knowledge/DocumentsView.vue'
 import NodeList from '../cluster/NodeList.vue'
 import NamespaceList from '../cluster/NamespaceList.vue'
 import EventStream from '../cluster/EventStream.vue'
@@ -101,7 +102,7 @@ const resourceViews = [
 const operationViews = ['runbooks', 'incidents', 'audit', 'arguscd']
 
 // Knowledge views.
-const knowledgeViews = ['notebooks']
+const knowledgeViews = ['notebooks', 'documents']
 
 // Admin views.
 const adminViews = ['setup', 'settings']
@@ -274,6 +275,7 @@ async function runArgusScan() {
     <!-- Knowledge / S3 views -->
     <template v-else-if="isKnowledge">
       <S3Notebook v-if="activeNav === 'notebooks'" />
+      <DocumentsView v-else-if="activeNav === 'documents'" />
     </template>
 
     <!-- Admin views -->

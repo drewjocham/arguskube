@@ -1,14 +1,15 @@
 apiVersion: v2
 name: kubewatcher-alert-ingress
-description: KubeWatcher alert ingress webhook receiver
+description: KubeWatcher alert ingress webhook receiver (Vector.dev pipeline)
 type: application
-version: 0.1.0
-appVersion: 0.1.0
+version: 0.2.0
+appVersion: 0.2.0
 keywords:
   - kubernetes
   - sre
   - alerts
   - webhook
+  - vector
 home: https://github.com/drewjocham/kube-watcher
 maintainers:
   - name: Argus Infrastructure

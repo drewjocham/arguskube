@@ -85,7 +85,11 @@ describe('useLogStream', () => {
     await startStream('default', 'my-pod', '', 100)
 
     expect(mockFetch.mock.calls[0][0]).toContain('/api/StreamPodLogsFollow')
-    expect(lines.value).toEqual(logLines)
+    // Normalised LogLine shape — composer guarantees timestamp/source/level/message.
+    expect(lines.value).toHaveLength(2)
+    expect(lines.value[0].message).toBe('line 1')
+    expect(lines.value[0].timestamp).toBe('2024-01-01T00:00:00Z')
+    expect(lines.value[1].message).toBe('line 2')
     expect(streaming.value).toBe(false)
   })
 
@@ -101,8 +105,10 @@ describe('useLogStream', () => {
     await startStream('default', 'my-pod')
 
     expect(lines.value).toHaveLength(3)
-    expect(lines.value[0]).toEqual({ message: 'line1' })
-    expect(lines.value[2]).toEqual({ message: 'line3' })
+    // Strings are normalised to LogLine objects with podName-bracketed source.
+    expect(lines.value[0].message).toBe('line1')
+    expect(lines.value[0].source).toBe('[my-pod]')
+    expect(lines.value[2].message).toBe('line3')
   })
 
   it('startStream handles errors gracefully', async () => {

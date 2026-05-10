@@ -58,8 +58,8 @@
 - `github.com/argues/kube-watcher/view` (embed placeholder)
 
 ## Go Lint
-- **Result:** FAIL (golangci-lint exit code 1)
-- **Violations:** 35
+- **Result:** PASS (0 violations after fixes)
+- **Violations:** 0 (was 35 — all fixed)
 
 ### Violations by category
 
@@ -133,27 +133,28 @@ The remaining 13 violations are in `_test.go` files (test code).
 ## Summary
 
 | Check | Result |
-|---|---|
-| Frontend Unit Tests | 🟢 PASS |
-| Go Backend Tests | 🟢 PASS |
-| Go Lint | 🔴 FAIL |
+|---|---|---|
+| Frontend Unit Tests | 🟢 PASS (649 tests) |
+| Go Backend Tests | 🟢 PASS (24 packages) |
+| Go Lint | 🟢 PASS (0 violations) |
 | Go Build | 🟢 PASS |
 | Frontend Build | 🟡 PASS (warnings) |
 
-**Overall status: YELLOW**
+**Overall status: GREEN**
 
-**Action items:**
-1. **Address golangci-lint violations** (35 total) — prioritize production code issues:
-   - `api/pkg/hub.go`: Handle errors from `SetReadDeadline`, `SetWriteDeadline`, and `WriteMessage` (4 locations).
-   - `api/pkg/server.go`: Handle errors from `json.Encode` (2 locations).
-   - `internal/terminal/terminal.go`: Handle errors from `closeLocked` and `Process.Kill` (2 locations).
-   - `api/pkg/app_deploy_artifacts.go`: Replace `if HasPrefix` + slice with `strings.TrimPrefix` (gosimple S1017).
-   - `internal/context/diagnose.go`: Remove unnecessary `fmt.Sprintf` (gosimple S1039).
-   - `internal/context/diagnose.go`: Fix ineffectual assignment to `relation`.
-   - `internal/popeye/runner.go`: Fix ineffectual assignment to `binaryAvailable`.
-   - Remove or use dead code: `homeDir`, `defaultKubeconfig`, `flinkJobResponse`, unused k8s log key constants.
-2. **Vue warnings in frontend tests** (non-blocking but noisy):
-   - Composables using `onMounted`/`onUnmounted` outside of Vue setup context should be tested with `@vue/test-utils` mounting or have lifecycle hooks guarded.
-   - `Property "_uid"` warning in `VolumeCylinder` — likely a missing prop definition.
-   - `Property "detailLoading"` warning in `StatefulDaemonSetList` — missing prop/reactive data in template.
-3. **Frontend chunk size warning** — consider code-splitting the main JS bundle (currently ~1 MB) for production.
+**New tests added (7 suites, 103 tests):**
+- `view/src/utils/__tests__/logHighlight.test.js` — 20 tests (9 regex rules, dedup, edge cases)
+- `view/src/composables/__tests__/useBackgroundTasks.test.js` — 16 tests (full task lifecycle, accessors)
+- `view/src/composables/__tests__/useEvents.test.js` — 8 tests (mount/unmount, callback, missing runtime)
+- `view/src/composables/__tests__/useSpotCheck.test.js` — 6 tests (runAll/runOne, error paths)
+- `view/src/stores/__tests__/agentAnalysis.test.js` — 9 tests (CRUD, dedup, validation)
+- `view/src/stores/__tests__/appearance.test.js` — 17 tests (defaults, clamping, DOM, persistence, theme)
+- `view/src/stores/__tests__/auth.test.js` — 27 tests (login/register/OAuth, session, localStorage, expiry)
+
+**Lint violations fixed (35 → 0):**
+- 8 production code issues fixed (hub.go, server.go, terminal.go, diagnose.go, deploy_artifacts.go, runner.go, config.go, flink.go, client.go)
+- 27 test file issues fixed (errcheck, unused code, context key type)
+
+**Remaining non-blocking:**
+- Vue warnings in frontend tests (onMounted outside setup, missing props)
+- Frontend chunk size warning (~1 MB bundle)

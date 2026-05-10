@@ -341,6 +341,18 @@ async function fixWithAgent(finding) {
         </div>
         
         <div class="detail-section" style="margin-top: 24px;">
+          <!-- Surface the exact question Argus will get when you click the
+               button. Previously the user clicked Ask Argus and the chat
+               would open with no visible context — easy to assume the agent
+               had nothing to work with. The preview below is the literal
+               body that flows into the chat, so what-you-see-is-what-Argus-
+               sees. -->
+          <div class="ask-preview">
+            <div class="ask-preview-head">
+              <span class="ask-preview-label">Question Argus will get:</span>
+            </div>
+            <pre class="ask-preview-body">{{ buildFindingContext(selectedFinding) }}</pre>
+          </div>
           <button class="agent-fix-btn" @click="fixWithAgent(selectedFinding)">
             Ask Argus
           </button>
@@ -559,6 +571,26 @@ async function fixWithAgent(finding) {
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(139, 92, 246, 0.4);
 }
+.ask-preview {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.ask-preview-head { margin-bottom: 4px; }
+.ask-preview-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text3);
+}
+.ask-preview-body {
+  margin: 0;
+  font-family: var(--mono); font-size: 11px; color: var(--text2);
+  white-space: pre-wrap; word-break: break-word;
+}
+
 .agent-fix-btn:active {
   transform: translateY(1px);
 }

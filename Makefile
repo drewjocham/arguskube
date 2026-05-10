@@ -6,7 +6,7 @@
 #   make build        — production binary
 #   make run          — build then run
 #   make frontend     — rebuild Vue into backend/view/dist
-#   make test         — all Go + Vue tests
+#   make test         — all Go + Vue + Vector tests
 #   make lint         — Go linter + Vue type-check
 #   make clean        — nuke build artifacts
 #   make deps         — install everything
@@ -27,9 +27,10 @@ AGENT_DIR   := agent/python_agents
 BUILD_BIN   := $(BACKEND_DIR)/build/bin/$(APP_NAME)
 
 .PHONY: help dev build build-terminal-app build-nopackage run frontend frontend-dev deps deps-go deps-vue \
-        test test-go test-vue lint lint-go clean doctor \
+        test test-go test-vue test-vector lint lint-go clean doctor \
         bindings contexts logs \
-        agent-deps agent-check agent-test agent-lint agent-format agent-clean
+        agent-deps agent-check agent-test agent-lint agent-format agent-clean \
+        vector-test vector-validate-alert-ingress vector-validate-agent vector-docker
 
 # ── Default ──────────────────────────────────────────────────────
 
@@ -80,6 +81,22 @@ run: build-nopackage ## Build then run (auth ON — register or sign in)
 no-auth-run: build-nopackage ## Build then run with auth DISABLED (local dev only — refused on non-loopback binds)
 	KUBEWATCHER_AUTH_DISABLED=true $(BUILD_BIN)
 
+# ── Vector ───────────────────────────────────────────────────────
+
+vector-validate-alert-ingress: ## Validate alert-ingress Vector config
+	vector validate alert-ingress/vector/base.toml --no-environment
+
+vector-validate-agent: ## Validate agent sidecar Vector config
+	vector validate alert-ingress/vector/agent-sidecar.toml --no-environment
+
+vector-validate: vector-validate-alert-ingress vector-validate-agent ## Validate all Vector configs
+
+vector-test: ## Run Vector transform tests
+	./alert-ingress/vector/tests/test_transform.sh
+
+vector-docker: ## Build Vector-based alert-ingress Docker image
+	docker build -t kubewatcher-alert-ingress:latest alert-ingress/
+
 # ── Dependencies ─────────────────────────────────────────────────
 
 deps: deps-go deps-vue agent-deps ## Install all dependencies
@@ -97,7 +114,7 @@ bindings: ## Regenerate Wails TypeScript bindings
 
 # ── Testing ──────────────────────────────────────────────────────
 
-test: test-go test-vue agent-test ## Run all tests
+test: test-go test-vue agent-test vector-test ## Run all tests
 
 test-go: ## Run Go tests
 	cd $(BACKEND_DIR) && go test ./... -count=1
@@ -263,6 +280,7 @@ doctor: ## Check all required tools are installed
 	@printf "  %-14s" "wails" && (wails version 2>/dev/null | head -1 || echo "MISSING — go install github.com/wailsapp/wails/v2/cmd/wails@latest")
 	@printf "  %-14s" "node" && (node --version 2>/dev/null || echo "MISSING — install from https://nodejs.org")
 	@printf "  %-14s" "npm" && (npm --version 2>/dev/null || echo "MISSING")
+	@printf "  %-14s" "vector" && (vector --version 2>/dev/null | head -1 || echo "MISSING — curl --proto '=https' --tlsv1.2 -sSfL https://sh.vector.dev | sh")
 	@printf "  %-14s" "kubectl" && (kubectl version --client --short 2>/dev/null || kubectl version --client 2>/dev/null | head -1 || echo "MISSING")
 	@printf "  %-14s" "KUBECONFIG" && echo "$(KUBECONFIG)"
 	@echo ""

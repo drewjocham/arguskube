@@ -156,9 +156,9 @@ func (h *Hub) readPump(client *AgentConnection) {
 	}()
 
 	client.Conn.SetReadLimit(512 * 1024) // 512KB limit
-	client.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	_ = client.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	client.Conn.SetPongHandler(func(string) error {
-		client.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		_ = client.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
 
@@ -170,7 +170,7 @@ func (h *Hub) readPump(client *AgentConnection) {
 			}
 			break
 		}
-		
+
 		// Here we would route the incoming telemetry/anomalies from the agent to the incident store or memory cache.
 		h.logger.Debug("Received message from agent", slog.String("agent_id", client.ID), slog.Int("bytes", len(message)))
 	}
@@ -186,16 +186,16 @@ func (h *Hub) writePump(client *AgentConnection) {
 	for {
 		select {
 		case message, ok := <-client.Send:
-			client.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = client.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
-				client.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = client.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 			if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
 				return
 			}
 		case <-ticker.C:
-			client.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = client.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := client.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -217,7 +217,7 @@ func (h *Hub) SendCommand(agentID string, cmdType string, payload []byte) error 
 		Type:    cmdType,
 		Payload: payload,
 	}
-	
+
 	bytes, err := json.Marshal(msg)
 	if err != nil {
 		return err

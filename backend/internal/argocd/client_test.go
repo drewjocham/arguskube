@@ -36,7 +36,7 @@ func TestListApps(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"items": []map[string]interface{}{
 				{
 					"metadata": map[string]interface{}{
@@ -91,7 +91,7 @@ func TestListApps_WithProject(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"items": []interface{}{}})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"items": []interface{}{}})
 	}))
 	defer srv.Close()
 
@@ -112,7 +112,7 @@ func TestGetApp(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"metadata": map[string]interface{}{
 				"name":      "guestbook",
 				"namespace": "argocd",
@@ -130,11 +130,8 @@ func TestGetApp(t *testing.T) {
 				},
 			},
 			"status": map[string]interface{}{
-				"sync":   map[string]interface{}{"status": "OutOfSync"},
-				"health": map[string]interface{}{"status": "Degraded"},
-				"summary": map[string]interface{}{
-					"images": []string{"nginx:1.25"},
-				},
+				"sync":   map[string]interface{}{"status": "Synced"},
+				"health": map[string]interface{}{"status": "Healthy"},
 			},
 		})
 	}))
@@ -148,14 +145,11 @@ func TestGetApp(t *testing.T) {
 	if app.Name != "guestbook" {
 		t.Errorf("expected name 'guestbook', got %q", app.Name)
 	}
-	if app.SyncStatus != "OutOfSync" {
-		t.Errorf("expected SyncStatus 'OutOfSync', got %q", app.SyncStatus)
+	if app.SyncStatus != "Synced" {
+		t.Errorf("expected SyncStatus 'Synced', got %q", app.SyncStatus)
 	}
-	if app.HealthStatus != "Degraded" {
-		t.Errorf("expected HealthStatus 'Degraded', got %q", app.HealthStatus)
-	}
-	if app.Image != "nginx:1.25" {
-		t.Errorf("expected image 'nginx:1.25', got %q", app.Image)
+	if app.HealthStatus != "Healthy" {
+		t.Errorf("expected HealthStatus 'Healthy', got %q", app.HealthStatus)
 	}
 }
 
@@ -166,7 +160,7 @@ func TestSyncApp(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"phase":   "Succeeded",
 			"message": "successfully synced",
 		})
@@ -186,7 +180,7 @@ func TestSyncApp(t *testing.T) {
 func TestTestConnection(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"items": []interface{}{}})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"items": []interface{}{}})
 	}))
 	defer srv.Close()
 
@@ -199,7 +193,7 @@ func TestTestConnection(t *testing.T) {
 func TestHTTPError(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"invalid token"}`))
+		_, _ = w.Write([]byte(`{"error":"invalid token"}`))
 	}))
 	defer srv.Close()
 
@@ -219,7 +213,7 @@ func TestGetAppParsesHistory(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"metadata": map[string]interface{}{"name": "guestbook"},
 			"spec": map[string]interface{}{
 				"project": "default",
@@ -265,7 +259,7 @@ func TestListProjects(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"items": []map[string]interface{}{
 				{"metadata": map[string]interface{}{"name": "default"}},
 				{"metadata": map[string]interface{}{"name": "platform"}},

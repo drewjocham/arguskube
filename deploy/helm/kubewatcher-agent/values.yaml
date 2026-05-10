@@ -20,6 +20,28 @@ env:
 
 existingSecret: ""
 
+# ── Vector Sidecar ─────────────────────────────────────────────────
+vector:
+  enabled: false
+  image:
+    repository: timberio/vector
+    tag: 0.44.0-alpine
+    pullPolicy: IfNotPresent
+  logLevel: info
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  # Log collection sinks
+  sinks:
+    s3:
+      enabled: false
+      bucket: ""
+      region: ""
+
 # ── DaemonSet Settings ─────────────────────────────────────────────
 hostNetwork: false
 

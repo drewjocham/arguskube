@@ -3,7 +3,6 @@ package context_test
 import (
 	"context"
 	"log/slog"
-	"os"
 	"testing"
 
 	"github.com/argues/kube-watcher/internal/alerts"
@@ -12,6 +11,8 @@ import (
 	appcontext "github.com/argues/kube-watcher/internal/context"
 	"github.com/argues/kube-watcher/internal/features"
 )
+
+type ctxKey string
 
 // mockDetector simulates anomaly detection for tests.
 type mockDetector struct {
@@ -69,7 +70,7 @@ func TestAssemble(t *testing.T) {
 		t.Fatal("NewAssembler() returned nil")
 	}
 
-	bundle, err := a.Assemble(context.WithValue(context.Background(), "alert", alert), alert, []alerts.Alert{alert})
+	bundle, err := a.Assemble(context.WithValue(context.Background(), ctxKey("alert"), alert), alert, []alerts.Alert{alert})
 	if err != nil {
 		t.Fatalf("Assemble() failed: %v", err)
 	}
@@ -79,13 +80,4 @@ func TestAssemble(t *testing.T) {
 	if bundle.Alert.ID != "alert-1" {
 		t.Errorf("expected Alert.ID 'alert-1', got %q", bundle.Alert.ID)
 	}
-}
-
-func testConfig(t *testing.T) *config.OnlineDataConfig {
-	t.Helper()
-	return &config.OnlineDataConfig{}
-}
-
-func testLogger(t *testing.T) *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 }

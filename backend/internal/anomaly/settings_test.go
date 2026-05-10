@@ -100,7 +100,7 @@ func TestSaveSettingsOverwrites(t *testing.T) {
 	store := testSettingsStore(t)
 
 	// Save first settings.
-	store.SaveSettings(anomaly.Settings{
+	_ = store.SaveSettings(anomaly.Settings{
 		Sensitivity:    50,
 		BaselineWindow: 7,
 		MetricType:     "cpu",
@@ -110,7 +110,7 @@ func TestSaveSettingsOverwrites(t *testing.T) {
 	})
 
 	// Overwrite with new settings.
-	store.SaveSettings(anomaly.Settings{
+	_ = store.SaveSettings(anomaly.Settings{
 		Sensitivity:    90,
 		BaselineWindow: 30,
 		MetricType:     "mem",
@@ -278,7 +278,7 @@ func TestSaveRuleOverwrites(t *testing.T) {
 	store := testSettingsStore(t)
 
 	// Save with initial values.
-	store.SaveRule(anomaly.Rule{
+	_ = store.SaveRule(anomaly.Rule{
 		ID:       "rule-test-overwrite",
 		Name:     "Original Name",
 		Enabled:  true,
@@ -286,7 +286,7 @@ func TestSaveRuleOverwrites(t *testing.T) {
 	})
 
 	// Overwrite with new values.
-	store.SaveRule(anomaly.Rule{
+	_ = store.SaveRule(anomaly.Rule{
 		ID:       "rule-test-overwrite",
 		Name:     "Updated Name",
 		Enabled:  false,

@@ -5,6 +5,59 @@ import { callGo, useContexts } from '../../composables/useWails'
 import { useAppearanceStore } from '../../stores/appearance'
 import { useNotificationsStore } from '../../stores/notifications'
 import { useSpotCheck } from '../../composables/useSpotCheck'
+import { useAddonsStore } from '../../stores/addons'
+
+// Add-ons & jobs registry. Frontend-only state today; backend
+// runners attach later. The Settings UI exposes the surface so the
+// user can opt in / configure / inspect run history without waiting
+// for the backend to land.
+const addonsStore = useAddonsStore()
+const jobInputsDraft = ref({})
+const jobDeliveriesDraft = ref({})
+const runningJob = ref('')
+
+function _draftForJob(jobId) {
+  if (!jobInputsDraft.value[jobId]) {
+    jobInputsDraft.value[jobId] = { ...(addonsStore.jobInputs[jobId] || {}) }
+  }
+  return jobInputsDraft.value[jobId]
+}
+function _deliveryDraftForJob(jobId) {
+  if (!jobDeliveriesDraft.value[jobId]) {
+    jobDeliveriesDraft.value[jobId] = { ...(addonsStore.jobDeliveries[jobId] || {}) }
+  }
+  return jobDeliveriesDraft.value[jobId]
+}
+
+async function runJob(job) {
+  runningJob.value = job.id
+  // Persist whatever the user typed so re-runs don't lose it.
+  for (const inp of job.inputs || []) {
+    if (jobInputsDraft.value[job.id]?.[inp.id] != null) {
+      addonsStore.setJobInput(job.id, inp.id, jobInputsDraft.value[job.id][inp.id])
+    }
+  }
+  for (const d of job.deliveries || []) {
+    if (jobDeliveriesDraft.value[job.id]?.[d.id] != null) {
+      addonsStore.setJobDelivery(job.id, d.id, jobDeliveriesDraft.value[job.id][d.id])
+    }
+  }
+  const runId = addonsStore.recordRun({ jobId: job.id, status: 'pending' })
+  try {
+    // Backend runner doesn't exist yet. We mark the run as "queued"
+    // so the user sees feedback. When the Wails RunJob method lands
+    // (next iteration), this swaps to a real callGo invocation and
+    // the result threads back into recordRun.
+    addonsStore.completeRun(runId, {
+      status: 'queued',
+      result: 'Job staged. Backend runner not yet implemented — request queued.',
+    })
+  } catch (e) {
+    addonsStore.completeRun(runId, { status: 'error', error: e?.message || String(e) })
+  } finally {
+    runningJob.value = ''
+  }
+}
 
 // Agent profile — what Argus is allowed to do without asking. Defaults
 // are conservative (he documents but never mutates). Backend sanitizes
@@ -719,6 +772,100 @@ onMounted(() => {
         </div>
       </div>
 
+      <!-- Add-ons -->
+      <div class="section">
+        <div class="section-title">Add-ons</div>
+        <div class="section-hint">
+          Optional capabilities. Each is local-state only today — flipping
+          a toggle stages the choice; backend integration comes online as
+          each add-on lands. Required env vars are listed where applicable.
+        </div>
+        <div v-for="addon in addonsStore.addons" :key="addon.id" class="addon-row">
+          <div class="addon-meta">
+            <div class="addon-name">{{ addon.name }}</div>
+            <div class="addon-summary">{{ addon.summary }}</div>
+            <div v-if="addon.requires?.length" class="addon-requires">
+              Requires:
+              <code v-for="r in addon.requires" :key="r">{{ r }}</code>
+            </div>
+            <div v-if="addon.docsHint" class="addon-hint">{{ addon.docsHint }}</div>
+          </div>
+          <label class="toggle-label">
+            <input
+              type="checkbox"
+              class="toggle-checkbox"
+              :checked="addonsStore.isEnabled(addon.id)"
+              @change="addonsStore.setEnabled(addon.id, $event.target.checked)"
+            />
+            <span class="toggle-text">{{ addonsStore.isEnabled(addon.id) ? 'Enabled' : 'Disabled' }}</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Activatable Jobs -->
+      <div class="section">
+        <div class="section-title">Activatable Jobs</div>
+        <div class="section-hint">
+          Argus-driven workflows you can trigger manually or wire to alerts.
+          Each job records a run history; results flow back into the
+          notifications panel and the Documents view.
+        </div>
+
+        <div v-for="job in addonsStore.jobs" :key="job.id" class="job-card">
+          <div class="job-head">
+            <div class="job-name">{{ job.name }}</div>
+            <button
+              class="test-btn"
+              :disabled="runningJob === job.id"
+              @click="runJob(job)"
+            >{{ runningJob === job.id ? 'Running…' : 'Run job' }}</button>
+          </div>
+          <div class="job-summary">{{ job.summary }}</div>
+
+          <div v-if="job.requires?.length" class="job-requires">
+            Requires:
+            <code v-for="r in job.requires" :key="r">{{ r }}</code>
+          </div>
+
+          <div v-if="job.inputs?.length" class="job-inputs">
+            <label v-for="inp in job.inputs" :key="inp.id" class="job-input-row">
+              <span class="job-input-label">{{ inp.label }}</span>
+              <input
+                type="text"
+                class="field-input mono"
+                :placeholder="inp.placeholder"
+                :value="_draftForJob(job.id)[inp.id] ?? ''"
+                @input="_draftForJob(job.id)[inp.id] = $event.target.value"
+              />
+            </label>
+          </div>
+
+          <div v-if="job.deliveries?.length" class="job-deliveries">
+            <div class="job-deliveries-label">Deliver result to (any combination):</div>
+            <label v-for="d in job.deliveries" :key="d.id" class="job-input-row">
+              <span class="job-input-label">{{ d.label }}</span>
+              <input
+                type="text"
+                class="field-input mono"
+                :placeholder="d.placeholder"
+                :value="_deliveryDraftForJob(job.id)[d.id] ?? ''"
+                @input="_deliveryDraftForJob(job.id)[d.id] = $event.target.value"
+              />
+            </label>
+          </div>
+
+          <div v-if="addonsStore.runsByJob(job.id).length" class="job-runs">
+            <div class="job-runs-label">Recent runs</div>
+            <div v-for="r in addonsStore.runsByJob(job.id).slice(0, 5)" :key="r.id" class="job-run-row">
+              <span class="job-run-status" :data-status="r.status">{{ r.status }}</span>
+              <span class="job-run-time">{{ new Date(r.startedAt).toLocaleString() }}</span>
+              <span v-if="r.error" class="job-run-error">{{ r.error }}</span>
+              <span v-else-if="r.result" class="job-run-result">{{ r.result }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Current State (read-only info) -->
       <div class="section" v-if="settings">
         <div class="section-title">Current State</div>
@@ -956,4 +1103,82 @@ onMounted(() => {
   box-shadow: 0 1px 4px rgba(0,0,0,0.3);
   cursor: grab;
 }
+
+/* --- Add-ons & Jobs ---------------------------------------------------- */
+
+.addon-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.addon-row:last-child { border-bottom: 0; }
+.addon-meta { min-width: 0; }
+.addon-name { font-size: 12.5px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+.addon-summary { font-size: 11.5px; color: var(--text2); line-height: 1.5; }
+.addon-requires {
+  margin-top: 6px;
+  font-size: 11px; color: var(--text3);
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+}
+.addon-requires code {
+  font-family: var(--mono); font-size: 10.5px;
+  background: var(--bg); padding: 1px 5px; border-radius: 3px; color: var(--text2);
+}
+.addon-hint { font-size: 11px; color: var(--text3); margin-top: 4px; font-style: italic; }
+
+.job-card {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 12px; margin-bottom: 12px;
+}
+.job-card:last-child { margin-bottom: 0; }
+.job-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px;
+}
+.job-name { font-size: 13px; font-weight: 500; color: var(--text); }
+.job-summary { font-size: 12px; color: var(--text2); line-height: 1.5; margin-bottom: 8px; }
+.job-requires {
+  font-size: 11px; color: var(--text3);
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  margin-bottom: 8px;
+}
+.job-requires code {
+  font-family: var(--mono); font-size: 10.5px;
+  background: var(--bg2); padding: 1px 5px; border-radius: 3px; color: var(--text2);
+}
+.job-inputs, .job-deliveries { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.job-deliveries-label {
+  font-size: 11px; color: var(--text3); margin-top: 4px; margin-bottom: 2px;
+  text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+}
+.job-input-row { display: flex; align-items: center; gap: 8px; }
+.job-input-label {
+  flex: 0 0 140px; font-size: 11.5px; color: var(--text2);
+}
+
+.job-runs { margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.job-runs-label {
+  font-size: 11px; color: var(--text3); text-transform: uppercase;
+  letter-spacing: 0.04em; font-weight: 600; margin-bottom: 4px;
+}
+.job-run-row {
+  display: flex; gap: 8px; align-items: baseline;
+  font-size: 11px; color: var(--text2);
+  padding: 4px 0; border-bottom: 1px solid var(--border);
+}
+.job-run-row:last-child { border-bottom: 0; }
+.job-run-status {
+  flex: 0 0 70px; font-family: var(--mono); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 1px 6px; border-radius: 3px;
+  background: var(--bg2); color: var(--text3);
+}
+.job-run-status[data-status="queued"]  { background: rgba(245,166,35,0.15);  color: var(--amber2); }
+.job-run-status[data-status="success"] { background: rgba(62,207,142,0.15);  color: var(--green2); }
+.job-run-status[data-status="error"]   { background: rgba(240,84,84,0.15);   color: var(--red2); }
+.job-run-time { flex: 0 0 160px; font-family: var(--mono); font-size: 10.5px; color: var(--text3); }
+.job-run-result { color: var(--text2); }
+.job-run-error { color: var(--red2); }
 </style>

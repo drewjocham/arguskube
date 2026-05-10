@@ -84,6 +84,37 @@ variable "node_group_max_size" {
   default     = 6
 }
 
+# ── Vector Sinks ─────────────────────────────────────────────────
+variable "vector_s3_alerts_bucket" {
+  description = "S3 bucket for alert archival (Vector sink)"
+  type        = string
+  default     = ""
+}
+
+variable "vector_s3_logs_bucket" {
+  description = "S3 bucket for agent log archival (Vector sidecar sink)"
+  type        = string
+  default     = ""
+}
+
+variable "vector_gcp_project" {
+  description = "GCP project for PubSub alert publishing (Vector sink)"
+  type        = string
+  default     = ""
+}
+
+variable "vector_gcp_topic" {
+  description = "GCP PubSub topic for alerts"
+  type        = string
+  default     = "argus-alerts"
+}
+
+variable "vector_agent_enabled" {
+  description = "Enable Vector sidecar on the agent DaemonSet"
+  type        = bool
+  default     = false
+}
+
 # ── Helm Releases ─────────────────────────────────────────────────
 variable "helm_backend_enabled" {
   description = "Enable backend Helm release"
@@ -104,7 +135,7 @@ variable "helm_agent_enabled" {
 }
 
 variable "helm_alert_ingress_enabled" {
-  description = "Enable alert-ingress Helm release"
+  description = "Enable alert-ingress Helm release (Vector pipeline)"
   type        = bool
   default     = false
 }

@@ -193,8 +193,10 @@ const navTree = [
   {
     id: 'knowledge',
     label: 'Knowledge',
+    /* The id literal is reused below as the section anchor. */
     icon: 'M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 016.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z', // book
     items: [
+      { id: 'documents', label: 'Documents' },
       { id: 'notebooks', label: 'Notebooks & S3' },
     ],
   },

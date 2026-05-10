@@ -122,7 +122,7 @@ resource "helm_release" "frontend" {
   depends_on = [kubernetes_namespace.kubewatcher]
 }
 
-# ── Alert Ingress ─────────────────────────────────────────────────
+# ── Alert Ingress (Vector pipeline) ──────────────────────────────
 resource "helm_release" "alert_ingress" {
   count = var.helm_alert_ingress_enabled ? 1 : 0
 
@@ -130,7 +130,7 @@ resource "helm_release" "alert_ingress" {
   repository = ""
   chart      = "${path.module}/../helm/kubewatcher-alert-ingress"
   namespace  = local.namespace
-  version    = "0.1.0"
+  version    = "0.2.0"
 
   values = [
     yamlencode({
@@ -139,8 +139,28 @@ resource "helm_release" "alert_ingress" {
         tag        = local.image_tag
       }
 
-      config = {
-        mode = var.environment == "prod" ? "gcp" : "stdout"
+      vector = {
+        logLevel = var.environment == "dev" ? "debug" : "info"
+      }
+
+      sinks = {
+        stdout = {
+          enabled = true
+        }
+        s3 = var.vector_s3_alerts_bucket != "" ? {
+          enabled = true
+          bucket  = var.vector_s3_alerts_bucket
+          region  = var.aws_region
+        } : {
+          enabled = false
+        }
+        gcpPubSub = var.vector_gcp_project != "" ? {
+          enabled = true
+          project = var.vector_gcp_project
+          topic   = var.vector_gcp_topic
+        } : {
+          enabled = false
+        }
       }
     })
   ]
@@ -174,7 +194,7 @@ resource "helm_release" "mcp" {
   depends_on = [kubernetes_namespace.kubewatcher]
 }
 
-# ── Agent (in-cluster DaemonSet) ──────────────────────────────────
+# ── Agent (in-cluster DaemonSet with optional Vector sidecar) ────
 resource "helm_release" "agent" {
   count = var.helm_agent_enabled ? 1 : 0
 
@@ -194,6 +214,22 @@ resource "helm_release" "agent" {
       env = {
         saasToken    = var.deepseek_api_key != ""
         saasServerURL = "http://kubewatcher-backend:8080"
+      }
+
+      vector = var.vector_agent_enabled ? {
+        enabled = true
+        logLevel = var.environment == "dev" ? "debug" : "info"
+        sinks = {
+          s3 = var.vector_s3_logs_bucket != "" ? {
+            enabled = true
+            bucket  = var.vector_s3_logs_bucket
+            region  = var.aws_region
+          } : {
+            enabled = false
+          }
+        }
+      } : {
+        enabled = false
       }
     })
   ]

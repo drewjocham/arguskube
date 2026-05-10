@@ -43,7 +43,7 @@ func TestStartAndWrite(t *testing.T) {
 	}
 
 	// Write "exit" to clean up.
-	term.Write("exit\n")
+	_ = term.Write("exit\n")
 	time.Sleep(200 * time.Millisecond)
 }
 

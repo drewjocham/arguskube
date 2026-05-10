@@ -38,6 +38,13 @@ export function useTerminal() {
 
 /**
  * Composable for interactive pod exec (kubectl exec -it).
+ *
+ * Errors now flow into `error` so the caller can render them. The old
+ * version swallowed sendInput / resizeExec errors with console.error,
+ * which left the user staring at a non-responsive shell with no clue
+ * why ("Shell in pods not working"). When the underlying RBAC drops,
+ * the pod gets deleted, or the SPDY stream dies, the user sees a
+ * specific message instead of silence.
  */
 export function usePodExec() {
   const connected = ref(false)
@@ -50,6 +57,7 @@ export function usePodExec() {
       connected.value = true
     } catch (e) {
       error.value = e?.message || String(e)
+      connected.value = false
       console.error('[exec]', e)
     }
   }
@@ -58,6 +66,10 @@ export function usePodExec() {
     try {
       await callGo('SendExecInput', data)
     } catch (e) {
+      if (connected.value) {
+        error.value = `Pod shell input failed: ${e?.message || e}`
+        connected.value = false
+      }
       console.error('[exec-input]', e)
     }
   }

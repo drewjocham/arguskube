@@ -93,7 +93,7 @@ func diagnoseOOM(b *Bundle, d *alerts.Diagnosis) {
 	}
 
 	d.Steps = []alerts.RunbookStep{
-		{Number: 1, Text: fmt.Sprintf("Rollback deployment to previous stable version"),
+		{Number: 1, Text: "Rollback deployment to previous stable version",
 			Command: fmt.Sprintf("kubectl rollout undo deploy/%s -n %s", deployBase(a.PodName), a.Namespace)},
 		{Number: 2, Text: "Confirm pods stabilise and restarts stop",
 			Command: fmt.Sprintf("kubectl rollout status deploy/%s -n %s", deployBase(a.PodName), a.Namespace)},
@@ -283,12 +283,11 @@ func buildCascadeNote(target alerts.Alert, cascade []alerts.Alert) string {
 
 	var parts []string
 	for _, ca := range cascade {
-		// Try to identify the causal chain direction.
 		relation := ca.Name
 		if ca.Timestamp.Before(target.Timestamp) {
-			relation = ca.Name + " (preceded this alert)"
+			relation += " (preceded this alert)"
 		} else {
-			relation = ca.Name + " (followed this alert)"
+			relation += " (followed this alert)"
 		}
 		parts = append(parts, relation)
 	}

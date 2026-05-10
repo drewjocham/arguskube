@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"os/user"
 	"strings"
 	"time"
 )
@@ -44,10 +43,10 @@ type AuthConfig struct {
 	GoogleClientID     string `env:"KUBEWATCHER_GOOGLE_CLIENT_ID"`
 	GoogleClientSecret string `env:"KUBEWATCHER_GOOGLE_CLIENT_SECRET"`
 
-	OIDCIssuer       string `env:"KUBEWATCHER_OIDC_ISSUER"`        // e.g. https://acme.okta.com
+	OIDCIssuer       string `env:"KUBEWATCHER_OIDC_ISSUER"` // e.g. https://acme.okta.com
 	OIDCClientID     string `env:"KUBEWATCHER_OIDC_CLIENT_ID"`
 	OIDCClientSecret string `env:"KUBEWATCHER_OIDC_CLIENT_SECRET"`
-	OIDCDisplayName  string `env:"KUBEWATCHER_OIDC_DISPLAY_NAME"`   // e.g. "Acme SSO"
+	OIDCDisplayName  string `env:"KUBEWATCHER_OIDC_DISPLAY_NAME"` // e.g. "Acme SSO"
 
 	// AllowLocalSignup controls whether the email/password registration
 	// endpoint is open. Default is true for the desktop app; SaaS
@@ -72,19 +71,19 @@ type KubernetesConfig struct {
 
 // AIConfig holds settings for AI diagnostics and anomaly detection.
 type AIConfig struct {
-	DeepSeekAPIKey   string `env:"DEEPSEEK_API_KEY"`
-	AnomstackURL     string `env:"ANOMSTACK_URL"`
-	AnomstackAPIKey  string `env:"ANOMSTACK_API_KEY"`
+	DeepSeekAPIKey    string `env:"DEEPSEEK_API_KEY"`
+	AnomstackURL      string `env:"ANOMSTACK_URL"`
+	AnomstackAPIKey   string `env:"ANOMSTACK_API_KEY"`
 	MCPServersConfig  string `env:"MCP_SERVERS_CONFIG"`
 	AgentInstructions string `env:"AGENT_INSTRUCTIONS"`
 	FlinkURL          string `env:"KUBEWATCHER_FLINK_URL"`
-	FlinkAPIKey     string `env:"KUBEWATCHER_FLINK_API_KEY"`
-	VertexProject   string `env:"VERTEX_PROJECT"`
-	VertexLocation  string `env:"VERTEX_LOCATION"`
-	PrometheusURL   string `env:"PROMETHEUS_URL"` // optional: enhances metrics if available
-	PopeyeBinary    string `env:"KUBEWATCHER_POPEYE_BIN"`
-	ContextTokenMax int
-	ContextTimeout  time.Duration
+	FlinkAPIKey       string `env:"KUBEWATCHER_FLINK_API_KEY"`
+	VertexProject     string `env:"VERTEX_PROJECT"`
+	VertexLocation    string `env:"VERTEX_LOCATION"`
+	PrometheusURL     string `env:"PROMETHEUS_URL"` // optional: enhances metrics if available
+	PopeyeBinary      string `env:"KUBEWATCHER_POPEYE_BIN"`
+	ContextTokenMax   int
+	ContextTimeout    time.Duration
 }
 
 // ArgoCDConfig holds connection settings for an Argo CD server.
@@ -97,9 +96,9 @@ type ArgoCDConfig struct {
 // SecurityConfig holds optional paths and tokens for security scanning tools.
 // All fields are optional — features degrade gracefully when not configured.
 type SecurityConfig struct {
-	SnykToken    string `env:"SNYK_TOKEN"`              // API token for Snyk CLI
-	TrivyBinary  string `env:"KUBEWATCHER_TRIVY_BIN"`   // path to trivy binary (default: "trivy")
-	FalcoURL     string `env:"KUBEWATCHER_FALCO_URL"`   // Falco gRPC/HTTP endpoint
+	SnykToken   string `env:"SNYK_TOKEN"`            // API token for Snyk CLI
+	TrivyBinary string `env:"KUBEWATCHER_TRIVY_BIN"` // path to trivy binary (default: "trivy")
+	FalcoURL    string `env:"KUBEWATCHER_FALCO_URL"` // Falco gRPC/HTTP endpoint
 }
 
 // FeaturesConfig holds tier and license info.
@@ -145,19 +144,19 @@ func New() (*OnlineDataConfig, error) {
 			InCluster: env("KUBEWATCHER_IN_CLUSTER", "false") == "true",
 		},
 		AI: AIConfig{
-			DeepSeekAPIKey:   env("DEEPSEEK_API_KEY", ""),
-			AnomstackURL:     env("ANOMSTACK_URL", "http://localhost:8087"),
+			DeepSeekAPIKey:    env("DEEPSEEK_API_KEY", ""),
+			AnomstackURL:      env("ANOMSTACK_URL", "http://localhost:8087"),
 			AnomstackAPIKey:   env("ANOMSTACK_API_KEY", ""),
 			MCPServersConfig:  env("MCP_SERVERS_CONFIG", ""),
 			AgentInstructions: env("AGENT_INSTRUCTIONS", "Analyze the cluster health based on recent events and alerts."),
 			FlinkURL:          env("KUBEWATCHER_FLINK_URL", ""),
-			FlinkAPIKey:     env("KUBEWATCHER_FLINK_API_KEY", ""),
-			VertexProject:   env("VERTEX_PROJECT", ""),
-			VertexLocation:  env("VERTEX_LOCATION", "europe-west3"),
-			PrometheusURL:   env("PROMETHEUS_URL", ""), // auto-detected if empty
-			PopeyeBinary:    env("KUBEWATCHER_POPEYE_BIN", "popeye"),
-			ContextTokenMax: 8000,
-			ContextTimeout:  3 * time.Second,
+			FlinkAPIKey:       env("KUBEWATCHER_FLINK_API_KEY", ""),
+			VertexProject:     env("VERTEX_PROJECT", ""),
+			VertexLocation:    env("VERTEX_LOCATION", "europe-west3"),
+			PrometheusURL:     env("PROMETHEUS_URL", ""), // auto-detected if empty
+			PopeyeBinary:      env("KUBEWATCHER_POPEYE_BIN", "popeye"),
+			ContextTokenMax:   8000,
+			ContextTimeout:    3 * time.Second,
 		},
 		ArgoCD: ArgoCDConfig{
 			URL:      env("ARGOCD_URL", ""),
@@ -243,14 +242,4 @@ func parseTier(s string) Tier {
 	default:
 		return TierFree
 	}
-}
-
-func homeDir() string {
-	if u, err := user.Current(); err == nil {
-		return u.HomeDir
-	}
-	if h := os.Getenv("HOME"); h != "" {
-		return h
-	}
-	return "."
 }

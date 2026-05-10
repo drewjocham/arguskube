@@ -50,7 +50,7 @@ func TestChatSuccess(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"id": "chat-1",
 			"choices": [{"index": 0, "message": {"role": "assistant", "content": "Hello, I am DeepSeek!"}, "finish_reason": "stop"}],
 			"usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
@@ -77,7 +77,7 @@ func TestChatSuccess(t *testing.T) {
 func TestChatHandlesServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error": "internal error"}`))
+		_, _ = w.Write([]byte(`{"error": "internal error"}`))
 	}))
 	defer server.Close()
 
@@ -98,7 +98,7 @@ func TestChatHandlesServerError(t *testing.T) {
 func TestChatHandlesBadRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error": "invalid request"}`))
+		_, _ = w.Write([]byte(`{"error": "invalid request"}`))
 	}))
 	defer server.Close()
 	_ = server.URL
@@ -140,7 +140,7 @@ func TestChatResponseParsing(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(responseJSON))
+		_, _ = w.Write([]byte(responseJSON))
 	}))
 	defer server.Close()
 	_ = server.URL
@@ -151,7 +151,7 @@ func TestChatTimeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"choices": [{"message": {"role": "assistant", "content": "slow"}}], "usage": {}}`))
+		_, _ = w.Write([]byte(`{"choices": [{"message": {"role": "assistant", "content": "slow"}}], "usage": {}}`))
 	}))
 	defer server.Close()
 	_ = server.URL
@@ -164,7 +164,7 @@ func TestRetryOn429(t *testing.T) {
 		attempts++
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte(`{"error": "rate limited"}`))
+		_, _ = w.Write([]byte(`{"error": "rate limited"}`))
 	}))
 	defer server.Close()
 	_ = server.URL
@@ -177,7 +177,7 @@ func TestChatHandlesEmptyChoices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"id": "empty", "choices": [], "usage": {}}`))
+		_, _ = w.Write([]byte(`{"id": "empty", "choices": [], "usage": {}}`))
 	}))
 	defer server.Close()
 	_ = server.URL
@@ -187,7 +187,7 @@ func TestChatHandlesEmptyChoices(t *testing.T) {
 func TestChatHandlesMalformedJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{invalid json`))
+		_, _ = w.Write([]byte(`{invalid json`))
 	}))
 	defer server.Close()
 	_ = server.URL

@@ -1,4 +1,4 @@
-# ── Image ──────────────────────────────────────────────────────────
+# ── Image (Vector-based) ───────────────────────────────────────────
 image:
   repository: ghcr.io/drewjocham/kubewatcher-alert-ingress
   tag: ""
@@ -13,12 +13,27 @@ fullnameOverride: ""
 service:
   type: ClusterIP
   port: 8080
+  metricsPort: 8686
 
-# ── Configuration ──────────────────────────────────────────────────
-config:
-  mode: stdout
-  gcpProject: ""
-  gcpTopic: ""
+# ── Vector Configuration ───────────────────────────────────────────
+vector:
+  # Log level for Vector itself (trace, debug, info, warn, error)
+  logLevel: info
+  # Additional Vector config files to include (mounted from ConfigMaps)
+  extraConfigs: []
+
+# ── Sinks ──────────────────────────────────────────────────────────
+sinks:
+  stdout:
+    enabled: true
+  s3:
+    enabled: false
+    bucket: ""
+    region: ""
+  gcpPubSub:
+    enabled: false
+    project: ""
+    topic: "argus-alerts"
 
 # ── Autoscaling ────────────────────────────────────────────────────
 autoscaling:
@@ -34,7 +49,7 @@ resources:
     memory: 128Mi
   requests:
     cpu: 50m
-    memory: 32Mi
+    memory: 64Mi
 
 # ── Security Contexts ──────────────────────────────────────────────
 podSecurityContext:

@@ -6,11 +6,12 @@ version: "3.9"
 #   docker compose up -d
 #
 # Services:
-#   frontend  — nginx serving the Vue SPA + reverse proxy to backend
-#   backend   — Go HTTP API (headless, no Wails GUI)
-#   prometheus — metrics collection
-#   grafana   — dashboards
-#   ollama    — local LLM for AI diagnostics
+#   frontend     — nginx serving the Vue SPA + reverse proxy to backend
+#   backend      — Go HTTP API (headless, no Wails GUI)
+#   alert-ingress— Vector pipeline (replaces custom Go webhook service)
+#   prometheus   — metrics collection
+#   grafana      — dashboards
+#   ollama       — local LLM for AI diagnostics
 # ─────────────────────────────────────────────────────────────────────
 
 services:
@@ -40,6 +41,24 @@ services:
     depends_on:
       prometheus:
         condition: service_started
+
+  # ── Vector alert-ingress (replaces custom Go service) ────────────
+  alert-ingress:
+    build:
+      context: ./alert-ingress
+      dockerfile: Dockerfile
+    container_name: kubewatcher-alert-ingress
+    restart: unless-stopped
+    ports:
+      - "8081:8080"                             # Webhook receiver
+    networks:
+      - kw-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8686/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   # ── Vue frontend via nginx ───────────────────────────────────────
   frontend:
@@ -104,14 +123,6 @@ services:
       - "11434:11434"
     networks:
       - kw-net
-    # GPU passthrough (NVIDIA GPU + nvidia-docker):
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
 
 volumes:
   backend-data:

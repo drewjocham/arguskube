@@ -4,6 +4,7 @@ import { useResources, useChat, useNotebooks } from '../../composables/useWails'
 import { useArgusContextStore } from '../../stores/argusContext'
 import { useUIPrefsStore } from '../../stores/uiPrefs'
 import { useNotificationsStore } from '../../stores/notifications'
+import { useDocumentsStore } from '../../stores/documents'
 
 const props = defineProps({
   type: { type: String, default: 'networkpolicies' }
@@ -15,6 +16,7 @@ const { saveFile: saveNotebook } = useNotebooks()
 const argusContext = useArgusContextStore()
 const uiPrefs = useUIPrefsStore()
 const notifications = useNotificationsStore()
+const documents = useDocumentsStore()
 
 const reviewing = ref(false)
 const lastReview = ref(null) // { content, timestamp, savedToS3 }
@@ -148,6 +150,18 @@ async function reviewPolicies() {
 
   const ts = new Date().toISOString()
   lastReview.value = { content: reply, timestamp: ts, savedToS3: false }
+  // Persist as a Document so it survives navigation and shows up in
+  // Knowledge → Documents alongside other Argus-generated artifacts.
+  // The notification is the bell-panel transient; Documents is the
+  // long-term record.
+  documents.add({
+    kind: 'np-review',
+    title: `NetworkPolicy review — ${policies.value.length} resource(s)`,
+    body: reply || 'Argus produced no findings.',
+    sourceKind: 'networkpolicies',
+    sourcePayload: { count: policies.value.length },
+    meta: { timestamp: ts, sourceCount: policies.value.length },
+  })
   notifications.add({
     kind: 'spot-check',
     title: `NetworkPolicy review — ${policies.value.length} resource(s)`,

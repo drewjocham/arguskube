@@ -60,7 +60,7 @@ func TestFlinkDetectSuccess(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"metric_name": "container_cpu_usage",
 			"is_anomaly": true,
 			"score": 0.89,
@@ -106,7 +106,7 @@ func TestFlinkDetectNonAnomalous(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"metric_name": "container_mem_usage",
 			"is_anomaly": false,
 			"score": 0.08,
@@ -141,7 +141,7 @@ func TestFlinkDetectNonAnomalous(t *testing.T) {
 func TestFlinkDetectServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error": "flink job failed"}`))
+		_, _ = w.Write([]byte(`{"error": "flink job failed"}`))
 	}))
 	defer server.Close()
 
@@ -162,7 +162,7 @@ func TestFlinkDetectCancelledContext(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"is_anomaly": false, "score": 0}`))
+		_, _ = w.Write([]byte(`{"is_anomaly": false, "score": 0}`))
 	}))
 	defer server.Close()
 
@@ -189,7 +189,7 @@ func TestFlinkListJobsSuccess(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[
+		_, _ = w.Write([]byte(`[
 			{"name": "cpu-anomaly-detector", "metric": "container_cpu_usage", "schedule": "*/1 * * * *", "last_run": "2024-01-15T09:59:00Z", "status": "ok"},
 			{"name": "mem-anomaly-detector", "metric": "container_mem_usage", "schedule": "*/1 * * * *", "last_run": "2024-01-15T09:59:00Z", "status": "alert"}
 		]`))
@@ -219,7 +219,7 @@ func TestFlinkListJobsEmpty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[]`))
+		_, _ = w.Write([]byte(`[]`))
 	}))
 	defer server.Close()
 
@@ -259,7 +259,7 @@ func TestFlinkDetectWithoutAPIKey(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"is_anomaly": false, "score": 0}`))
+		_, _ = w.Write([]byte(`{"is_anomaly": false, "score": 0}`))
 	}))
 	defer server.Close()
 
@@ -284,7 +284,7 @@ func TestFlinkDetectRequestLabelsEmpty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"is_anomaly": false, "score": 0}`))
+		_, _ = w.Write([]byte(`{"is_anomaly": false, "score": 0}`))
 	}))
 	defer server.Close()
 

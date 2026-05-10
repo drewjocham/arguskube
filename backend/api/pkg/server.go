@@ -95,7 +95,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(res)
+	_ = json.NewEncoder(w).Encode(res)
 }
 
 // WebhookPayload is the JSON body from an anomaly detection webhook.
@@ -191,7 +191,7 @@ func (a *App) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"alert_id": alertID,
 		"status":   "ok",
 	})
@@ -273,64 +273,64 @@ func authenticateWebhook(r *http.Request) bool {
 // excluded.
 var httpExposedMethods = map[string]struct{}{
 	// Cluster read-only data the SaaS frontend needs to render dashboards.
-	"GetClusterInfo":           {},
-	"GetAppMode":               {},
-	"GetTier":                  {},
-	"GetSettings":              {}, // returns masked tokens; safe to read
-	"GetClusterMetrics":        {},
-	"DetectAlerts":             {},
-	"ListResources":            {},
-	"GetResourceDetail":        {},
-	"GetResourceYaml":          {},
-	"ListAllNamespaces":        {},
-	"ListContexts":             {},
-	"GetTopology":              {},
-	"GetWarningEvents":         {},
-	"GetNamespacePodCounts":    {},
-	"GetTopRestarters":         {},
-	"GetDeploymentRevisions":   {},
-	"GetVPARecommendations":    {},
+	"GetClusterInfo":         {},
+	"GetAppMode":             {},
+	"GetTier":                {},
+	"GetSettings":            {}, // returns masked tokens; safe to read
+	"GetClusterMetrics":      {},
+	"DetectAlerts":           {},
+	"ListResources":          {},
+	"GetResourceDetail":      {},
+	"GetResourceYaml":        {},
+	"ListAllNamespaces":      {},
+	"ListContexts":           {},
+	"GetTopology":            {},
+	"GetWarningEvents":       {},
+	"GetNamespacePodCounts":  {},
+	"GetTopRestarters":       {},
+	"GetDeploymentRevisions": {},
+	"GetVPARecommendations":  {},
 	// Diagnostics + AI chat (read-only-ish; conversation history per alert).
-	"DiagnoseAlert":            {},
-	"GetChatHistory":           {},
-	"GetAutoSummary":           {},
-	"GetAgentEventLog":         {},
-	"SendChatMessage":          {}, // produces side-effect: API call to LLM
+	"DiagnoseAlert":    {},
+	"GetChatHistory":   {},
+	"GetAutoSummary":   {},
+	"GetAgentEventLog": {},
+	"SendChatMessage":  {}, // produces side-effect: API call to LLM
 	// Argus Scan + Vulnerabilities — read-only reports.
-	"RunArgusScan":             {},
-	"ListVulnerabilities":      {},
+	"RunArgusScan":        {},
+	"ListVulnerabilities": {},
 	// Argo CD read-only.
-	"GetArgusCDStatus":         {},
-	"ListArgusCDApps":          {},
-	"GetArgusCDApp":            {},
-	"GetArgusCDResources":      {},
-	"GetArgusCDDiffs":          {},
-	"ListArgusCDProjects":      {},
-	"TestArgusCDConnection":    {},
+	"GetArgusCDStatus":      {},
+	"ListArgusCDApps":       {},
+	"GetArgusCDApp":         {},
+	"GetArgusCDResources":   {},
+	"GetArgusCDDiffs":       {},
+	"ListArgusCDProjects":   {},
+	"TestArgusCDConnection": {},
 	// Notebooks + Runbooks read.
-	"ListNotebooks":            {},
-	"GetNotebook":              {},
-	"ListRunbooks":             {},
-	"GetRunbook":               {},
+	"ListNotebooks": {},
+	"GetNotebook":   {},
+	"ListRunbooks":  {},
+	"GetRunbook":    {},
 	// Setup / tools probes (read-only).
-	"CheckTools":               {},
+	"CheckTools": {},
 	// Pause/unpause is benign — affects only this server's polling cadence.
-	"SetPaused":                {},
+	"SetPaused": {},
 	// Spot-checks: read-only cluster probes that emit notifications.
-	"RunSpotChecks":            {},
-	"RunSpotCheck":             {},
-	"ListSpotChecks":           {},
+	"RunSpotChecks":  {},
+	"RunSpotCheck":   {},
+	"ListSpotChecks": {},
 	// Alert processor: lifecycle controls + agent profile.
-	"AckAlert":                 {},
-	"SilenceAlert":             {},
-	"MarkAlertIgnored":         {},
-	"GetAgentProfile":          {},
-	"SetAgentProfile":          {},
-	"AlertInvestigations":      {},
+	"AckAlert":            {},
+	"SilenceAlert":        {},
+	"MarkAlertIgnored":    {},
+	"GetAgentProfile":     {},
+	"SetAgentProfile":     {},
+	"AlertInvestigations": {},
 	// Deployment artifacts: read-only catalog + env validation.
-	"GetDeployArtifacts":       {},
-	"GetDeployArtifact":        {},
-	"ValidateEnvFile":          {},
+	"GetDeployArtifacts": {},
+	"GetDeployArtifact":  {},
+	"ValidateEnvFile":    {},
 }
 
 func methodAllowedOverHTTP(name string) bool {

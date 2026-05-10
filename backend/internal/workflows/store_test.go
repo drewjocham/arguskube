@@ -98,15 +98,15 @@ func TestListReturnsSortedByUpdatedAtDesc(t *testing.T) {
 	store := testStore(t)
 
 	wf1 := &Workflow{Title: "Workflow 1", Steps: []Step{}}
-	store.Save(wf1)
+	_, _ = store.Save(wf1)
 	time.Sleep(20 * time.Millisecond)
 
 	wf2 := &Workflow{Title: "Workflow 2", Steps: []Step{}}
-	store.Save(wf2)
+	_, _ = store.Save(wf2)
 	time.Sleep(20 * time.Millisecond)
 
 	wf3 := &Workflow{Title: "Workflow 3", Steps: []Step{}}
-	store.Save(wf3)
+	_, _ = store.Save(wf3)
 
 	summaries, err := store.List()
 	if err != nil {

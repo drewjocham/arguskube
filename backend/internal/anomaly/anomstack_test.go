@@ -60,7 +60,7 @@ func TestDetectSuccess(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"metric_name": "container_cpu_usage",
 			"is_anomaly": true,
 			"score": 0.92,
@@ -106,7 +106,7 @@ func TestDetectNonAnomalous(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"metric_name": "container_mem_usage",
 			"is_anomaly": false,
 			"score": 0.12,
@@ -141,7 +141,7 @@ func TestDetectNonAnomalous(t *testing.T) {
 func TestDetectServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error": "internal error"}`))
+		_, _ = w.Write([]byte(`{"error": "internal error"}`))
 	}))
 	defer server.Close()
 
@@ -164,7 +164,7 @@ func TestDetectCancelledContext(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"is_anomaly": false, "score": 0}`))
+		_, _ = w.Write([]byte(`{"is_anomaly": false, "score": 0}`))
 	}))
 	defer server.Close()
 
@@ -193,7 +193,7 @@ func TestListJobsSuccess(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[
+		_, _ = w.Write([]byte(`[
 			{"name": "cpu-spike-detector", "metric": "container_cpu_usage", "schedule": "*/5 * * * *", "last_run": "2024-01-15T09:55:00Z", "status": "ok"},
 			{"name": "mem-leak-detector", "metric": "container_mem_usage", "schedule": "*/5 * * * *", "last_run": "2024-01-15T09:55:00Z", "status": "alert"}
 		]`))
@@ -223,7 +223,7 @@ func TestListJobsEmpty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[]`))
+		_, _ = w.Write([]byte(`[]`))
 	}))
 	defer server.Close()
 
@@ -263,7 +263,7 @@ func TestDetectWithoutAPIKey(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"is_anomaly": false, "score": 0}`))
+		_, _ = w.Write([]byte(`{"is_anomaly": false, "score": 0}`))
 	}))
 	defer server.Close()
 
@@ -289,7 +289,7 @@ func TestDetectRequestLabelsEmpty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"is_anomaly": false, "score": 0}`))
+		_, _ = w.Write([]byte(`{"is_anomaly": false, "score": 0}`))
 	}))
 	defer server.Close()
 

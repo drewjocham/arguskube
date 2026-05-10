@@ -89,11 +89,11 @@ func TestListReturnsIncidentsNewestFirst(t *testing.T) {
 	store := testStore(t)
 	ctx := context.Background()
 
-	store.Create(ctx, "Incident 1", "info", "alert", "desc1", "ns1")
+	_, _ = store.Create(ctx, "Incident 1", "info", "alert", "desc1", "ns1")
 	time.Sleep(20 * time.Millisecond)
-	store.Create(ctx, "Incident 2", "info", "alert", "desc2", "ns1")
+	_, _ = store.Create(ctx, "Incident 2", "info", "alert", "desc2", "ns1")
 	time.Sleep(20 * time.Millisecond)
-	store.Create(ctx, "Incident 3", "info", "alert", "desc3", "ns1")
+	_, _ = store.Create(ctx, "Incident 3", "info", "alert", "desc3", "ns1")
 
 	incidents := store.List(ctx)
 	if len(incidents) != 3 {

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -360,12 +359,6 @@ func mapPod(p *corev1.Pod) PodInfo {
 		Labels:       p.Labels,
 		Containers:   containers,
 	}
-}
-
-// defaultKubeconfig returns ~/.kube/config.
-func defaultKubeconfig() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".kube", "config")
 }
 
 // ---------------------------------------------------------------------------

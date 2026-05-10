@@ -121,15 +121,6 @@ func (c *FlinkClient) Detect(ctx context.Context, req DetectRequest) (*DetectRes
 	return result, nil
 }
 
-// jobResponse is the JSON response from the Flink gateway jobs endpoint.
-type flinkJobResponse struct {
-	Name     string `json:"name"`
-	Metric   string `json:"metric"`
-	Schedule string `json:"schedule"`
-	LastRun  string `json:"last_run"`
-	Status   string `json:"status"`
-}
-
 func (c *FlinkClient) ListJobs(ctx context.Context) ([]Job, error) {
 	url := fmt.Sprintf("%s/api/v1/jobs", c.baseURL)
 

@@ -9,8 +9,8 @@ import (
 // The frontend uses it both for "show me the command" (CommandText) and
 // "download the file" (FileText + FileName).
 type DeployArtifact struct {
-	Tool        string `json:"tool"`        // matches setup tool keys: kubectl, helm, popeye, kubewatcher-agent…
-	Flavor      string `json:"flavor"`      // "helm" | "docker" | "compose"
+	Tool        string `json:"tool"`   // matches setup tool keys: kubectl, helm, popeye, kubewatcher-agent…
+	Flavor      string `json:"flavor"` // "helm" | "docker" | "compose"
 	Description string `json:"description"`
 	CommandText string `json:"commandText"` // a copy-pasteable shell line
 	FileText    string `json:"fileText"`    // the file body (helm values, docker-compose.yaml, etc.)
@@ -105,9 +105,7 @@ func parseDotenv(body string) map[string]string {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		if strings.HasPrefix(line, "export ") {
-			line = strings.TrimPrefix(line, "export ")
-		}
+		line = strings.TrimPrefix(line, "export ")
 		eq := strings.IndexByte(line, '=')
 		if eq <= 0 {
 			continue

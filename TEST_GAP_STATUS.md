@@ -2,20 +2,20 @@
 
 Last updated: 2026-05-10
 
-## Utils (1 missing)
-- [ ] `view/src/utils/logHighlight.js`
+## Utils (0 missing)
+- [x] `view/src/utils/logHighlight.js`
 
-## Composables (4 missing)
-- [ ] `view/src/composables/useBackgroundTasks.js`
-- [ ] `view/src/composables/useEvents.js`
-- [ ] `view/src/composables/useSpotCheck.js`
-- [ ] `view/src/composables/useWails.js`
+## Composables (0 missing)
+- [x] `view/src/composables/useBackgroundTasks.js`
+- [x] `view/src/composables/useEvents.js`
+- [x] `view/src/composables/useSpotCheck.js`
+- [x] `view/src/composables/useWails.js` (barrel re-export — tested via domain composables)
 
-## Stores (4 missing)
-- [ ] `view/src/stores/agentAnalysis.js`
-- [ ] `view/src/stores/appearance.js`
-- [ ] `view/src/stores/auth.js`
-- [ ] `view/src/stores/navSearch.js`
+## Stores (1 missing)
+- [x] `view/src/stores/agentAnalysis.js`
+- [x] `view/src/stores/appearance.js`
+- [x] `view/src/stores/auth.js`
+- [ ] `view/src/stores/navSearch.js` (not discovered in audit)
 
 ## Components (35 missing)
 

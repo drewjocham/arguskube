@@ -34,7 +34,7 @@ func (t *Terminal) Start(shell string, rows, cols uint16) error {
 	defer t.mu.Unlock()
 
 	if t.ptmx != nil {
-		t.closeLocked()
+		_ = t.closeLocked()
 	}
 
 	if shell == "" {
@@ -117,8 +117,8 @@ func (t *Terminal) closeLocked() error {
 		t.ptmx.Close()
 	}
 	if t.cmd != nil && t.cmd.Process != nil {
-		t.cmd.Process.Kill()
-		t.cmd.Wait() //nolint:errcheck
+		_ = t.cmd.Process.Kill()
+		_ = t.cmd.Wait()
 	}
 
 	t.logger.Info("terminal closed")
