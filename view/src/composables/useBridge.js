@@ -71,13 +71,32 @@ export async function callGo(method, ...args) {
     }
   }
 
-  // Fallback to REST API for SaaS mode
+  // Fallback to REST API for SaaS mode. Pull the session token from
+  // localStorage rather than importing the auth store — the store
+  // depends on this bridge, and a circular import would break Pinia
+  // initialization order.
+  const headers = { 'Content-Type': 'application/json' }
+  try {
+    const raw = typeof localStorage !== 'undefined' && localStorage.getItem('argus.auth.session')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed?.token) headers.Authorization = `Bearer ${parsed.token}`
+    }
+  } catch { /* private mode / locked storage — request goes out unauthenticated and gets a 401 */ }
   try {
     const res = await fetch(`${apiBase}/api/${method}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ args })
     })
+    if (res.status === 401) {
+      // Session expired or missing. Clear local state so the next
+      // tick of the Vue app routes the user to LoginView, then bubble
+      // the error so the caller can stop retrying.
+      try { localStorage.removeItem('argus.auth.session') } catch {}
+      window.dispatchEvent(new CustomEvent('argus:session-expired'))
+      throw new Error('session expired — please sign in again')
+    }
     if (!res.ok) {
       throw new Error(`HTTP error! status: ${res.status}`)
     }

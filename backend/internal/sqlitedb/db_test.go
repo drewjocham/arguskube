@@ -42,19 +42,20 @@ func TestMigrationsApplied(t *testing.T) {
 	defer db.Close()
 
 	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM incidents").Scan(&count); err != nil {
-		t.Fatalf("incidents table not found: %v", err)
-	}
-	if err := db.QueryRow("SELECT COUNT(*) FROM workflows").Scan(&count); err != nil {
-		t.Fatalf("workflows table not found: %v", err)
+	for _, table := range []string{"incidents", "workflows", "users", "sessions", "oauth_pending"} {
+		if err := db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count); err != nil {
+			t.Fatalf("%s table not found: %v", table, err)
+		}
 	}
 
+	// _migrations is append-only; assert it has at least the original
+	// two so we don't silently drop a baseline migration in a refactor.
 	var migrationCount int
 	if err := db.QueryRow("SELECT COUNT(*) FROM _migrations").Scan(&migrationCount); err != nil {
 		t.Fatalf("_migrations table not found: %v", err)
 	}
-	if migrationCount != 2 {
-		t.Errorf("expected 2 migrations, got %d", migrationCount)
+	if migrationCount < 2 {
+		t.Errorf("expected at least 2 migrations, got %d", migrationCount)
 	}
 }
 

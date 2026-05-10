@@ -164,19 +164,33 @@ func applyCORS(w http.ResponseWriter, r *http.Request, allowed []string) bool {
 	return true
 }
 
-// authenticate enforces Bearer-token auth for non-localhost requests when
-// KUBEWATCHER_API_TOKEN is set. Returns true if the request is permitted.
-func authenticate(r *http.Request) bool {
+// authorizeAPIRequest gates /api/* on a valid session token. The
+// service-token path is also accepted so CI jobs and external tooling
+// can hit read-only endpoints without going through the user-account
+// flow. Loopback alone is no longer sufficient: the user must be
+// signed in (or carry a service token) to reach the API.
+func (a *App) authorizeAPIRequest(r *http.Request) bool {
+	if a.auth != nil {
+		if user, err := a.auth.store.ValidateSession(bearerFromRequest(r)); err == nil && user != nil {
+			return true
+		}
+	}
+	return authenticateService(r)
+}
+
+// authenticateService is the legacy CI / external-tooling path: a static
+// token in KUBEWATCHER_API_TOKEN. Kept so service accounts and CI jobs
+// can call read-only endpoints without going through the user-account
+// flow. Returns true if a service token matches.
+//
+// Prefer session auth (validateSession on App) for human callers — that
+// path is what the LoginView, OAuth callbacks, and the embedded webview
+// all use. The legacy bypass for "loopback without any token" is GONE:
+// users must log in even on the desktop, by design.
+func authenticateService(r *http.Request) bool {
 	token := strings.TrimSpace(os.Getenv("KUBEWATCHER_API_TOKEN"))
 	if token == "" {
-		// No token configured: only loopback callers are allowed. The
-		// caller is also responsible for binding the listener to loopback,
-		// but we still gate here as defense-in-depth.
-		return remoteIsLocal(r)
-	}
-	if remoteIsLocal(r) {
-		// Embedded Wails webview always lives on loopback; let it through.
-		return true
+		return false
 	}
 	hdr := r.Header.Get("Authorization")
 	const prefix = "Bearer "
@@ -184,6 +198,5 @@ func authenticate(r *http.Request) bool {
 		return false
 	}
 	got := strings.TrimSpace(hdr[len(prefix):])
-	// constant-time comparison to avoid token-length leakage via timing.
 	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
 }

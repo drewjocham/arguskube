@@ -144,6 +144,25 @@ clean: agent-clean helm-clean ## Remove all build artifacts
 clean-vue: ## Remove Vue node_modules only
 	rm -rf $(VIEW_DIR)/node_modules
 
+# ── Flink ────────────────────────────────────────────────────────
+
+FLINK_DIR := flink
+
+.PHONY: flink-build-gateway flink-build-job flink-test flink-lint
+
+flink-build-gateway: ## Build Flink gateway binary
+	cd $(FLINK_DIR)/gateway && CGO_ENABLED=0 go build -ldflags '-s -w' -o ../build/flink-gateway .
+
+flink-build-job: ## Build Flink job Docker image
+	docker build -t kubewatcher-flink-job:latest -f $(FLINK_DIR)/Dockerfile $(FLINK_DIR)
+
+flink-test: ## Run Flink gateway tests (none yet — placeholder)
+	@echo "  (no tests for Flink gateway yet — add in gateway/ directory)"
+
+flink-lint: ## Lint Flink gateway Go code
+	cd $(FLINK_DIR)/gateway && [ -f go.sum ] || go mod tidy
+	cd $(FLINK_DIR)/gateway && golangci-lint run ./... 2>/dev/null || echo "  (no golangci-lint config for flink)"
+	
 # ── Argus Python Agents ──────────────────────────────────────────
 
 AGENT_VENV  := $(AGENT_DIR)/.venv

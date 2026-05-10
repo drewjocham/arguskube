@@ -15,6 +15,7 @@ import (
 	"github.com/argues/kube-watcher/internal/ai"
 	"github.com/argues/kube-watcher/internal/argocd"
 	"github.com/argues/kube-watcher/internal/anomaly"
+	"github.com/argues/kube-watcher/internal/auth"
 	"github.com/argues/kube-watcher/internal/config"
 	ctxassembly "github.com/argues/kube-watcher/internal/context"
 	"github.com/argues/kube-watcher/internal/features"
@@ -186,6 +187,12 @@ func run() error {
 		Setup:     setupMgr,
 		AppMode:   appMode,
 	})
+
+	// Wire the user-account / OAuth subsystem. Without this, every
+	// /api/* call returns 401 — by design, since the spec is "no
+	// account = no access".
+	authStore := auth.NewStore(db.DB, logger.With(slog.String("component", "auth")))
+	app.SetupAuth(authStore, cfg.Auth)
 
 	// Start the SaaS API server so the frontend can communicate without Wails
 	app.StartHTTPServer(8080)

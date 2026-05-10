@@ -37,7 +37,7 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	if !authenticate(r) {
+	if !a.authorizeAPIRequest(r) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -207,6 +207,9 @@ func (a *App) StartHTTPServer(port int) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/", a.ServeHTTP)
 	mux.HandleFunc("/webhooks/anomstack", a.HandleWebhook)
+	if a.auth != nil {
+		a.AuthRoutes(mux)
+	}
 	go a.hub.Run(a.ctx)
 	mux.HandleFunc("/tunnel", a.hub.HandleTunnel)
 

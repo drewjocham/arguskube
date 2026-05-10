@@ -1,8 +1,11 @@
 <script setup>
+import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { isWails } from '../../composables/useWails'
 import { useNotificationsStore } from '../../stores/notifications'
+import { useAuthStore } from '../../stores/auth'
 import NotificationsPanel from '../notifications/NotificationsPanel.vue'
+import EnvironmentSelector from './EnvironmentSelector.vue'
 
 defineProps({
   clusterInfo: { type: Object, default: null },
@@ -14,12 +17,30 @@ const emit = defineEmits(['toggle-terminal', 'pop-out'])
 const notifications = useNotificationsStore()
 const { unreadCount, panelOpen: notifPanelOpen } = storeToRefs(notifications)
 
+const auth = useAuthStore()
+const userMenuOpen = ref(false)
+const userInitial = computed(() => {
+  const u = auth.user
+  if (!u) return '?'
+  const src = u.name || u.email || '?'
+  return src.trim().charAt(0).toUpperCase()
+})
+
 function openDeepLink(path) {
   window.location.href = `kubewatcher://${path}`
 }
 
 function toggleNotifications() {
   notifications.togglePanel()
+}
+
+function toggleUserMenu() {
+  userMenuOpen.value = !userMenuOpen.value
+}
+
+async function signOut() {
+  userMenuOpen.value = false
+  await auth.logout()
 }
 </script>
 
@@ -55,8 +76,7 @@ function toggleNotifications() {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
         </button>
       </template>
-      <div class="env-badge env-prod">PROD</div>
-      <div class="env-badge env-qa">QA</div>
+      <EnvironmentSelector style="--wails-draggable: no-drag" />
       <button
         class="tb-bell"
         :class="{ active: notifPanelOpen }"
@@ -71,6 +91,22 @@ function toggleNotifications() {
         <span v-if="unreadCount > 0" class="tb-bell-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
       </button>
       <div class="health-dot"></div>
+      <div v-if="auth.user" class="user-chip" style="--wails-draggable: no-drag">
+        <button
+          class="user-avatar"
+          :class="{ active: userMenuOpen }"
+          @click="toggleUserMenu"
+          :title="auth.user.email"
+        >{{ userInitial }}</button>
+        <div v-if="userMenuOpen" class="user-menu">
+          <div class="user-meta">
+            <div class="u-name">{{ auth.user.name || auth.user.email }}</div>
+            <div class="u-email">{{ auth.user.email }}</div>
+            <div class="u-prov">via {{ auth.user.provider }}</div>
+          </div>
+          <button class="u-action" @click="signOut">Sign out</button>
+        </div>
+      </div>
     </div>
     <NotificationsPanel />
   </div>
@@ -216,4 +252,54 @@ function toggleNotifications() {
   box-shadow: 0 0 6px var(--green);
   animation: pulse 2s ease-in-out infinite;
 }
+
+.user-chip { position: relative; margin-left: 8px; }
+.user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+  color: #fff;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: filter .15s var(--ease);
+}
+.user-avatar:hover, .user-avatar.active { filter: brightness(1.15); }
+
+.user-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r2);
+  box-shadow: var(--shadow2);
+  padding: .65rem;
+  z-index: 50;
+}
+.user-meta { padding: .25rem .35rem .55rem; border-bottom: 1px solid var(--border); margin-bottom: .55rem; }
+.user-meta .u-name { color: var(--text); font-size: .9rem; font-weight: 500; }
+.user-meta .u-email { color: var(--text2); font-size: .75rem; margin-top: .15rem; }
+.user-meta .u-prov { color: var(--text3); font-size: .7rem; margin-top: .15rem; text-transform: uppercase; letter-spacing: .06em; }
+.u-action {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: .85rem;
+  padding: .4rem .5rem;
+  border-radius: var(--r2);
+  cursor: pointer;
+}
+.u-action:hover { background: var(--bg3); }
 </style>

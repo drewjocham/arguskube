@@ -270,21 +270,30 @@ func siblingTerminalAppPath() (string, bool) {
 
 // SettingsPayload is the JSON structure for runtime config visible in the settings view.
 type SettingsPayload struct {
-	KubeconfigPath string `json:"kubeconfigPath"`
-	CurrentContext string `json:"currentContext"`
-	Namespace      string `json:"namespace"`
-	DeepSeekAPIKey string `json:"deepseekApiKey"` // masked for display
-	AnomstackURL   string `json:"anomstackUrl"`
-	PrometheusURL  string `json:"prometheusUrl"`
-	ArgoCDURL      string `json:"argocdUrl"`
-	ArgoCDToken    string `json:"argocdToken"`    // masked for display
-	ArgoCDInsecure bool   `json:"argocdInsecure"`
+	KubeconfigPath   string `json:"kubeconfigPath"`
+	CurrentContext   string `json:"currentContext"`
+	Namespace        string `json:"namespace"`
+	DeepSeekAPIKey   string `json:"deepseekApiKey"` // masked for display
+	AnomstackURL     string `json:"anomstackUrl"`
+	MCPServersConfig string `json:"mcpServersConfig"`
+	AgentInstructions string `json:"agentInstructions"`
+	PrometheusURL    string `json:"prometheusUrl"`
+	ArgoCDURL        string `json:"argocdUrl"`
+	ArgoCDToken      string `json:"argocdToken"`    // masked for display
+	ArgoCDInsecure   bool   `json:"argocdInsecure"`
 	// Security scanning tools (all optional).
 	SnykToken   string `json:"snykToken"`   // masked for display
 	TrivyBinary string `json:"trivyBinary"` // path to trivy binary
 	FalcoURL    string `json:"falcoUrl"`    // Falco gRPC/HTTP endpoint
 	Tier        string `json:"tier"`
 	LogLevel    string `json:"logLevel"`
+}
+
+// TriggerAgentAnalysis manually fires the periodic agent analysis.
+func (a *App) TriggerAgentAnalysis() {
+	if a.periodicAgent != nil {
+		a.periodicAgent.TriggerAnalysis()
+	}
 }
 
 // GetSettings returns the current runtime configuration for display in the settings view.
@@ -319,12 +328,14 @@ func (a *App) GetSettings() SettingsPayload {
 	}
 
 	return SettingsPayload{
-		KubeconfigPath: a.cfg.Kubernetes.Config,
-		CurrentContext: a.cfg.Kubernetes.Context,
-		Namespace:      a.cfg.Kubernetes.Namespace,
-		DeepSeekAPIKey: masked,
-		AnomstackURL:   a.cfg.AI.AnomstackURL,
-		PrometheusURL:  a.cfg.AI.PrometheusURL,
+		KubeconfigPath:   a.cfg.Kubernetes.Config,
+		CurrentContext:   a.cfg.Kubernetes.Context,
+		Namespace:        a.cfg.Kubernetes.Namespace,
+		DeepSeekAPIKey:    masked,
+		AnomstackURL:      a.cfg.AI.AnomstackURL,
+		MCPServersConfig:  a.cfg.AI.MCPServersConfig,
+		AgentInstructions: a.cfg.AI.AgentInstructions,
+		PrometheusURL:     a.cfg.AI.PrometheusURL,
 		ArgoCDURL:      a.cfg.ArgoCD.URL,
 		ArgoCDToken:    maskedArgoToken,
 		ArgoCDInsecure: a.cfg.ArgoCD.Insecure,
@@ -362,6 +373,12 @@ func (a *App) UpdateSettings(s SettingsPayload) error {
 	}
 	if s.AnomstackURL != "" {
 		a.cfg.AI.AnomstackURL = s.AnomstackURL
+	}
+	if s.MCPServersConfig != "" {
+		a.cfg.AI.MCPServersConfig = s.MCPServersConfig
+	}
+	if s.AgentInstructions != "" {
+		a.cfg.AI.AgentInstructions = s.AgentInstructions
 	}
 	if s.PrometheusURL != "" {
 		a.cfg.AI.PrometheusURL = s.PrometheusURL

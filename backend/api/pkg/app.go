@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/argues/kube-watcher/internal/agentconn"
+	"github.com/argues/kube-watcher/internal/agentanalysis"
 	"github.com/argues/kube-watcher/internal/argocd"
 	"github.com/argues/kube-watcher/internal/ai"
 	"github.com/argues/kube-watcher/internal/alerts"
@@ -58,6 +59,7 @@ type App struct {
 	detector       anomaly.Detector
 	anomalySettings *anomaly.SettingsStore
 	agent          *ai.Agent
+	periodicAgent  *agentanalysis.Agent
 	popeye    *popeye.Runner
 	scanner   *vulnscan.Scanner
 	argoCD    *argocd.Client
@@ -85,6 +87,9 @@ type App struct {
 	// webhookAlerts stores alerts received via the /webhooks/anomstack endpoint.
 	webhookAlerts []alerts.Alert
 	webhookMu     sync.RWMutex
+
+	// auth gates /api/* on a valid session. nil until SetupAuth runs.
+	auth *authState
 }
 
 // NewApp constructs and initializes the main application.
@@ -149,6 +154,9 @@ func (a *App) Startup(ctx context.Context) {
 	}
 
 	a.StartEventLoop(ctx)
+	
+	a.periodicAgent = agentanalysis.NewAgent(a.logger, a.cfg, a.ctx)
+	go a.periodicAgent.StartLoop(a.ctx)
 }
 
 // Shutdown is called by Wails when the app closes.

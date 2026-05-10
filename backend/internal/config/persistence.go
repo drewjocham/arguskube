@@ -17,12 +17,14 @@ import (
 // Tier and license info are intentionally NOT persisted — those are gated by
 // the license server, not user-editable.
 type PersistedSettings struct {
-	KubeconfigPath string `json:"kubeconfigPath,omitempty"`
-	Context        string `json:"context,omitempty"`
-	Namespace      string `json:"namespace,omitempty"`
-	DeepSeekAPIKey string `json:"deepseekApiKey,omitempty"`
-	AnomstackURL   string `json:"anomstackUrl,omitempty"`
-	PrometheusURL  string `json:"prometheusUrl,omitempty"`
+	KubeconfigPath   string `json:"kubeconfigPath,omitempty"`
+	Context          string `json:"context,omitempty"`
+	Namespace        string `json:"namespace,omitempty"`
+	DeepSeekAPIKey   string `json:"deepseekApiKey,omitempty"`
+	AnomstackURL      string `json:"anomstackUrl,omitempty"`
+	MCPServersConfig  string `json:"mcpServersConfig,omitempty"`
+	AgentInstructions string `json:"agentInstructions,omitempty"`
+	PrometheusURL     string `json:"prometheusUrl,omitempty"`
 	ArgoCDURL      string `json:"argocdUrl,omitempty"`
 	ArgoCDToken    string `json:"argocdToken,omitempty"`
 	ArgoCDInsecure bool   `json:"argocdInsecure,omitempty"`
@@ -131,6 +133,12 @@ func (s *PersistedSettings) MergeInto(cfg *OnlineDataConfig) {
 	if s.AnomstackURL != "" {
 		cfg.AI.AnomstackURL = s.AnomstackURL
 	}
+	if s.MCPServersConfig != "" {
+		cfg.AI.MCPServersConfig = s.MCPServersConfig
+	}
+	if s.AgentInstructions != "" {
+		cfg.AI.AgentInstructions = s.AgentInstructions
+	}
 	if s.PrometheusURL != "" {
 		cfg.AI.PrometheusURL = s.PrometheusURL
 	}
@@ -167,9 +175,11 @@ func FromConfig(cfg *OnlineDataConfig) *PersistedSettings {
 		KubeconfigPath: cfg.Kubernetes.Config,
 		Context:        cfg.Kubernetes.Context,
 		Namespace:      cfg.Kubernetes.Namespace,
-		DeepSeekAPIKey: cfg.AI.DeepSeekAPIKey,
-		AnomstackURL:   cfg.AI.AnomstackURL,
-		PrometheusURL:  cfg.AI.PrometheusURL,
+		DeepSeekAPIKey:   cfg.AI.DeepSeekAPIKey,
+		AnomstackURL:      cfg.AI.AnomstackURL,
+		MCPServersConfig:  cfg.AI.MCPServersConfig,
+		AgentInstructions: cfg.AI.AgentInstructions,
+		PrometheusURL:     cfg.AI.PrometheusURL,
 		ArgoCDURL:      cfg.ArgoCD.URL,
 		ArgoCDToken:    cfg.ArgoCD.Token,
 		ArgoCDInsecure: cfg.ArgoCD.Insecure,

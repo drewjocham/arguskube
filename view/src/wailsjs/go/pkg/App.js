@@ -6,6 +6,10 @@ export function ApplyYaml(arg1) {
   return window['go']['pkg']['App']['ApplyYaml'](arg1);
 }
 
+export function AuthRoutes(arg1) {
+  return window['go']['pkg']['App']['AuthRoutes'](arg1);
+}
+
 export function CheckToolStatus() {
   return window['go']['pkg']['App']['CheckToolStatus']();
 }
@@ -354,6 +358,10 @@ export function SetPaused(arg1) {
   return window['go']['pkg']['App']['SetPaused'](arg1);
 }
 
+export function SetupAuth(arg1, arg2) {
+  return window['go']['pkg']['App']['SetupAuth'](arg1, arg2);
+}
+
 export function StartEventLoop(arg1) {
   return window['go']['pkg']['App']['StartEventLoop'](arg1);
 }
@@ -392,6 +400,10 @@ export function TestS3Connection() {
 
 export function ToggleAnomalyRule(arg1) {
   return window['go']['pkg']['App']['ToggleAnomalyRule'](arg1);
+}
+
+export function TriggerAgentAnalysis() {
+  return window['go']['pkg']['App']['TriggerAgentAnalysis']();
 }
 
 export function UndeployAgent(arg1) {

@@ -106,60 +106,68 @@ func TestApplyCORS_EchoesAllowedOrigin(t *testing.T) {
 	}
 }
 
-func TestAuthenticate_LoopbackBypass(t *testing.T) {
+// authenticateService is the legacy CI / external-tooling path. After
+// the auth subsystem landed, loopback callers no longer get a free
+// pass — they must present either a session cookie or this static
+// service token. These tests exercise the static-token path only.
+
+func TestAuthenticateService_NoTokenConfiguredDenies(t *testing.T) {
 	withEnv(t, "KUBEWATCHER_API_TOKEN=")
 	req := httptest.NewRequest("POST", "/api/Foo", nil)
 	req.RemoteAddr = "127.0.0.1:54321"
-	if !authenticate(req) {
-		t.Error("loopback caller without token should be permitted")
+	if authenticateService(req) {
+		t.Error("with no service token configured, the static path must deny — sessions are the only way in")
 	}
 }
 
-func TestAuthenticate_RejectsRemoteWithoutToken(t *testing.T) {
+func TestAuthenticateService_RejectsRemoteWithoutToken(t *testing.T) {
 	withEnv(t, "KUBEWATCHER_API_TOKEN=")
 	req := httptest.NewRequest("POST", "/api/Foo", nil)
 	req.RemoteAddr = "203.0.113.7:54321"
-	if authenticate(req) {
+	if authenticateService(req) {
 		t.Error("remote caller without configured token should be denied")
 	}
 }
 
-func TestAuthenticate_AcceptsMatchingBearer(t *testing.T) {
+func TestAuthenticateService_AcceptsMatchingBearer(t *testing.T) {
 	withEnv(t, "KUBEWATCHER_API_TOKEN=secret-abc")
 	req := httptest.NewRequest("POST", "/api/Foo", nil)
 	req.RemoteAddr = "203.0.113.7:54321"
 	req.Header.Set("Authorization", "Bearer secret-abc")
-	if !authenticate(req) {
+	if !authenticateService(req) {
 		t.Error("matching bearer should be accepted")
 	}
 }
 
-func TestAuthenticate_RejectsWrongBearer(t *testing.T) {
+func TestAuthenticateService_RejectsWrongBearer(t *testing.T) {
 	withEnv(t, "KUBEWATCHER_API_TOKEN=secret-abc")
 	req := httptest.NewRequest("POST", "/api/Foo", nil)
 	req.RemoteAddr = "203.0.113.7:54321"
 	req.Header.Set("Authorization", "Bearer wrong-token")
-	if authenticate(req) {
+	if authenticateService(req) {
 		t.Error("non-matching bearer should be rejected")
 	}
 }
 
-func TestAuthenticate_RejectsBareToken(t *testing.T) {
+func TestAuthenticateService_RejectsBareToken(t *testing.T) {
 	withEnv(t, "KUBEWATCHER_API_TOKEN=secret-abc")
 	req := httptest.NewRequest("POST", "/api/Foo", nil)
 	req.RemoteAddr = "203.0.113.7:54321"
 	req.Header.Set("Authorization", "secret-abc") // missing "Bearer "
-	if authenticate(req) {
+	if authenticateService(req) {
 		t.Error("token without Bearer prefix should be rejected")
 	}
 }
 
-func TestAuthenticate_LoopbackBypassesEvenWhenTokenSet(t *testing.T) {
+func TestAuthenticateService_LoopbackNoLongerBypasses(t *testing.T) {
+	// Regression guard: the previous build let any loopback caller
+	// reach /api/* without a token. Spec changed — no account, no
+	// access — so loopback is no longer special.
 	withEnv(t, "KUBEWATCHER_API_TOKEN=secret-abc")
 	req := httptest.NewRequest("POST", "/api/Foo", nil)
 	req.RemoteAddr = "127.0.0.1:54321"
-	if !authenticate(req) {
-		t.Error("loopback should bypass token auth so the embedded webview keeps working")
+	if authenticateService(req) {
+		t.Error("loopback caller with no Authorization header must NOT be auto-authenticated")
 	}
 }
 
@@ -227,29 +235,50 @@ func TestServeHTTP_DeniesUnknownOrigin(t *testing.T) {
 	}
 }
 
-// TestServeHTTP_AllowsLocalhostSameOrigin covers the embedded Wails webview
-// path — same-origin local request, no token configured, must succeed in
-// reaching the dispatcher (here the method itself isn't bound on a zero
-// App so we expect 500/501 from the call rather than 401/403 from the
-// gates).
-func TestServeHTTP_AllowsLocalhostThroughGates(t *testing.T) {
+// TestServeHTTP_LoopbackWithoutSessionIsUnauthorized is the regression
+// guard for the spec change "no account = no access". Previously the
+// embedded Wails webview got into /api/* simply by virtue of being on
+// loopback. That bypass is gone — the frontend now logs in first and
+// presents a session token on every request.
+func TestServeHTTP_LoopbackWithoutSessionIsUnauthorized(t *testing.T) {
 	withEnv(t, "KUBEWATCHER_API_TOKEN=", "KUBEWATCHER_API_ALLOWED_ORIGINS=")
 	a := &App{}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/api/GetClusterInfo", strings.NewReader(`{"args":[]}`))
 	req.RemoteAddr = "127.0.0.1:5173"
-	// No Origin header (same-origin).
 	a.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("loopback without session must be 401; got %d", rec.Code)
+	}
+}
+
+// TestServeHTTP_ServiceTokenReachesDispatcher confirms the legacy
+// CI/external-tooling path still works: a request bearing the
+// KUBEWATCHER_API_TOKEN bypasses session auth and reaches the
+// reflective dispatcher.
+func TestServeHTTP_ServiceTokenReachesDispatcher(t *testing.T) {
+	withEnv(t, "KUBEWATCHER_API_TOKEN=svc-token", "KUBEWATCHER_API_ALLOWED_ORIGINS=")
+	a := &App{}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/GetClusterInfo", strings.NewReader(`{"args":[]}`))
+	req.RemoteAddr = "127.0.0.1:5173"
+	req.Header.Set("Authorization", "Bearer svc-token")
+	a.ServeHTTP(rec, req)
+	// Past auth + CORS, the method itself runs against a zero App
+	// and may return 404 (method not found on bare struct) or 500;
+	// what matters is we did NOT short-circuit at 401/403.
 	if rec.Code == http.StatusForbidden || rec.Code == http.StatusUnauthorized {
-		t.Errorf("loopback same-origin should pass auth/CORS gates; got %d", rec.Code)
+		t.Errorf("service token should pass auth gates; got %d", rec.Code)
 	}
 }
 
 // TestServeHTTP_BlocksMutatingMethodViaHTTP guarantees a method NOT on the
 // allowlist is rejected even when origin + auth are otherwise fine. This is
-// the core of the reflection-API fix.
+// the core of the reflection-API fix. We need a passing auth path so we
+// can test the LATER gate (method allowlist) — without the service
+// token we'd just get 401 first.
 func TestServeHTTP_BlocksMutatingMethodViaHTTP(t *testing.T) {
-	withEnv(t, "KUBEWATCHER_API_TOKEN=", "KUBEWATCHER_API_ALLOWED_ORIGINS=")
+	withEnv(t, "KUBEWATCHER_API_TOKEN=svc-token", "KUBEWATCHER_API_ALLOWED_ORIGINS=")
 	a := &App{}
 	for _, name := range []string{"DeletePod", "ApplyYaml", "LaunchPopOutTerminal"} {
 		t.Run(name, func(t *testing.T) {
@@ -257,6 +286,7 @@ func TestServeHTTP_BlocksMutatingMethodViaHTTP(t *testing.T) {
 			path := "/api/" + url.PathEscape(name)
 			req := httptest.NewRequest("POST", path, strings.NewReader(`{"args":[]}`))
 			req.RemoteAddr = "127.0.0.1:5173"
+			req.Header.Set("Authorization", "Bearer svc-token")
 			a.ServeHTTP(rec, req)
 			if rec.Code != http.StatusForbidden {
 				t.Errorf("expected 403 for HTTP-blocked method %q; got %d", name, rec.Code)

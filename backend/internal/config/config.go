@@ -27,6 +27,30 @@ type OnlineDataConfig struct {
 	Logging     LoggingConfig
 	DecisionLog DecisionLogConfig
 	S3          S3Config
+	Auth        AuthConfig
+}
+
+// AuthConfig holds sign-in settings. Auth is mandatory: there is no
+// "disable auth" flag — the user must register or sign in via OAuth
+// before reaching any /api endpoint.
+type AuthConfig struct {
+	// PublicBaseURL is the URL the OAuth callback will land on. For
+	// the desktop app this is http://127.0.0.1:<port>; for a hosted
+	// SaaS deployment, the public hostname.
+	PublicBaseURL string `env:"KUBEWATCHER_AUTH_BASE_URL"`
+
+	GoogleClientID     string `env:"KUBEWATCHER_GOOGLE_CLIENT_ID"`
+	GoogleClientSecret string `env:"KUBEWATCHER_GOOGLE_CLIENT_SECRET"`
+
+	OIDCIssuer       string `env:"KUBEWATCHER_OIDC_ISSUER"`        // e.g. https://acme.okta.com
+	OIDCClientID     string `env:"KUBEWATCHER_OIDC_CLIENT_ID"`
+	OIDCClientSecret string `env:"KUBEWATCHER_OIDC_CLIENT_SECRET"`
+	OIDCDisplayName  string `env:"KUBEWATCHER_OIDC_DISPLAY_NAME"`   // e.g. "Acme SSO"
+
+	// AllowLocalSignup controls whether the email/password registration
+	// endpoint is open. Default is true for the desktop app; SaaS
+	// admins typically flip it off and rely on SSO + invites.
+	AllowLocalSignup bool `env:"KUBEWATCHER_AUTH_ALLOW_SIGNUP"`
 }
 
 // KubernetesConfig holds cluster connection settings.
@@ -39,10 +63,12 @@ type KubernetesConfig struct {
 
 // AIConfig holds settings for AI diagnostics and anomaly detection.
 type AIConfig struct {
-	DeepSeekAPIKey  string `env:"DEEPSEEK_API_KEY"`
-	AnomstackURL    string `env:"ANOMSTACK_URL"`
-	AnomstackAPIKey string `env:"ANOMSTACK_API_KEY"`
-	FlinkURL        string `env:"KUBEWATCHER_FLINK_URL"`
+	DeepSeekAPIKey   string `env:"DEEPSEEK_API_KEY"`
+	AnomstackURL     string `env:"ANOMSTACK_URL"`
+	AnomstackAPIKey  string `env:"ANOMSTACK_API_KEY"`
+	MCPServersConfig  string `env:"MCP_SERVERS_CONFIG"`
+	AgentInstructions string `env:"AGENT_INSTRUCTIONS"`
+	FlinkURL          string `env:"KUBEWATCHER_FLINK_URL"`
 	FlinkAPIKey     string `env:"KUBEWATCHER_FLINK_API_KEY"`
 	VertexProject   string `env:"VERTEX_PROJECT"`
 	VertexLocation  string `env:"VERTEX_LOCATION"`
@@ -110,10 +136,12 @@ func New() (*OnlineDataConfig, error) {
 			InCluster: env("KUBEWATCHER_IN_CLUSTER", "false") == "true",
 		},
 		AI: AIConfig{
-			DeepSeekAPIKey:  env("DEEPSEEK_API_KEY", ""),
-			AnomstackURL:    env("ANOMSTACK_URL", "http://localhost:8087"),
-			AnomstackAPIKey: env("ANOMSTACK_API_KEY", ""),
-			FlinkURL:        env("KUBEWATCHER_FLINK_URL", ""),
+			DeepSeekAPIKey:   env("DEEPSEEK_API_KEY", ""),
+			AnomstackURL:     env("ANOMSTACK_URL", "http://localhost:8087"),
+			AnomstackAPIKey:   env("ANOMSTACK_API_KEY", ""),
+			MCPServersConfig:  env("MCP_SERVERS_CONFIG", ""),
+			AgentInstructions: env("AGENT_INSTRUCTIONS", "Analyze the cluster health based on recent events and alerts."),
+			FlinkURL:          env("KUBEWATCHER_FLINK_URL", ""),
 			FlinkAPIKey:     env("KUBEWATCHER_FLINK_API_KEY", ""),
 			VertexProject:   env("VERTEX_PROJECT", ""),
 			VertexLocation:  env("VERTEX_LOCATION", "europe-west3"),
@@ -155,6 +183,16 @@ func New() (*OnlineDataConfig, error) {
 			Endpoint:  env("KUBEWATCHER_S3_ENDPOINT", ""),
 			AccessKey: env("KUBEWATCHER_S3_ACCESS_KEY", ""),
 			SecretKey: env("KUBEWATCHER_S3_SECRET_KEY", ""),
+		},
+		Auth: AuthConfig{
+			PublicBaseURL:      env("KUBEWATCHER_AUTH_BASE_URL", "http://127.0.0.1:8080"),
+			GoogleClientID:     env("KUBEWATCHER_GOOGLE_CLIENT_ID", ""),
+			GoogleClientSecret: env("KUBEWATCHER_GOOGLE_CLIENT_SECRET", ""),
+			OIDCIssuer:         env("KUBEWATCHER_OIDC_ISSUER", ""),
+			OIDCClientID:       env("KUBEWATCHER_OIDC_CLIENT_ID", ""),
+			OIDCClientSecret:   env("KUBEWATCHER_OIDC_CLIENT_SECRET", ""),
+			OIDCDisplayName:    env("KUBEWATCHER_OIDC_DISPLAY_NAME", "Corporate SSO"),
+			AllowLocalSignup:   env("KUBEWATCHER_AUTH_ALLOW_SIGNUP", "true") != "false",
 		},
 	}
 

@@ -119,4 +119,52 @@ var migrations = []migration{
 			updated_at TEXT NOT NULL
 		)`,
 	},
+	{
+		name: "create_auth_users",
+		sql: `CREATE TABLE users (
+			id               TEXT PRIMARY KEY,
+			email            TEXT NOT NULL COLLATE NOCASE,
+			name             TEXT NOT NULL DEFAULT '',
+			password_hash    TEXT NOT NULL DEFAULT '',
+			provider         TEXT NOT NULL DEFAULT 'local',
+			provider_subject TEXT NOT NULL DEFAULT '',
+			created_at       INTEGER NOT NULL,
+			last_login_at    INTEGER NOT NULL DEFAULT 0,
+			UNIQUE(email, provider),
+			UNIQUE(provider, provider_subject)
+		)`,
+	},
+	{
+		name: "create_auth_users_index",
+		sql:  `CREATE INDEX idx_users_provider_subject ON users(provider, provider_subject)`,
+	},
+	{
+		name: "create_auth_sessions",
+		sql: `CREATE TABLE sessions (
+			token_hash TEXT PRIMARY KEY,
+			user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at INTEGER NOT NULL,
+			expires_at INTEGER NOT NULL
+		)`,
+	},
+	{
+		name: "create_auth_sessions_index_user",
+		sql:  `CREATE INDEX idx_sessions_user_id ON sessions(user_id)`,
+	},
+	{
+		name: "create_auth_sessions_index_exp",
+		sql:  `CREATE INDEX idx_sessions_expires ON sessions(expires_at)`,
+	},
+	{
+		name: "create_oauth_pending",
+		sql: `CREATE TABLE oauth_pending (
+			state         TEXT PRIMARY KEY,
+			pkce_verifier TEXT NOT NULL DEFAULT '',
+			provider      TEXT NOT NULL,
+			session_token TEXT NOT NULL DEFAULT '',
+			error         TEXT NOT NULL DEFAULT '',
+			created_at    INTEGER NOT NULL,
+			completed_at  INTEGER NOT NULL DEFAULT 0
+		)`,
+	},
 }

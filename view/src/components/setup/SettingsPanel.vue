@@ -14,6 +14,8 @@ const form = ref({
   namespace: '',
   deepseekApiKey: '',
   anomstackUrl: '',
+  mcpServersConfig: '',
+  agentInstructions: '',
   prometheusUrl: '',
   argocdUrl: '',
   argocdToken: '',
@@ -40,6 +42,8 @@ async function loadSettings() {
         namespace: result.namespace || '',
         deepseekApiKey: result.deepseekApiKey || '',
         anomstackUrl: result.anomstackUrl || '',
+        mcpServersConfig: result.mcpServersConfig || '',
+        agentInstructions: result.agentInstructions || '',
         prometheusUrl: result.prometheusUrl || '',
         argocdUrl: result.argocdUrl || '',
         argocdToken: result.argocdToken || '',
@@ -66,6 +70,8 @@ async function saveSettings() {
       namespace: form.value.namespace,
       deepseekApiKey: form.value.deepseekApiKey,
       anomstackUrl: form.value.anomstackUrl,
+      mcpServersConfig: form.value.mcpServersConfig,
+      agentInstructions: form.value.agentInstructions,
       prometheusUrl: form.value.prometheusUrl,
       argocdUrl: form.value.argocdUrl,
       argocdToken: form.value.argocdToken,
@@ -189,6 +195,18 @@ onMounted(() => {
         </div>
 
         <div class="field">
+          <label class="field-label">Agent Instructions</label>
+          <textarea
+            v-model="form.agentInstructions"
+            class="field-input mono"
+            rows="4"
+            placeholder="Analyze the cluster health based on recent events and alerts."
+          ></textarea>
+          <div class="field-hint">Instructions for the hourly AI agent analysis loop.</div>
+          <button class="test-btn" style="margin-top: 8px;" @click="callGo('TriggerAgentAnalysis')">Test Agent Analysis</button>
+        </div>
+
+        <div class="field">
           <label class="field-label">Prometheus URL</label>
           <input
             v-model="form.prometheusUrl"
@@ -196,6 +214,24 @@ onMounted(() => {
             class="field-input mono"
             placeholder="http://prometheus:9090 (optional — enriches metrics)"
           />
+        </div>
+
+        <div class="field">
+          <label class="field-label">MCP Servers Config</label>
+          <textarea
+            v-model="form.mcpServersConfig"
+            class="field-input mono"
+            rows="6"
+            placeholder='{
+  "mcpServers": {
+    "my-server": {
+      "command": "npx",
+      "args": ["-y", "mcp-server"]
+    }
+  }
+}'
+          ></textarea>
+          <div class="field-hint">JSON configuration for Model Context Protocol (MCP) servers. Passed to the AI assistant to extend its capabilities.</div>
         </div>
       </div>
 
@@ -308,6 +344,11 @@ onMounted(() => {
           <div class="info-label">Tier</div>
           <div class="info-value">
             <span class="tier-badge" :class="settings.tier">{{ settings.tier }}</span>
+          </div>
+          <div class="info-label">MCP Servers</div>
+          <div class="info-value">
+            <span v-if="settings.mcpServersConfig" class="status-active">Configured</span>
+            <span v-else class="text-muted">Not configured</span>
           </div>
           <div class="info-label">ArgusCD</div>
           <div class="info-value">

@@ -6,14 +6,39 @@ import { useWailsEvent, Events } from './composables/useEvents'
 import { useTerminalDispatch } from './composables/useTerminalDispatch'
 import { useUIPrefsStore } from './stores/uiPrefs'
 import { useNotificationsStore } from './stores/notifications'
+import { useAuthStore } from './stores/auth'
+import LoginView from './components/auth/LoginView.vue'
 import ChatPopOut from './components/ai/ChatPopOut.vue'
 import ToastContainer from './components/ToastContainer.vue'
 import Titlebar from './components/titlebar/Titlebar.vue'
 import Sidebar from './components/sidebar/Sidebar.vue'
 import CenterPanel from './components/center/CenterPanel.vue'
 import DiagnosticsPanel from './components/diagnostics/DiagnosticsPanel.vue'
+import AgentAnalysisNotification from './components/common/AgentAnalysisNotification.vue'
 import TerminalView from './components/terminal/TerminalView.vue'
 import ProDesktopApp from './components/desktop/ProDesktopApp.vue'
+
+// Auth gate — no session means the user only sees LoginView. Once
+// signed in, isAuthenticated flips to true and the dashboard renders.
+const auth = useAuthStore()
+const authReady = ref(false)
+onMounted(async () => {
+  // Validate any persisted token before unlocking the dashboard. If
+  // the server rejects it, restoreSession clears local state and the
+  // gate stays closed.
+  if (auth.token) {
+    await auth.restoreSession()
+  }
+  authReady.value = true
+})
+
+// /api/* fetches dispatch this when they get a 401 — the bridge clears
+// localStorage so the next render must walk through LoginView again.
+function onSessionExpired() {
+  auth.logout()
+}
+onMounted(() => window.addEventListener('argus:session-expired', onSessionExpired))
+onUnmounted(() => window.removeEventListener('argus:session-expired', onSessionExpired))
 
 const { info: clusterInfo, refresh: refreshClusterInfo } = useClusterInfo()
 const { metrics, refresh: refreshMetrics } = useMetrics()
@@ -157,7 +182,20 @@ useWailsEvent('argus:notification', (data) => {
 </script>
 
 <template>
-  <template v-if="mode === 'terminal'">
+  <!-- Auth gate. Until restoreSession() finishes we render nothing to
+       avoid a flash of either screen; afterwards we either show the
+       login view or the real app. The terminal pop-out window is
+       allowed through unauthenticated because it's spawned as a
+       child of an already-authenticated parent process. -->
+  <template v-if="!authReady && mode !== 'terminal'">
+    <div class="auth-bootstrap"></div>
+  </template>
+
+  <template v-else-if="!auth.isAuthenticated && mode !== 'terminal'">
+    <LoginView />
+  </template>
+
+  <template v-else-if="mode === 'terminal'">
     <ProDesktopApp standalone @close="window.close()" />
   </template>
 
@@ -206,7 +244,7 @@ useWailsEvent('argus:notification', (data) => {
               <div class="terminal-tabs">
                 <div class="terminal-tab active">Terminal</div>
               </div>
-              <button class="terminal-close" @click="toggleTerminal">
+              <button class="terminal-close" @click="toggleTerminal" title="Close Terminal">
                 <svg width="10" height="10" viewBox="0 0 10 10">
                   <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
                 </svg>
@@ -219,6 +257,7 @@ useWailsEvent('argus:notification', (data) => {
     </div>
     
     <ToastContainer />
+    <AgentAnalysisNotification />
     <ProDesktopApp v-if="popOutOpen" @close="closePopOut" />
     <ChatPopOut v-if="chatPopOutOpen" />
   </template>
@@ -330,5 +369,11 @@ useWailsEvent('argus:notification', (data) => {
 }
 .diag-collapse-bar svg.flipped {
   transform: rotate(180deg);
+}
+
+.auth-bootstrap {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
 }
 </style>

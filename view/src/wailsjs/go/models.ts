@@ -685,6 +685,54 @@ export namespace argocd {
 
 }
 
+export namespace auth {
+	
+	export class Store {
+	
+	
+	    static createFrom(source: any = {}) {
+	        return new Store(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	
+	    }
+	}
+
+}
+
+export namespace config {
+	
+	export class AuthConfig {
+	    PublicBaseURL: string;
+	    GoogleClientID: string;
+	    GoogleClientSecret: string;
+	    OIDCIssuer: string;
+	    OIDCClientID: string;
+	    OIDCClientSecret: string;
+	    OIDCDisplayName: string;
+	    AllowLocalSignup: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AuthConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.PublicBaseURL = source["PublicBaseURL"];
+	        this.GoogleClientID = source["GoogleClientID"];
+	        this.GoogleClientSecret = source["GoogleClientSecret"];
+	        this.OIDCIssuer = source["OIDCIssuer"];
+	        this.OIDCClientID = source["OIDCClientID"];
+	        this.OIDCClientSecret = source["OIDCClientSecret"];
+	        this.OIDCDisplayName = source["OIDCDisplayName"];
+	        this.AllowLocalSignup = source["AllowLocalSignup"];
+	    }
+	}
+
+}
+
 export namespace context {
 	
 	export class DecisionEntry {
@@ -867,6 +915,19 @@ export namespace http {
 		    }
 		    return a;
 		}
+	}
+	
+	export class ServeMux {
+	
+	
+	    static createFrom(source: any = {}) {
+	        return new ServeMux(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	
+	    }
 	}
 
 }
@@ -1739,6 +1800,8 @@ export namespace pkg {
 	    namespace: string;
 	    deepseekApiKey: string;
 	    anomstackUrl: string;
+	    mcpServersConfig: string;
+	    agentInstructions: string;
 	    prometheusUrl: string;
 	    argocdUrl: string;
 	    argocdToken: string;
@@ -1760,6 +1823,8 @@ export namespace pkg {
 	        this.namespace = source["namespace"];
 	        this.deepseekApiKey = source["deepseekApiKey"];
 	        this.anomstackUrl = source["anomstackUrl"];
+	        this.mcpServersConfig = source["mcpServersConfig"];
+	        this.agentInstructions = source["agentInstructions"];
 	        this.prometheusUrl = source["prometheusUrl"];
 	        this.argocdUrl = source["argocdUrl"];
 	        this.argocdToken = source["argocdToken"];
