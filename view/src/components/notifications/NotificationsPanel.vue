@@ -2,9 +2,11 @@
 import { storeToRefs } from 'pinia'
 import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { useNotificationsStore } from '../../stores/notifications'
+import { useSpotCheck } from '../../composables/useSpotCheck'
 
 const store = useNotificationsStore()
 const { panelOpen, sortedItems, settings, items } = storeToRefs(store)
+const { runOne: runSpotCheckOne } = useSpotCheck()
 
 const expanded = ref(new Set())
 const showSettings = ref(false)
@@ -45,10 +47,18 @@ function clearAll() {
 }
 
 function rerun(n) {
-  // The "rerun" action just emits the rerunPayload back into the store as a
-  // flagged event. Backend integration (e.g. re-fire the spot-check) happens
-  // when a Wails-backed handler subscribes to this. For now, mark the item
-  // as fresh so the user sees feedback that something happened.
+  const payload = n.rerunPayload || {}
+  // Spot-check rerun: ask the backend to re-fire the same probe.
+  // The fresh result lands as a NEW notification via the existing
+  // event channel, so we don't add a duplicate row here ourselves.
+  if (payload.type === 'spot-check' && payload.name) {
+    runSpotCheckOne(payload.name)
+    return
+  }
+  // Fallback (other rerun kinds, e.g. NetworkPolicy review): just
+  // emit a stub notification so the user sees their click landed.
+  // A future iteration can route these to dedicated backend rerun
+  // handlers, the same way spot-check does.
   store.add({
     kind: n.kind,
     title: `Rerunning: ${n.title}`,

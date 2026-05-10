@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useResources } from '../../composables/useResources'
 import { callGo } from '../../composables/useBridge'
+import { renderMarkdown } from '../../utils/renderMarkdown'
 
 const props = defineProps({
   type: { type: String, default: 'configmaps' }
@@ -172,7 +173,7 @@ function scrollExpandedIntoView() {
               </div>
               <div v-if="schoolingResource === cm.name && schoolResult" class="school-result">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="school-result-icon"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                <span>{{ schoolResult }}</span>
+                <div class="school-result-body markdown-body" v-html="renderMarkdown(schoolResult)"></div>
               </div>
               <div v-if="cmDetail.data && Object.keys(cmDetail.data).length" class="cm-data-grid">
                 <div class="cm-data-row" v-for="(v, k) in cmDetail.data" :key="cm.name + '-' + k">
@@ -301,6 +302,27 @@ function scrollExpandedIntoView() {
   font-size: 12px; color: #e8eaec; line-height: 1.5;
 }
 .school-result-icon { color: #a78bfa; flex-shrink: 0; margin-top: 2px; }
+.school-result-body { flex: 1; min-width: 0; }
+.school-result-body :deep(p)  { margin: 0 0 6px; }
+.school-result-body :deep(p:last-child) { margin-bottom: 0; }
+.school-result-body :deep(ul),
+.school-result-body :deep(ol) { margin: 4px 0 6px 18px; padding: 0; }
+.school-result-body :deep(li) { margin: 2px 0; }
+.school-result-body :deep(h1),
+.school-result-body :deep(h2),
+.school-result-body :deep(h3) { font-size: 12.5px; font-weight: 600; margin: 6px 0 4px; color: #e8eaec; }
+.school-result-body :deep(code) {
+  font-family: var(--mono); font-size: 11px;
+  background: rgba(255,255,255,0.06); padding: 1px 4px; border-radius: 3px;
+}
+.school-result-body :deep(pre) {
+  background: #0d0d0d; border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 4px; padding: 8px; margin: 6px 0;
+  overflow-x: auto;
+}
+.school-result-body :deep(pre code) { background: transparent; padding: 0; }
+.school-result-body :deep(strong) { color: #e8eaec; }
+.school-result-body :deep(a) { color: #6ba3f9; }
 
 /* Data grid */
 .cm-data-grid { display: flex; flex-direction: column; gap: 8px; }

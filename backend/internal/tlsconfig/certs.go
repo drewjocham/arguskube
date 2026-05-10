@@ -1,15 +1,3 @@
-// Package tlsconfig provides mTLS certificate generation, loading, and
-// verification for the agent ↔ SaaS WebSocket tunnel.
-//
-// Usage flow:
-//
-//  1. Server (SaaS Hub) calls GenerateCA() once → stores ca.crt + ca.key.
-//  2. For each agent registration, server calls IssueAgentCert(ca, agentID)
-//     → returns a signed cert + key that the agent stores locally.
-//  3. ServerTLSConfig() configures the hub's HTTPS/WSS listener to require
-//     client certs signed by the CA.
-//  4. AgentTLSConfig() configures the tunnel client to present its cert and
-//     verify the server's cert against the CA.
 package tlsconfig
 
 import (
@@ -26,7 +14,6 @@ import (
 	"time"
 )
 
-// CACert holds the CA certificate and key used to sign agent certificates.
 type CACert struct {
 	Cert    *x509.Certificate
 	Key     *ecdsa.PrivateKey
@@ -34,7 +21,6 @@ type CACert struct {
 	KeyPEM  []byte
 }
 
-// AgentCert holds a signed agent certificate and its private key.
 type AgentCert struct {
 	CertPEM []byte
 	KeyPEM  []byte
@@ -93,8 +79,6 @@ func GenerateCA(org string, validity time.Duration) (*CACert, error) {
 	}, nil
 }
 
-// IssueAgentCert creates a client certificate signed by the CA for the given agent.
-// The certificate is valid for the specified duration.
 func IssueAgentCert(ca *CACert, agentID string, validity time.Duration) (*AgentCert, error) {
 	if ca == nil || ca.Cert == nil || ca.Key == nil {
 		return nil, fmt.Errorf("ca must be non-nil with valid Cert and Key")
@@ -143,8 +127,6 @@ func IssueAgentCert(ca *CACert, agentID string, validity time.Duration) (*AgentC
 	}, nil
 }
 
-// ServerTLSConfig returns a tls.Config for the hub that requires client certificates
-// signed by the given CA. Only agents with valid certs can connect.
 func ServerTLSConfig(caCertPEM, serverCertPEM, serverKeyPEM []byte) (*tls.Config, error) {
 	caPool := x509.NewCertPool()
 	if !caPool.AppendCertsFromPEM(caCertPEM) {
@@ -164,8 +146,6 @@ func ServerTLSConfig(caCertPEM, serverCertPEM, serverKeyPEM []byte) (*tls.Config
 	}, nil
 }
 
-// AgentTLSConfig returns a tls.Config for the agent tunnel client that presents
-// the agent certificate and verifies the server against the CA.
 func AgentTLSConfig(caCertPEM, agentCertPEM, agentKeyPEM []byte) (*tls.Config, error) {
 	caPool := x509.NewCertPool()
 	if !caPool.AppendCertsFromPEM(caCertPEM) {
@@ -184,7 +164,6 @@ func AgentTLSConfig(caCertPEM, agentCertPEM, agentKeyPEM []byte) (*tls.Config, e
 	}, nil
 }
 
-// LoadPEM reads a PEM file from disk.
 func LoadPEM(path string) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -193,7 +172,6 @@ func LoadPEM(path string) ([]byte, error) {
 	return data, nil
 }
 
-// WritePEM writes PEM data to a file with restricted permissions.
 func WritePEM(path string, data []byte) error {
 	return os.WriteFile(path, data, 0600)
 }

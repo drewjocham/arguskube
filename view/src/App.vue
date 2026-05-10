@@ -19,16 +19,18 @@ import TerminalView from './components/terminal/TerminalView.vue'
 import ProDesktopApp from './components/desktop/ProDesktopApp.vue'
 
 // Auth gate — no session means the user only sees LoginView. Once
-// signed in, isAuthenticated flips to true and the dashboard renders.
+// signed in (or when the backend reports auth is disabled for local
+// dev), isAuthenticated flips to true and the dashboard renders.
 const auth = useAuthStore()
 const authReady = ref(false)
 onMounted(async () => {
-  // Validate any persisted token before unlocking the dashboard. If
-  // the server rejects it, restoreSession clears local state and the
-  // gate stays closed.
-  if (auth.token) {
-    await auth.restoreSession()
-  }
+  // /auth/providers tells us whether dev-mode bypass is on, in parallel
+  // with restoring any persisted token. Both have to land before we
+  // decide which gate to show — otherwise we'd flash LoginView for one
+  // frame even when auth is disabled.
+  const tasks = [auth.loadProviders()]
+  if (auth.token) tasks.push(auth.restoreSession())
+  await Promise.all(tasks)
   authReady.value = true
 })
 

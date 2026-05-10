@@ -5,7 +5,9 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"path/filepath"
 
+	"github.com/joho/godotenv"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -44,7 +46,27 @@ func main() {
 	}
 }
 
+// loadDotenv reads a .env file from the working directory or the
+// repo root and exports its values, but never overrides values
+// already set in the real environment. Silent on a missing file —
+// the file is optional for desktop dev. Real env wins so CI, Make
+// targets, and shell exports continue to take precedence.
+func loadDotenv() {
+	candidates := []string{
+		".env",
+		filepath.Join("..", ".env"), // running from backend/ during `wails dev`
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			_ = godotenv.Load(p)
+			return
+		}
+	}
+}
+
 func run() error {
+	loadDotenv()
+
 	cfg, err := config.New()
 	if err != nil {
 		return err
@@ -185,6 +207,7 @@ func run() error {
 		Incidents: incidentStore,
 		Workflows: workflowStore,
 		Setup:     setupMgr,
+		DB:        db.DB,
 		AppMode:   appMode,
 	})
 

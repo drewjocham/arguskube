@@ -50,19 +50,9 @@ frontend-dev: ## Start Vite dev server standalone (for debugging)
 
 # ── Build ────────────────────────────────────────────────────────
 
-build: frontend ## Production build (macOS app bundle + standalone terminal app)
-	# Wails runs its own codesign step inside `wails build`. If the .app from
-	# a previous run is left in place, the binary may carry stale signatures
-	# or extended attributes, and codesign aborts with "resource fork, Finder
-	# information, or similar detritus not allowed". Wipe the bin dir first,
-	# then re-strip + re-sign after the fresh build for good measure.
+build: frontend ## Production build (app + term)
 	rm -rf $(BACKEND_DIR)/build/bin
 	cd $(BACKEND_DIR) && wails build && xattr -cr build/bin/kubewatcher.app && codesign --force --deep --sign - build/bin/kubewatcher.app
-	# Build the standalone terminal as a SEPARATE .app bundle with its own
-	# CFBundleIdentifier. macOS treats different bundle ids as different
-	# applications, which gives the terminal its own Dock icon, Cmd+Tab
-	# entry, and Mission Control window — what the user gets when they
-	# click "Pop out".
 	$(MAKE) build-terminal-app
 
 build-terminal-app: ## Build the standalone Terminal as its own .app bundle inside the main app's Resources/
@@ -84,8 +74,11 @@ build-terminal-app: ## Build the standalone Terminal as its own .app bundle insi
 build-nopackage: frontend ## Production binary (no .app bundle)
 	cd $(BACKEND_DIR) && wails build -nopackage
 
-run: build-nopackage ## Build then run
+run: build-nopackage ## Build then run (auth ON — register or sign in)
 	$(BUILD_BIN)
+
+no-auth-run: build-nopackage ## Build then run with auth DISABLED (local dev only — refused on non-loopback binds)
+	KUBEWATCHER_AUTH_DISABLED=true $(BUILD_BIN)
 
 # ── Dependencies ─────────────────────────────────────────────────
 

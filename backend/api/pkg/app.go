@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -20,8 +21,10 @@ import (
 	"github.com/argues/kube-watcher/internal/k8s"
 	"github.com/argues/kube-watcher/internal/notebooks"
 	"github.com/argues/kube-watcher/internal/popeye"
+	"github.com/argues/kube-watcher/internal/alertproc"
 	"github.com/argues/kube-watcher/internal/runbooks"
 	"github.com/argues/kube-watcher/internal/setup"
+	"github.com/argues/kube-watcher/internal/spotcheck"
 	"github.com/argues/kube-watcher/internal/terminal"
 	"github.com/argues/kube-watcher/internal/vulnscan"
 	"github.com/argues/kube-watcher/internal/workflows"
@@ -45,6 +48,7 @@ type AppConfig struct {
 	Setup     *setup.Manager
 	Incidents *incidents.Store
 	Workflows *workflows.Store
+	DB        *sql.DB
 	AppMode   string
 }
 
@@ -90,6 +94,20 @@ type App struct {
 
 	// auth gates /api/* on a valid session. nil until SetupAuth runs.
 	auth *authState
+
+	// spotcheck runs periodic cluster probes (nodes, metrics, docs
+	// freshness) and emits findings via the notifications channel.
+	// nil until startSpotChecks runs in Startup.
+	spotcheck *spotcheck.Engine
+
+	// alertproc dedupes alerts, runs the AI agent on new firings,
+	// tracks silences/ignores, and fires the "alerts losing value"
+	// meta-alert when noise crosses the user's threshold.
+	alertproc *alertproc.Processor
+
+	// db is the shared SQLite handle. Held here so the alertproc and
+	// any future per-app stores can persist without re-opening.
+	db *sql.DB
 }
 
 // NewApp constructs and initializes the main application.
@@ -113,6 +131,7 @@ func NewApp(ac AppConfig) *App {
 		setup:     ac.Setup,
 		incidents: ac.Incidents,
 		workflows: ac.Workflows,
+		db:        ac.DB,
 		appMode:   ac.AppMode,
 		hub:       NewHub(ac.Logger.With("component", "saas-hub")),
 	}
@@ -153,8 +172,19 @@ func (a *App) Startup(ctx context.Context) {
 		}
 	}
 
+	// Boot the alert processor before the event loop fires so the
+	// very first DetectAlerts call already deduplicates + runs the
+	// agent's investigations.
+	a.startAlertProcessor()
+
 	a.StartEventLoop(ctx)
-	
+
+	// Start cluster spot-checks: periodic node / metrics / docs probes
+	// that emit findings into the notifications channel. Cheap enough
+	// to always run; gated by a 30-min timer so it doesn't hammer the
+	// API server.
+	a.startSpotChecks()
+
 	a.periodicAgent = agentanalysis.NewAgent(a.logger, a.cfg, a.ctx)
 	go a.periodicAgent.StartLoop(a.ctx)
 }

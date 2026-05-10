@@ -180,6 +180,84 @@ func TestAuthMe_RequiresValidSession(t *testing.T) {
 	}
 }
 
+// TestDevMode_BypassesAuthOnLoopback covers the local-dev escape
+// hatch: when KUBEWATCHER_AUTH_DISABLED=true, /api/* is reachable
+// without any token at all.
+func TestDevMode_BypassesAuthOnLoopback(t *testing.T) {
+	withEnv(t, "KUBEWATCHER_API_TOKEN=", "KUBEWATCHER_API_BIND=", "KUBEWATCHER_API_ALLOWED_ORIGINS=")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db, err := sqlitedb.Open(t.TempDir(), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	a := &App{logger: logger, ctx: context.Background()}
+	a.SetupAuth(auth.NewStore(db.DB, logger), config.AuthConfig{DevMode: true})
+
+	if !a.auth.devMode {
+		t.Fatal("DevMode should be honored when bind is loopback (default)")
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/GetClusterInfo", bytes.NewReader([]byte(`{"args":[]}`)))
+	req.RemoteAddr = "127.0.0.1:5173"
+	a.ServeHTTP(rec, req)
+	if rec.Code == http.StatusUnauthorized || rec.Code == http.StatusForbidden {
+		t.Errorf("dev mode should bypass auth; got %d", rec.Code)
+	}
+}
+
+// TestDevMode_RefusedOnPublicBind is the safety check: even if the env
+// asks for auth-disabled, we refuse to honor it when the API binds
+// somewhere a remote attacker can reach.
+func TestDevMode_RefusedOnPublicBind(t *testing.T) {
+	withEnv(t, "KUBEWATCHER_API_TOKEN=", "KUBEWATCHER_API_BIND=0.0.0.0", "KUBEWATCHER_API_ALLOWED_ORIGINS=")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db, err := sqlitedb.Open(t.TempDir(), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	a := &App{logger: logger, ctx: context.Background()}
+	a.SetupAuth(auth.NewStore(db.DB, logger), config.AuthConfig{DevMode: true})
+
+	if a.auth.devMode {
+		t.Fatal("DevMode must be forced off when API binds to a non-loopback address")
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/GetClusterInfo", bytes.NewReader([]byte(`{"args":[]}`)))
+	req.RemoteAddr = "203.0.113.5:54321"
+	a.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("public bind with DevMode requested must still 401; got %d", rec.Code)
+	}
+}
+
+// TestAuthProviders_ExposesAuthDisabledFlag — frontend reads this to
+// decide whether to render LoginView.
+func TestAuthProviders_ExposesAuthDisabledFlag(t *testing.T) {
+	withEnv(t, "KUBEWATCHER_API_BIND=", "KUBEWATCHER_API_ALLOWED_ORIGINS=")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db, err := sqlitedb.Open(t.TempDir(), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	a := &App{logger: logger, ctx: context.Background()}
+	a.SetupAuth(auth.NewStore(db.DB, logger), config.AuthConfig{DevMode: true})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/auth/providers", nil)
+	req.RemoteAddr = "127.0.0.1:5173"
+	a.handleAuthProviders(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", rec.Code, rec.Body.String())
+	}
+	resp := mustJSON(t, rec.Body)
+	if resp["authDisabled"] != true {
+		t.Errorf("authDisabled flag missing or wrong: %v", resp)
+	}
+}
+
 func TestAuthLogout_RevokesSession(t *testing.T) {
 	withEnv(t, "KUBEWATCHER_API_ALLOWED_ORIGINS=")
 	a := newAppWithAuth(t)

@@ -207,6 +207,74 @@ export namespace ai {
 
 }
 
+export namespace alertproc {
+	
+	export class AgentProfile {
+	    autoInvestigate: boolean;
+	    autoDocument: boolean;
+	    canAck: boolean;
+	    canSilence: boolean;
+	    canAdjustParams: boolean;
+	    silenceWindow: number;
+	    fatigueThreshold: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AgentProfile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.autoInvestigate = source["autoInvestigate"];
+	        this.autoDocument = source["autoDocument"];
+	        this.canAck = source["canAck"];
+	        this.canSilence = source["canSilence"];
+	        this.canAdjustParams = source["canAdjustParams"];
+	        this.silenceWindow = source["silenceWindow"];
+	        this.fatigueThreshold = source["fatigueThreshold"];
+	    }
+	}
+	export class Investigation {
+	    alertID: string;
+	    signature: string;
+	    hypothesis: string;
+	    error: string;
+	    // Go type: time
+	    recordedAt: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Investigation(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.alertID = source["alertID"];
+	        this.signature = source["signature"];
+	        this.hypothesis = source["hypothesis"];
+	        this.error = source["error"];
+	        this.recordedAt = this.convertValues(source["recordedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
 export namespace alerts {
 	
 	export class Tag {
@@ -713,6 +781,7 @@ export namespace config {
 	    OIDCClientSecret: string;
 	    OIDCDisplayName: string;
 	    AllowLocalSignup: boolean;
+	    DevMode: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AuthConfig(source);
@@ -728,6 +797,7 @@ export namespace config {
 	        this.OIDCClientSecret = source["OIDCClientSecret"];
 	        this.OIDCDisplayName = source["OIDCDisplayName"];
 	        this.AllowLocalSignup = source["AllowLocalSignup"];
+	        this.DevMode = source["DevMode"];
 	    }
 	}
 
@@ -1794,6 +1864,87 @@ export namespace pkg {
 	        this.message = source["message"];
 	    }
 	}
+	export class EnvVarSpec {
+	    name: string;
+	    required: boolean;
+	    hint: string;
+	    default?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvVarSpec(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.required = source["required"];
+	        this.hint = source["hint"];
+	        this.default = source["default"];
+	    }
+	}
+	export class DeployArtifact {
+	    tool: string;
+	    flavor: string;
+	    description: string;
+	    commandText: string;
+	    fileText: string;
+	    fileName: string;
+	    envVars: EnvVarSpec[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DeployArtifact(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tool = source["tool"];
+	        this.flavor = source["flavor"];
+	        this.description = source["description"];
+	        this.commandText = source["commandText"];
+	        this.fileText = source["fileText"];
+	        this.fileName = source["fileName"];
+	        this.envVars = this.convertValues(source["envVars"], EnvVarSpec);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnvValidationResult {
+	    tool: string;
+	    flavor: string;
+	    missing: string[];
+	    present: string[];
+	    vars: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new EnvValidationResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tool = source["tool"];
+	        this.flavor = source["flavor"];
+	        this.missing = source["missing"];
+	        this.present = source["present"];
+	        this.vars = source["vars"];
+	    }
+	}
+	
 	export class SettingsPayload {
 	    kubeconfigPath: string;
 	    currentContext: string;

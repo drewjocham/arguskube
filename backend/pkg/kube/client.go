@@ -91,7 +91,6 @@ func NewClient(logger *slog.Logger) (ClientInterface, error) {
 	return &Client{cs: cs, logger: logger}, nil
 }
 
-// NewAuditClient wraps an existing ClientInterface with optional audit logging.
 func NewAuditClient(base ClientInterface, auditLogger *audit.SlogLogger, logger *slog.Logger, opts ...AuditOption) ClientInterface {
 	ac := &auditConfig{}
 	for _, o := range opts {
@@ -103,16 +102,13 @@ func NewAuditClient(base ClientInterface, auditLogger *audit.SlogLogger, logger 
 	return &auditClient{inner: base, audit: auditLogger, logger: logger}
 }
 
-// GetRawInterface returns the underlying kubernetes.Interface.
 func (c *Client) GetRawInterface() kubernetes.Interface { return c.cs }
 
-// HealthCheck verifies connectivity to the API server.
 func (c *Client) HealthCheck(ctx context.Context) error {
 	_, err := c.cs.Discovery().ServerVersion()
 	return err
 }
 
-// GetClusterInfo returns high-level cluster metadata.
 func (c *Client) GetClusterInfo(ctx context.Context) (*ClusterInfo, error) {
 	sv, err := c.cs.Discovery().ServerVersion()
 	if err != nil {
@@ -125,7 +121,6 @@ func (c *Client) GetClusterInfo(ctx context.Context) (*ClusterInfo, error) {
 	return &ClusterInfo{Version: sv.GitVersion, NodeCount: len(nodes.Items)}, nil
 }
 
-// GetNodes returns all nodes.
 func (c *Client) GetNodes(ctx context.Context) ([]NodeInfo, error) {
 	list, err := c.cs.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -138,7 +133,6 @@ func (c *Client) GetNodes(ctx context.Context) ([]NodeInfo, error) {
 	return out, nil
 }
 
-// GetNode returns a single node by name.
 func (c *Client) GetNode(ctx context.Context, name string) (*NodeInfo, error) {
 	n, err := c.cs.CoreV1().Nodes().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -148,7 +142,6 @@ func (c *Client) GetNode(ctx context.Context, name string) (*NodeInfo, error) {
 	return &info, nil
 }
 
-// GetPod returns a single pod.
 func (c *Client) GetPod(ctx context.Context, namespace, name string) (*PodInfo, error) {
 	p, err := c.cs.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -158,7 +151,6 @@ func (c *Client) GetPod(ctx context.Context, namespace, name string) (*PodInfo, 
 	return &info, nil
 }
 
-// GetPods returns pods in a namespace.
 func (c *Client) GetPods(ctx context.Context, namespace string) ([]PodInfo, error) {
 	list, err := c.cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -171,12 +163,10 @@ func (c *Client) GetPods(ctx context.Context, namespace string) ([]PodInfo, erro
 	return out, nil
 }
 
-// GetPodsAllNamespaces returns pods across all namespaces.
 func (c *Client) GetPodsAllNamespaces(ctx context.Context) ([]PodInfo, error) {
 	return c.GetPods(ctx, "")
 }
 
-// GetPodLogs returns logs for a pod container.
 func (c *Client) GetPodLogs(ctx context.Context, namespace, pod, container string, tailLines, sinceSeconds int64, previous bool) (string, error) {
 	opts := &corev1.PodLogOptions{
 		Container: container,
@@ -245,7 +235,7 @@ func (c *Client) GetEvents(ctx context.Context, namespace string) ([]EventInfo, 
 			ObjectKind:    e.InvolvedObject.Kind,
 			ObjectName:    e.InvolvedObject.Name,
 			Message:       e.Message,
-			LastTimestamp:  e.LastTimestamp.Time,
+			LastTimestamp: e.LastTimestamp.Time,
 			Count:         e.Count,
 		})
 	}
@@ -447,6 +437,7 @@ func (a *auditClient) GetResource(ctx context.Context, kind, name string) ([]run
 func (a *auditClient) HealthCheck(ctx context.Context) error {
 	return a.inner.HealthCheck(ctx)
 }
+
 func (a *auditClient) GetRawInterface() kubernetes.Interface {
 	return a.inner.GetRawInterface()
 }

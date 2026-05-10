@@ -50,8 +50,15 @@ export const useAuthStore = defineStore('auth', () => {
   // form renders even if no OAuth is configured.
   const providers = ref([])
   const allowSignup = ref(true)
+  // authDisabled is set by /auth/providers when the backend is running
+  // with KUBEWATCHER_AUTH_DISABLED=true. App.vue uses it to skip the
+  // LoginView gate entirely. We default to false so a network failure
+  // on /auth/providers keeps the secure behavior.
+  const authDisabled = ref(false)
 
-  const isAuthenticated = computed(() => Boolean(token.value && user.value))
+  // The dashboard renders when either the user is signed in or auth is
+  // disabled in dev mode.
+  const isAuthenticated = computed(() => authDisabled.value || Boolean(token.value && user.value))
 
   function authHeaders(extra = {}) {
     if (!token.value) return extra
@@ -107,10 +114,12 @@ export const useAuthStore = defineStore('auth', () => {
       const r = await _get('/auth/providers')
       providers.value = r.providers || []
       allowSignup.value = r.allowSignup !== false
+      authDisabled.value = r.authDisabled === true
     } catch (err) {
-      // Network failure: keep defaults so the local form still renders.
+      // Network failure: keep secure defaults so the local form still renders.
       providers.value = []
       allowSignup.value = true
+      authDisabled.value = false
       console.warn('[auth] /auth/providers failed:', err)
     }
   }
@@ -191,6 +200,7 @@ export const useAuthStore = defineStore('auth', () => {
     expiresAt,
     providers,
     allowSignup,
+    authDisabled,
     isAuthenticated,
     authHeaders,
     loadProviders,

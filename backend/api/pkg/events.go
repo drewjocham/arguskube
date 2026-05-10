@@ -63,6 +63,13 @@ func (a *App) pollAlerts(ctx context.Context) {
 			alertList = append(alertList, a.webhookAlerts...)
 			a.webhookMu.RUnlock()
 
+			// Run through the alert processor: deduplicates by signature,
+			// suppresses silenced groups, kicks off agent investigations
+			// (when the user's profile permits), and emits the fatigue
+			// meta-alert when noise crosses threshold. The frontend only
+			// sees the FILTERED list — never the spam of repeated firings.
+			alertList = a.processAlertsThroughAgent(alertList)
+
 			runtime.EventsEmit(ctx, EventAlertUpdate, alertList)
 
 			// Auto-investigate new alerts.

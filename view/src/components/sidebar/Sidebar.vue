@@ -1,6 +1,12 @@
 <script setup>
 import { ref, computed, inject, onMounted, onUnmounted } from 'vue'
 import { useContexts } from '../../composables/useWails'
+import { useNavSearchStore } from '../../stores/navSearch'
+
+// Search state lives in the store so the Titlebar's input drives our
+// filter without prop drilling. `filteredNavTree` collapses out
+// sections that no longer have any matching items.
+const navSearch = useNavSearchStore()
 
 const props = defineProps({
   clusterInfo: { type: Object, default: null },
@@ -209,6 +215,21 @@ const criticalCount = computed(() =>
 const warningCount = computed(() =>
   props.alerts.filter(a => a.severity === 'warning').length
 )
+
+// Filtered nav tree: when the user types in the titlebar search, drop
+// items whose label doesn't include the query, and drop sections that
+// end up empty. A section header itself doesn't match — we filter on
+// the leaf items because that's what the user is actually navigating
+// to. When the search is empty, this returns navTree unchanged.
+const filteredNavTree = computed(() => {
+  if (!navSearch.active) return navTree
+  const out = []
+  for (const section of navTree) {
+    const items = section.items.filter((it) => navSearch.matches(it.label))
+    if (items.length) out.push({ ...section, items })
+  }
+  return out
+})
 </script>
 
 <template>
@@ -273,15 +294,23 @@ const warningCount = computed(() =>
 
     <!-- EXPANDED: Navigation tree -->
     <div class="nav-scroll" v-if="!sidebarCollapsed">
-      <template v-for="section in navTree" :key="section.id">
+      <!-- When the user is searching but no items match, surface that
+           explicitly so it doesn't look like the sidebar broke. -->
+      <div v-if="navSearch.active && filteredNavTree.length === 0" class="nav-empty">
+        No menu items match <span class="nav-empty-q">"{{ navSearch.query }}"</span>.
+      </div>
+
+      <template v-for="section in filteredNavTree" :key="section.id">
         <div class="section-header" @click="toggleSection(section.id)">
-          <svg class="section-chevron" :class="{ open: !isCollapsed(section.id) }" width="8" height="8" viewBox="0 0 8 8">
+          <svg class="section-chevron" :class="{ open: !isCollapsed(section.id) || navSearch.active }" width="8" height="8" viewBox="0 0 8 8">
             <path d="M2 1.5l3 2.5-3 2.5" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           <span class="section-label">{{ section.label }}</span>
         </div>
 
-        <div v-show="!isCollapsed(section.id)" class="section-items">
+        <!-- Force every section open while searching so the user can see
+             every match even in collapsed sections. -->
+        <div v-show="!isCollapsed(section.id) || navSearch.active" class="section-items">
           <template v-for="item in section.items" :key="item.id">
             <div
               v-if="!item.pro || isAllowed(item.id)"
@@ -290,7 +319,12 @@ const warningCount = computed(() =>
               @click="emit('update:activeNav', item.id)"
             >
               <div class="nav-dot" :class="{ active: activeNav === item.id }"></div>
-              <span class="nav-label">{{ item.label }}</span>
+              <span class="nav-label">
+                <template v-for="(seg, i) in navSearch.highlight(item.label)" :key="i">
+                  <mark v-if="seg.hit" class="nav-label-hit">{{ seg.text }}</mark>
+                  <template v-else>{{ seg.text }}</template>
+                </template>
+              </span>
               <span v-if="item.id === 'alerts' && criticalCount > 0" class="badge badge-red">{{ criticalCount }}</span>
               <span v-if="item.id === 'alerts' && warningCount > 0 && criticalCount === 0" class="badge badge-amber">{{ warningCount }}</span>
             </div>
@@ -299,7 +333,12 @@ const warningCount = computed(() =>
               class="nav-item pro-locked"
             >
               <div class="nav-dot"></div>
-              <span class="nav-label">{{ item.label }}</span>
+              <span class="nav-label">
+                <template v-for="(seg, i) in navSearch.highlight(item.label)" :key="i">
+                  <mark v-if="seg.hit" class="nav-label-hit">{{ seg.text }}</mark>
+                  <template v-else>{{ seg.text }}</template>
+                </template>
+              </span>
               <span class="pro-badge">PRO</span>
             </div>
           </template>
@@ -574,6 +613,29 @@ const warningCount = computed(() =>
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.nav-label-hit {
+  background: rgba(79,142,247,0.22);
+  color: var(--accent2);
+  border-radius: 2px;
+  padding: 0 1px;
+  font-weight: 600;
+}
+.nav-item.active .nav-label-hit {
+  background: rgba(79,142,247,0.35);
+  color: #fff;
+}
+
+.nav-empty {
+  padding: 12px 16px;
+  font-size: 11.5px;
+  color: var(--text3);
+  font-style: italic;
+}
+.nav-empty-q {
+  color: var(--text2);
+  font-style: normal;
+  font-family: var(--mono);
 }
 
 /* AI Context */

@@ -316,6 +316,21 @@ var httpExposedMethods = map[string]struct{}{
 	"CheckTools":               {},
 	// Pause/unpause is benign — affects only this server's polling cadence.
 	"SetPaused":                {},
+	// Spot-checks: read-only cluster probes that emit notifications.
+	"RunSpotChecks":            {},
+	"RunSpotCheck":             {},
+	"ListSpotChecks":           {},
+	// Alert processor: lifecycle controls + agent profile.
+	"AckAlert":                 {},
+	"SilenceAlert":             {},
+	"MarkAlertIgnored":         {},
+	"GetAgentProfile":          {},
+	"SetAgentProfile":          {},
+	"AlertInvestigations":      {},
+	// Deployment artifacts: read-only catalog + env validation.
+	"GetDeployArtifacts":       {},
+	"GetDeployArtifact":        {},
+	"ValidateEnvFile":          {},
 }
 
 func methodAllowedOverHTTP(name string) bool {

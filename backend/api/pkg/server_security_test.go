@@ -54,6 +54,28 @@ func TestOriginAllowed_LocalhostAlways(t *testing.T) {
 	}
 }
 
+// TestOriginAllowed_WebviewSchemes — the embedded Wails/Tauri webview
+// doesn't talk to the API from localhost, it talks from wails://wails.
+// Without this whitelist, the in-app fetch to /auth/providers gets a
+// 403 and the dashboard is stuck on LoginView even when auth is off.
+func TestOriginAllowed_WebviewSchemes(t *testing.T) {
+	cases := []string{
+		"wails://wails",
+		"wails://wails.localhost",
+		"https://wails.localhost",
+		"tauri://localhost",
+		"https://tauri.localhost",
+		"null", // some sandboxed contexts send literal "null"
+	}
+	for _, origin := range cases {
+		t.Run(origin, func(t *testing.T) {
+			if !originAllowed(origin, nil) {
+				t.Errorf("expected webview origin %q to be allowed", origin)
+			}
+		})
+	}
+}
+
 func TestOriginAllowed_RejectsRemoteWithoutAllowlist(t *testing.T) {
 	if originAllowed("https://evil.example.com", nil) {
 		t.Error("remote origin should be rejected when no allowlist is set")

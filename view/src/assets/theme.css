@@ -36,13 +36,73 @@
   --shadow: 0 1px 3px rgba(0,0,0,0.4);
   --shadow2: 0 4px 20px rgba(0,0,0,0.5);
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Tunables driven by the appearance store. Defaults below stay
+     visually identical to the pre-Settings build, so legacy components
+     and tests don't flinch when nobody has visited the panel yet. */
+  --ui-filter: none;
+  --ui-opacity: 1;
+  --ui-blur: 0px;
+  --ui-font-scale: 1;
+  --ui-pad-scale: 1;
+  --ui-gap-scale: 1;
+}
+
+/* Light theme.
+ *
+ * Many components in this codebase hardcode dark hex literals instead
+ * of reading from CSS vars, so simply flipping the palette below
+ * leaves large portions of the UI dark. Until that migration is done,
+ * the appearance store also injects a global `invert(1) hue-rotate(180deg)`
+ * filter on <body> when theme=light. The invert flips every dark
+ * background to light and every light text to dark; the hue-rotate
+ * keeps colors (red/amber/green/blue) recognisable.
+ *
+ * Counter-invert image/svg/canvas/video so logos, icons, screenshots,
+ * and the xterm canvas keep their original colors. Anything tagged
+ * with `data-no-invert` opts out as well — used for places that
+ * already provide their own light-aware rendering.
+ */
+:root[data-theme="light"] img,
+:root[data-theme="light"] svg,
+:root[data-theme="light"] video,
+:root[data-theme="light"] canvas,
+:root[data-theme="light"] [data-no-invert] {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* The palette below still applies — components that DO use CSS vars
+ * benefit from it directly without going through the inversion. */
+:root[data-theme="light"] {
+  --bg: #f7f8fa;
+  --bg2: #ffffff;
+  --bg3: #eef0f3;
+  --bg4: #e2e6eb;
+  --bg5: #d6dbe2;
+  --border: rgba(0,0,0,0.08);
+  --border2: rgba(0,0,0,0.14);
+  --text: #1a1c1e;
+  --text2: #4d525a;
+  --text3: #80868f;
+  --accent: #2563eb;
+  --accent2: #4080f5;
+  --red: #d83a3a;
+  --red2: #ff5a5a;
+  --amber: #d97706;
+  --amber2: #f59e0b;
+  --green: #10894d;
+  --green2: #1faa66;
+  --purple: #7c5af0;
+  --teal: #0d9488;
+  --shadow: 0 1px 3px rgba(15,23,42,0.08);
+  --shadow2: 0 8px 30px rgba(15,23,42,0.12);
 }
 
 body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale, 1));
   font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
   height: 100vh;
   overflow: hidden;
@@ -51,6 +111,23 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  /* Window-level effects: transparency + backdrop blur. Theme
+     inversion lives on the same element via data-theme below; user
+     filter knobs (brightness/contrast/saturation) live on #app to
+     avoid stacking with inversion. */
+  opacity: var(--ui-opacity, 1);
+  backdrop-filter: blur(var(--ui-blur, 0px));
+  -webkit-backdrop-filter: blur(var(--ui-blur, 0px));
+  transition: background 0.18s var(--ease), color 0.18s var(--ease);
+}
+
+/* User filter knobs (brightness / contrast / saturation) flow
+   through --ui-filter, which the appearance store sets on <html>.
+   #app reads it from the inherited cascade. Light/dark theme is a
+   palette swap (see `:root[data-theme="light"]` block above) — the
+   filter chain only handles user-tunable knobs. */
+#app {
+  filter: var(--ui-filter, none);
 }
 
 /* Smooth scroll and GPU-composited transitions globally. */

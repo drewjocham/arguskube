@@ -167,4 +167,37 @@ var migrations = []migration{
 			completed_at  INTEGER NOT NULL DEFAULT 0
 		)`,
 	},
+	{
+		// Single-row table holding the agent's permission profile.
+		// Stored as JSON so we can add fields without schema bumps.
+		name: "create_agent_profile",
+		sql: `CREATE TABLE agent_profile (
+			id         INTEGER PRIMARY KEY,
+			body       TEXT    NOT NULL,
+			updated_at INTEGER NOT NULL
+		)`,
+	},
+	{
+		// Append-only log of every alert lifecycle event: fired,
+		// investigated, ack'd, silenced. Used by the alert-detail UI
+		// to show "what Argus did" and by the fatigue detector to
+		// count silences/ignores.
+		name: "create_alert_events",
+		sql: `CREATE TABLE alert_events (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			signature  TEXT NOT NULL DEFAULT '',
+			alert_id   TEXT NOT NULL,
+			kind       TEXT NOT NULL,
+			body       TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL
+		)`,
+	},
+	{
+		name: "create_alert_events_index",
+		sql:  `CREATE INDEX idx_alert_events_alert ON alert_events(alert_id, created_at DESC)`,
+	},
+	{
+		name: "create_alert_events_sig_index",
+		sql:  `CREATE INDEX idx_alert_events_sig ON alert_events(signature, created_at DESC)`,
+	},
 }

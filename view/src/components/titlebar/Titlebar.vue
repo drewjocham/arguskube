@@ -4,8 +4,17 @@ import { storeToRefs } from 'pinia'
 import { isWails } from '../../composables/useWails'
 import { useNotificationsStore } from '../../stores/notifications'
 import { useAuthStore } from '../../stores/auth'
+import { useNavSearchStore } from '../../stores/navSearch'
+import { useSpotCheck } from '../../composables/useSpotCheck'
 import NotificationsPanel from '../notifications/NotificationsPanel.vue'
 import EnvironmentSelector from './EnvironmentSelector.vue'
+
+const { active: spotCheckActive, runAll: runSpotChecks } = useSpotCheck()
+
+// Sidebar search — typed here, consumed in the sidebar via the
+// navSearch store (no prop drilling through App.vue).
+const navSearch = useNavSearchStore()
+const { query: navQuery } = storeToRefs(navSearch)
 
 defineProps({
   clusterInfo: { type: Object, default: null },
@@ -52,6 +61,33 @@ async function signOut() {
       <div class="tl tl-g"></div>
     </div>
     <div v-else class="traffic-spacer"></div>
+
+    <!-- Sidebar search. Typed here, applied to the navTree by the
+         Sidebar component via the shared navSearch store. The input
+         needs `--wails-draggable: no-drag` so the OS doesn't try to
+         drag the window when the user clicks on it. -->
+    <div class="nav-search" style="--wails-draggable: no-drag">
+      <svg class="nav-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input
+        type="text"
+        class="nav-search-input"
+        v-model="navQuery"
+        placeholder="Search menu…"
+        spellcheck="false"
+        autocomplete="off"
+        @keydown.escape="navSearch.clear()"
+      />
+      <button
+        v-if="navQuery"
+        class="nav-search-clear"
+        @click="navSearch.clear()"
+        title="Clear (esc)"
+      >×</button>
+    </div>
+
     <div class="titlebar-title">
       <span>KubeWatcher</span> — SRE Console
     </div>
@@ -77,6 +113,18 @@ async function signOut() {
         </button>
       </template>
       <EnvironmentSelector style="--wails-draggable: no-drag" />
+      <!-- Spot-check activity pill: visible only while a probe is
+           running. Click runs all checks now (manual trigger). -->
+      <button
+        v-if="spotCheckActive"
+        class="spotcheck-pill"
+        @click="runSpotChecks"
+        :title="`Argus is ${spotCheckActive.description.toLowerCase()} Click to run all checks now.`"
+        style="--wails-draggable: no-drag"
+      >
+        <span class="spotcheck-dot"></span>
+        <span class="spotcheck-desc">{{ spotCheckActive.description }}</span>
+      </button>
       <button
         class="tb-bell"
         :class="{ active: notifPanelOpen }"
@@ -91,6 +139,11 @@ async function signOut() {
         <span v-if="unreadCount > 0" class="tb-bell-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
       </button>
       <div class="health-dot"></div>
+      <div
+        v-if="auth.authDisabled"
+        class="dev-badge"
+        title="KUBEWATCHER_AUTH_DISABLED is set — every API request is unauthenticated. Local development only."
+      >DEV · NO AUTH</div>
       <div v-if="auth.user" class="user-chip" style="--wails-draggable: no-drag">
         <button
           class="user-avatar"
@@ -146,6 +199,55 @@ async function signOut() {
   flex-shrink: 0;
 }
 
+.nav-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: 24px;
+  width: 220px;
+  margin-right: 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+.nav-search:focus-within {
+  border-color: var(--accent);
+  background: var(--bg2);
+}
+.nav-search-icon { color: var(--text3); flex-shrink: 0; }
+.nav-search:focus-within .nav-search-icon { color: var(--accent2); }
+.nav-search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+}
+.nav-search-input::placeholder { color: var(--text3); }
+.nav-search-clear {
+  flex-shrink: 0;
+  width: 16px; height: 16px;
+  background: transparent;
+  border: 0;
+  color: var(--text3);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.nav-search-clear:hover { background: var(--bg4); color: var(--text); }
+
 .titlebar-title {
   flex: 1;
   text-align: center;
@@ -153,7 +255,6 @@ async function signOut() {
   font-weight: 500;
   color: var(--text2);
   letter-spacing: 0.01em;
-  margin-left: -84px;
 }
 .titlebar-title span { color: var(--text); }
 
@@ -251,6 +352,55 @@ async function signOut() {
   background: var(--green);
   box-shadow: 0 0 6px var(--green);
   animation: pulse 2s ease-in-out infinite;
+}
+
+.spotcheck-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: rgba(167, 139, 250, 0.12);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  color: var(--purple);
+  font-size: 10.5px;
+  font-weight: 500;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  max-width: 280px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: background 0.15s, border-color 0.15s;
+}
+.spotcheck-pill:hover { background: rgba(167, 139, 250, 0.22); border-color: rgba(167, 139, 250, 0.7); }
+.spotcheck-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--purple);
+  box-shadow: 0 0 6px var(--purple);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.spotcheck-desc { overflow: hidden; text-overflow: ellipsis; }
+
+.dev-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  margin-left: 8px;
+  border-radius: 999px;
+  background: rgba(245,166,35,0.15);
+  border: 1px solid rgba(245,166,35,0.5);
+  color: var(--amber2);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: help;
+  user-select: none;
 }
 
 .user-chip { position: relative; margin-left: 8px; }

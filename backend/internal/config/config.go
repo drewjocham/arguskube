@@ -30,9 +30,11 @@ type OnlineDataConfig struct {
 	Auth        AuthConfig
 }
 
-// AuthConfig holds sign-in settings. Auth is mandatory: there is no
-// "disable auth" flag — the user must register or sign in via OAuth
-// before reaching any /api endpoint.
+// AuthConfig holds sign-in settings. By default, every /api endpoint
+// requires a valid session — register an account or sign in via OAuth.
+// For local-development convenience there's a single escape hatch
+// (DevMode) that disables the gate entirely; see field comment for the
+// safety constraint.
 type AuthConfig struct {
 	// PublicBaseURL is the URL the OAuth callback will land on. For
 	// the desktop app this is http://127.0.0.1:<port>; for a hosted
@@ -51,6 +53,13 @@ type AuthConfig struct {
 	// endpoint is open. Default is true for the desktop app; SaaS
 	// admins typically flip it off and rely on SSO + invites.
 	AllowLocalSignup bool `env:"KUBEWATCHER_AUTH_ALLOW_SIGNUP"`
+
+	// DevMode disables the entire auth gate. Intended ONLY for local
+	// development — every /api request is treated as authenticated and
+	// the frontend skips the LoginView. SetupAuth refuses to honor this
+	// flag when the API binds to anything other than loopback, so a
+	// misconfigured public deploy can't accidentally leave auth off.
+	DevMode bool `env:"KUBEWATCHER_AUTH_DISABLED"`
 }
 
 // KubernetesConfig holds cluster connection settings.
@@ -193,6 +202,7 @@ func New() (*OnlineDataConfig, error) {
 			OIDCClientSecret:   env("KUBEWATCHER_OIDC_CLIENT_SECRET", ""),
 			OIDCDisplayName:    env("KUBEWATCHER_OIDC_DISPLAY_NAME", "Corporate SSO"),
 			AllowLocalSignup:   env("KUBEWATCHER_AUTH_ALLOW_SIGNUP", "true") != "false",
+			DevMode:            env("KUBEWATCHER_AUTH_DISABLED", "false") == "true",
 		},
 	}
 

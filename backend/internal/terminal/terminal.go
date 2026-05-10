@@ -10,7 +10,6 @@ import (
 	"github.com/creack/pty"
 )
 
-// Terminal manages a PTY session for the embedded shell.
 type Terminal struct {
 	cmd    *exec.Cmd
 	ptmx   *os.File
@@ -18,11 +17,9 @@ type Terminal struct {
 	closed bool
 	logger *slog.Logger
 
-	// OnOutput is called with each chunk of terminal output.
 	OnOutput func(data string)
 }
 
-// New creates a new Terminal instance.
 func New(logger *slog.Logger) *Terminal {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
@@ -32,19 +29,15 @@ func New(logger *slog.Logger) *Terminal {
 	}
 }
 
-// Start opens a PTY with the given shell and dimensions.
-// Common shells: "zsh", "bash", "sh".
 func (t *Terminal) Start(shell string, rows, cols uint16) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	if t.ptmx != nil {
-		// Already running — close existing.
 		t.closeLocked()
 	}
 
 	if shell == "" {
-		// Try to detect the user's shell.
 		shell = os.Getenv("SHELL")
 		if shell == "" {
 			shell = "zsh"
@@ -94,7 +87,6 @@ func (t *Terminal) Write(data string) error {
 	return err
 }
 
-// Resize updates the terminal dimensions.
 func (t *Terminal) Resize(rows, cols uint16) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -109,7 +101,6 @@ func (t *Terminal) Resize(rows, cols uint16) error {
 	})
 }
 
-// Close shuts down the terminal.
 func (t *Terminal) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -134,7 +125,6 @@ func (t *Terminal) closeLocked() error {
 	return nil
 }
 
-// readLoop reads from the PTY and calls OnOutput.
 func (t *Terminal) readLoop() {
 	buf := make([]byte, 8192)
 	for {
@@ -151,7 +141,6 @@ func (t *Terminal) readLoop() {
 	}
 }
 
-// IsRunning returns whether the terminal is active.
 func (t *Terminal) IsRunning() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()

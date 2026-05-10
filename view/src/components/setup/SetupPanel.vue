@@ -1,11 +1,24 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useSetup } from '../../composables/useWails'
+import DeployArtifactsPanel from './DeployArtifactsPanel.vue'
 
 const { tools, loading, actionLoading, checkTools, installArgusScan, deployAgent, undeployAgent } = useSetup()
 
 const agentNamespace = ref('kubewatcher')
 const lastResult = ref(null)
+// Per-card "show deployment artifacts" expansion state, keyed by tool name.
+const expandedDeploy = ref({})
+function toggleDeploy(name) { expandedDeploy.value[name] = !expandedDeploy.value[name] }
+// Map UI tool name → backend artifact tool key. The catalog uses
+// stable identifiers; the SetupPanel uses display labels.
+function deployToolKey(name) {
+  if (name === 'popeye') return 'popeye'
+  if (name === 'kubewatcher-agent') return 'kubewatcher-agent'
+  if (name === 'docker') return 'kubewatcher-stack'
+  if (name === 'helm') return 'monitoring'
+  return name
+}
 
 onMounted(() => {
   checkTools()
@@ -154,6 +167,18 @@ const totalCount = computed(() => tools.value.length)
         <div v-if="tool.name === 'argusScan' && !tool.installed" class="install-info">
           Will try <code>go install</code> first, then fall back to <code>docker pull quay.io/derailed/popeye</code>
         </div>
+
+        <!-- Deployment artifacts: copy / download / env-file flow.
+             Lazy: only mounted when the user expands. -->
+        <div class="deploy-toggle-row">
+          <button class="deploy-toggle" @click="toggleDeploy(tool.name)">
+            {{ expandedDeploy[tool.name] ? 'Hide' : 'Show' }} deployment options
+            <span class="deploy-toggle-arrow" :class="{ flipped: expandedDeploy[tool.name] }">▾</span>
+          </button>
+        </div>
+        <div v-if="expandedDeploy[tool.name]" class="deploy-wrap">
+          <DeployArtifactsPanel :tool="deployToolKey(tool.name)" />
+        </div>
       </div>
     </div>
 
@@ -171,6 +196,31 @@ const totalCount = computed(() => tools.value.length)
 </template>
 
 <style scoped>
+/* Deploy artifacts toggle + container */
+.deploy-toggle-row { margin-top: 12px; }
+.deploy-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text2);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.deploy-toggle:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+.deploy-toggle-arrow { transition: transform 0.15s; display: inline-block; }
+.deploy-toggle-arrow.flipped { transform: rotate(180deg); }
+.deploy-wrap {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(0,0,0,0.15);
+  border-radius: 6px;
+}
+
 .setup-view {
   padding: 24px;
   display: flex;

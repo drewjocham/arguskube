@@ -15,7 +15,6 @@ const newItemText = ref('')
 
 let hideTimeout = null
 
-// Wails Event handlers
 useWailsEvent('agent:analysis:start', (data) => {
   if (data && data.lookingAt) {
     lookingAt.value = data.lookingAt

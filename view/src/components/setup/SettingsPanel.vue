@@ -1,6 +1,91 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, reactive } from 'vue'
+import { storeToRefs } from 'pinia'
 import { callGo, useContexts } from '../../composables/useWails'
+import { useAppearanceStore } from '../../stores/appearance'
+import { useNotificationsStore } from '../../stores/notifications'
+import { useSpotCheck } from '../../composables/useSpotCheck'
+
+// Agent profile — what Argus is allowed to do without asking. Defaults
+// are conservative (he documents but never mutates). Backend sanitizes
+// on save, so we only need rough validation here.
+const agentProfile = reactive({
+  autoInvestigate: true,
+  autoDocument: true,
+  canAck: false,
+  canSilence: false,
+  canAdjustParams: false,
+  silenceWindow: 3600000000000, // ns — 1h
+  fatigueThreshold: 5,
+})
+const silenceWindowMin = ref(60) // exposed in minutes for the UI
+const agentProfileSaving = ref(false)
+const agentProfileMsg = ref('')
+
+async function loadAgentProfile() {
+  try {
+    const p = await callGo('GetAgentProfile')
+    if (p && typeof p === 'object') {
+      Object.assign(agentProfile, p)
+      silenceWindowMin.value = Math.max(1, Math.round((p.silenceWindow || 3600000000000) / 60000000000))
+    }
+  } catch (e) {
+    console.warn('[settings] GetAgentProfile failed:', e)
+  }
+}
+
+async function saveAgentProfile() {
+  agentProfileSaving.value = true
+  agentProfileMsg.value = ''
+  try {
+    // Convert UI minutes back to nanoseconds for the Go duration field.
+    const payload = {
+      ...agentProfile,
+      silenceWindow: Math.max(1, Math.min(24 * 60, silenceWindowMin.value)) * 60 * 1e9,
+    }
+    await callGo('SetAgentProfile', payload)
+    Object.assign(agentProfile, payload)
+    agentProfileMsg.value = 'Saved.'
+  } catch (e) {
+    agentProfileMsg.value = 'Error: ' + (e?.message || e)
+  } finally {
+    agentProfileSaving.value = false
+    setTimeout(() => { agentProfileMsg.value = '' }, 4000)
+  }
+}
+
+// Appearance — entirely client-side: the values live in localStorage
+// and apply to <html> via the appearance store. No round-trip through
+// the Go backend, so the UI updates as the user drags.
+const appearance = useAppearanceStore()
+// storeToRefs only handles reactive refs; plain objects exposed by the
+// setup-style store (ranges, densities) come back undefined if you
+// destructure them through it. Pull those off the store directly.
+const { theme: appTheme, brightness, contrast, opacity, blur, saturation, density } = storeToRefs(appearance)
+const ranges = appearance.ranges
+
+// Notifications: cap setting + manual spot-check trigger.
+const notifStore = useNotificationsStore()
+const { settings: notifSettings } = storeToRefs(notifStore)
+const draftNotifMax = ref(notifSettings.value.maxItems)
+function applyNotifMax() {
+  notifStore.setMaxItems(draftNotifMax.value)
+  draftNotifMax.value = notifStore.settings.maxItems // reflect clamping
+}
+
+const { runAll: runSpotChecksNow } = useSpotCheck()
+const spotChecksRunning = ref(false)
+async function triggerSpotChecks() {
+  spotChecksRunning.value = true
+  try {
+    await runSpotChecksNow()
+  } finally {
+    // The backend kicks off async; clear the flag after a short
+    // grace so the button doesn't stay disabled forever if no events
+    // come back.
+    setTimeout(() => { spotChecksRunning.value = false }, 1500)
+  }
+}
 
 const settings = ref(null)
 const loading = ref(true)
@@ -110,6 +195,7 @@ async function testArgoCD() {
 onMounted(() => {
   loadSettings()
   listContexts()
+  loadAgentProfile()
 })
 </script>
 
@@ -123,6 +209,302 @@ onMounted(() => {
     </div>
 
     <div class="scroll" v-if="!loading">
+      <!-- Appearance — theme + visual feel. All client-side; persisted
+           in localStorage and applied via CSS custom properties. -->
+      <div class="section">
+        <div class="section-title">Appearance</div>
+
+        <div class="field">
+          <label class="field-label">Theme</label>
+          <div class="theme-row">
+            <button
+              type="button"
+              class="theme-chip"
+              :class="{ active: appTheme === 'dark' }"
+              @click="appearance.setTheme('dark')"
+            >
+              <span class="theme-swatch" data-swatch="dark"></span>
+              Dark
+            </button>
+            <button
+              type="button"
+              class="theme-chip"
+              :class="{ active: appTheme === 'light' }"
+              @click="appearance.setTheme('light')"
+            >
+              <span class="theme-swatch" data-swatch="light"></span>
+              Light
+            </button>
+            <button
+              type="button"
+              class="theme-chip"
+              :class="{ active: appTheme === 'auto' }"
+              @click="appearance.setTheme('auto')"
+            >
+              <span class="theme-swatch" data-swatch="auto"></span>
+              Auto (OS)
+            </button>
+          </div>
+          <div class="field-hint">
+            Auto follows your operating system's light/dark setting.
+            <strong>Light is experimental</strong> — the palette swaps for
+            components that use the design tokens, but a number of legacy
+            components still hardcode dark colors and won't change. A full
+            migration is on the roadmap.
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="slider-head">
+            <label class="field-label">Brightness</label>
+            <span class="slider-value">{{ brightness }}%</span>
+          </div>
+          <input
+            type="range"
+            class="slider"
+            :min="ranges.brightness[0]"
+            :max="ranges.brightness[1]"
+            :value="brightness"
+            @input="appearance.setBrightness(Number($event.target.value))"
+          />
+          <div class="field-hint">Dim or brighten the entire UI without changing the theme.</div>
+        </div>
+
+        <div class="field">
+          <div class="slider-head">
+            <label class="field-label">Contrast</label>
+            <span class="slider-value">{{ contrast }}%</span>
+          </div>
+          <input
+            type="range"
+            class="slider"
+            :min="ranges.contrast[0]"
+            :max="ranges.contrast[1]"
+            :value="contrast"
+            @input="appearance.setContrast(Number($event.target.value))"
+          />
+          <div class="field-hint">Push contrast up for sharper text, down for softer surfaces.</div>
+        </div>
+
+        <div class="field">
+          <div class="slider-head">
+            <label class="field-label">Saturation <span class="hint-inline">— shiny vs. dull</span></label>
+            <span class="slider-value">{{ saturation }}%</span>
+          </div>
+          <input
+            type="range"
+            class="slider"
+            :min="ranges.saturation[0]"
+            :max="ranges.saturation[1]"
+            :value="saturation"
+            @input="appearance.setSaturation(Number($event.target.value))"
+          />
+          <div class="field-hint">0% = grayscale, 100% = default, 200% = vivid.</div>
+        </div>
+
+        <div class="field">
+          <div class="slider-head">
+            <label class="field-label">Window Opacity</label>
+            <span class="slider-value">{{ opacity }}%</span>
+          </div>
+          <input
+            type="range"
+            class="slider"
+            :min="ranges.opacity[0]"
+            :max="ranges.opacity[1]"
+            :value="opacity"
+            @input="appearance.setOpacity(Number($event.target.value))"
+          />
+          <div class="field-hint">Useful when the desktop window is translucent (Wails).</div>
+        </div>
+
+        <div class="field">
+          <div class="slider-head">
+            <label class="field-label">Window Blur Radius</label>
+            <span class="slider-value">{{ blur }}px</span>
+          </div>
+          <input
+            type="range"
+            class="slider"
+            :min="ranges.blur[0]"
+            :max="ranges.blur[1]"
+            :value="blur"
+            @input="appearance.setBlur(Number($event.target.value))"
+          />
+          <div class="field-hint">Softens whatever shows behind a translucent window.</div>
+        </div>
+
+        <div class="field">
+          <label class="field-label">UI Density</label>
+          <div class="theme-row">
+            <button
+              v-for="d in ['compact', 'normal', 'comfortable']"
+              :key="d"
+              type="button"
+              class="theme-chip"
+              :class="{ active: density === d }"
+              @click="appearance.setDensity(d)"
+            >{{ d.charAt(0).toUpperCase() + d.slice(1) }}</button>
+          </div>
+          <div class="field-hint">Scales typography and padding across the app.</div>
+        </div>
+
+        <div class="field">
+          <button class="test-btn" @click="appearance.reset()">Reset to defaults</button>
+        </div>
+      </div>
+
+      <!-- Notifications & Spot-checks -->
+      <div class="section">
+        <div class="section-title">Notifications</div>
+
+        <div class="field">
+          <label class="field-label">Max notifications kept</label>
+          <div class="field-row">
+            <input
+              v-model.number="draftNotifMax"
+              type="number"
+              min="1"
+              max="5000"
+              step="50"
+              class="field-input"
+              style="max-width: 140px;"
+            />
+            <button class="test-btn" @click="applyNotifMax">Apply</button>
+          </div>
+          <div class="field-hint">
+            Argus keeps the last <strong>{{ notifSettings.maxItems }}</strong> spot-check
+            findings, scan summaries, and alerts in the bell panel. Older
+            entries roll off automatically. Cap is between 1 and 5000.
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label">Spot-checks</label>
+          <div class="field-row">
+            <button
+              class="test-btn"
+              :disabled="spotChecksRunning"
+              @click="triggerSpotChecks"
+            >{{ spotChecksRunning ? 'Running…' : 'Run spot-checks now' }}</button>
+          </div>
+          <div class="field-hint">
+            Runs every registered probe (nodes, cluster metrics, decision-log
+            freshness) and posts findings to the notifications panel. Argus
+            also runs these every 30 minutes automatically.
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent Profile — what Argus is allowed to do without asking. -->
+      <div class="section">
+        <div class="section-title">Agent Profile</div>
+        <div class="section-hint">
+          Argus always documents what he sees. The toggles below decide what,
+          if anything, he can <em>change</em> on your behalf. Defaults are
+          read-only — he never mutates alerts without permission.
+        </div>
+
+        <div class="field">
+          <label class="toggle-label">
+            <input type="checkbox" class="toggle-checkbox" v-model="agentProfile.autoInvestigate" />
+            <span class="toggle-text">
+              <strong>Auto-investigate new alerts.</strong>
+              When a new alert fires, Argus runs a diagnosis and saves the findings.
+            </span>
+          </label>
+        </div>
+
+        <div class="field">
+          <label class="toggle-label">
+            <input type="checkbox" class="toggle-checkbox" v-model="agentProfile.autoDocument" />
+            <span class="toggle-text">
+              <strong>Auto-document.</strong>
+              Even with the AI off, log every fire / silence / dismissal so the
+              fatigue detector has data.
+            </span>
+          </label>
+        </div>
+
+        <div class="field">
+          <label class="toggle-label">
+            <input type="checkbox" class="toggle-checkbox" v-model="agentProfile.canAck" />
+            <span class="toggle-text">
+              <strong>Allow agent to ack alerts.</strong>
+              Off by default. With this on, Argus may acknowledge alerts after
+              investigation; he still records the rationale.
+            </span>
+          </label>
+        </div>
+
+        <div class="field">
+          <label class="toggle-label">
+            <input type="checkbox" class="toggle-checkbox" v-model="agentProfile.canSilence" />
+            <span class="toggle-text">
+              <strong>Allow agent to silence noisy alerts.</strong>
+              Off by default. With this on, Argus may silence a signature he
+              identifies as repeated noise. The fatigue detector recommends
+              enabling this if alerts keep getting dismissed.
+            </span>
+          </label>
+        </div>
+
+        <div class="field">
+          <label class="toggle-label">
+            <input type="checkbox" class="toggle-checkbox" v-model="agentProfile.canAdjustParams" />
+            <span class="toggle-text">
+              <strong>Allow agent to adjust alert parameters.</strong>
+              Off by default. With this on, Argus may apply (not just suggest)
+              threshold tweaks for chronically noisy alerts.
+            </span>
+          </label>
+        </div>
+
+        <div class="field">
+          <label class="field-label">Default silence window (minutes)</label>
+          <input
+            type="number"
+            class="field-input"
+            min="1"
+            max="1440"
+            step="5"
+            v-model.number="silenceWindowMin"
+            style="max-width: 140px;"
+          />
+          <div class="field-hint">
+            How long a silenced alert stays suppressed. Capped at 24 hours.
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label">Fatigue threshold</label>
+          <input
+            type="number"
+            class="field-input"
+            min="1"
+            max="100"
+            step="1"
+            v-model.number="agentProfile.fatigueThreshold"
+            style="max-width: 140px;"
+          />
+          <div class="field-hint">
+            After this many silences/dismissals of the same alert signature,
+            Argus fires the "alerts losing value" warning. Default 5.
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-row">
+            <button class="test-btn" :disabled="agentProfileSaving" @click="saveAgentProfile">
+              {{ agentProfileSaving ? 'Saving…' : 'Apply agent profile' }}
+            </button>
+            <span v-if="agentProfileMsg" class="test-result" :class="{ ok: !agentProfileMsg.startsWith('Error'), fail: agentProfileMsg.startsWith('Error') }">
+              {{ agentProfileMsg }}
+            </span>
+          </div>
+        </div>
+      </div>
+
       <!-- Kubernetes Connection -->
       <div class="section">
         <div class="section-title">Kubernetes Connection</div>
@@ -492,4 +874,86 @@ onMounted(() => {
 .section-hint { font-size: 11px; color: var(--text3); margin-top: -8px; margin-bottom: 12px; font-style: italic; }
 
 .loading-state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text3); font-size: 13px; }
+
+/* --- Appearance section ------------------------------------------------ */
+
+.theme-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.theme-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text2);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.theme-chip:hover { background: var(--bg4); color: var(--text); }
+.theme-chip.active {
+  border-color: var(--accent);
+  background: rgba(79,142,247,0.12);
+  color: var(--text);
+}
+
+.theme-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+}
+.theme-swatch[data-swatch="dark"]  { background: linear-gradient(135deg, #1a1c1e 50%, #2f3236 50%); }
+.theme-swatch[data-swatch="light"] { background: linear-gradient(135deg, #f7f8fa 50%, #e2e6eb 50%); }
+.theme-swatch[data-swatch="auto"]  { background: linear-gradient(135deg, #1a1c1e 50%, #f7f8fa 50%); }
+
+.slider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.slider-value {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text2);
+  font-variant-numeric: tabular-nums;
+}
+.hint-inline { color: var(--text3); font-weight: 400; font-size: 11px; }
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg4);
+  outline: none;
+  cursor: pointer;
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg2);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  cursor: grab;
+  transition: transform 0.1s;
+}
+.slider::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.1); }
+.slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg2);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  cursor: grab;
+}
 </style>

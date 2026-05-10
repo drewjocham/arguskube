@@ -105,6 +105,23 @@ func originAllowed(origin string, allowed []string) bool {
 }
 
 func isLocalOrigin(origin string) bool {
+	// "null" is what some webviews (file://, sandboxed iframes) send.
+	// Treating it as local is fine for our threat model: the only way
+	// to land on a `null` origin is to already be inside our own
+	// process (Wails / Tauri / a saved HTML file we wrote ourselves).
+	if origin == "null" {
+		return true
+	}
+	// Wails 2.x webviews load the embedded SPA from `wails://wails` /
+	// `wails://` (Linux), and Tauri uses `tauri://localhost` /
+	// `https://tauri.localhost`. These aren't HTTP "remote" origins —
+	// they're our own webview talking to our own loopback API. Accept
+	// the schemes wholesale; otherwise the embedded UI can't reach
+	// /auth/* and the LoginView never knows auth is disabled.
+	if strings.HasPrefix(origin, "wails://") || strings.HasPrefix(origin, "tauri://") {
+		return true
+	}
+
 	// Origins are typed as scheme://host[:port]; we only need host.
 	// IPv6 hosts use the [::1]:port form, so strip brackets carefully.
 	host := origin
@@ -125,7 +142,8 @@ func isLocalOrigin(origin string) bool {
 		host = host[:i]
 	}
 	switch host {
-	case "localhost", "127.0.0.1", "::1", "0.0.0.0":
+	case "localhost", "127.0.0.1", "::1", "0.0.0.0",
+		"wails", "wails.localhost", "tauri.localhost":
 		return true
 	}
 	return false
@@ -169,7 +187,14 @@ func applyCORS(w http.ResponseWriter, r *http.Request, allowed []string) bool {
 // can hit read-only endpoints without going through the user-account
 // flow. Loopback alone is no longer sufficient: the user must be
 // signed in (or carry a service token) to reach the API.
+//
+// When KUBEWATCHER_AUTH_DISABLED is on AND the API listens on
+// loopback (enforced in SetupAuth), this returns true unconditionally.
+// That's the local-dev escape hatch.
 func (a *App) authorizeAPIRequest(r *http.Request) bool {
+	if a.auth != nil && a.auth.devMode {
+		return true
+	}
 	if a.auth != nil {
 		if user, err := a.auth.store.ValidateSession(bearerFromRequest(r)); err == nil && user != nil {
 			return true

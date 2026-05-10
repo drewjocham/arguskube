@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -11,12 +12,29 @@ import (
 	"github.com/argues/kube-watcher/internal/config"
 )
 
+// isLoopbackBind reports whether the configured API bind address keeps
+// the listener on a host-only interface. Used to gate the dev-mode
+// bypass so a public deployment can't accidentally have it on.
+func isLoopbackBind(bind string) bool {
+	bind = strings.TrimSpace(bind)
+	if bind == "" {
+		return true // default is 127.0.0.1
+	}
+	return strings.HasPrefix(bind, "127.") ||
+		bind == "localhost" ||
+		bind == "::1" ||
+		strings.HasPrefix(bind, "[::1]")
+}
+
 // authState bundles the user-account dependencies the HTTP layer needs.
 // Lives on App so /api/* and /auth/* share the same store.
 type authState struct {
-	store        *auth.Store
-	oidc         *auth.OIDCManager
-	allowSignup  bool
+	store       *auth.Store
+	oidc        *auth.OIDCManager
+	allowSignup bool
+	// devMode disables the entire gate. Only honored when the API
+	// binds to loopback — see SetupAuth for the safety check.
+	devMode bool
 }
 
 // SetupAuth wires the auth store + OIDC providers from config. Called
@@ -47,10 +65,25 @@ func (a *App) SetupAuth(store *auth.Store, cfg config.AuthConfig) {
 			RedirectURL:  strings.TrimRight(cfg.PublicBaseURL, "/") + "/auth/oidc/callback",
 		})
 	}
+	// DevMode is a local-development convenience — it bypasses the
+	// entire auth gate. We refuse to honor it when KUBEWATCHER_API_BIND
+	// points at anything other than loopback, so a deploy that
+	// accidentally inherits this env var doesn't ship without a gate.
+	devMode := cfg.DevMode
+	if devMode && !isLoopbackBind(os.Getenv("KUBEWATCHER_API_BIND")) {
+		a.logger.Warn("KUBEWATCHER_AUTH_DISABLED ignored — API is not bound to loopback",
+			"bind", os.Getenv("KUBEWATCHER_API_BIND"),
+		)
+		devMode = false
+	}
+	if devMode {
+		a.logger.Warn("AUTH IS DISABLED — every /api request is unauthenticated. Local-dev mode only.")
+	}
 	a.auth = &authState{
 		store:       store,
 		oidc:        auth.NewOIDCManager(store, a.logger, providers...),
 		allowSignup: cfg.AllowLocalSignup,
+		devMode:     devMode,
 	}
 	// Best-effort cleanup loop — runs every hour so the session table
 	// doesn't grow without bound on long-running installs.
@@ -111,8 +144,9 @@ func (a *App) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"providers":   a.auth.oidc.EnabledProviders(),
-		"allowSignup": a.auth.allowSignup,
+		"providers":    a.auth.oidc.EnabledProviders(),
+		"allowSignup":  a.auth.allowSignup,
+		"authDisabled": a.auth.devMode,
 	})
 }
 
