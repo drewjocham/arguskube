@@ -312,9 +312,7 @@ func suggestCommand(resource, message, ns, name string) string {
 }
 
 func (r *Runner) execPopeye(ctx context.Context) ([]byte, error) {
-	binaryAvailable := false
 	if _, err := exec.LookPath(r.binary); err == nil {
-		binaryAvailable = true
 		output, err := r.execBinary(ctx)
 		if err == nil && len(output) > 0 {
 			return output, nil

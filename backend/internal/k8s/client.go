@@ -22,13 +22,6 @@ import (
 	"github.com/argues/kube-watcher/internal/config"
 )
 
-const (
-	logKeyPod       = "pod"
-	logKeyNamespace = "namespace"
-	logKeyNode      = "node"
-	logKeyError     = "error"
-)
-
 // Client wraps the Kubernetes API for KubeWatcher's needs.
 type Client struct {
 	cs      kubernetes.Interface
