@@ -65,7 +65,7 @@ func run() error {
 		detector = anomaly.NewAnomstackClient(cfg, logger)
 		logger.Info("anomaly detector initialized", slog.String("backend", "anomstack"), slog.String("url", cfg.AI.AnomstackURL))
 	default:
-		logger.Warn("anomaly detection disabled — set argus_FLINK_URL or ANOMSTACK_URL to enable")
+		logger.Warn("anomaly detection disabled — set ARGUS_FLINK_URL or ANOMSTACK_URL to enable")
 	}
 
 	assembler := ctxassembly.NewAssembler(cfg, gate, detector, logger)
@@ -192,7 +192,7 @@ func run() error {
 	app.Startup(ctx)
 
 	port := 8080
-	if p := os.Getenv("argus_PORT"); p != "" {
+	if p := os.Getenv("ARGUS_PORT"); p != "" {
 		if v, err := strconv.Atoi(p); err == nil {
 			port = v
 		}

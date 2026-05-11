@@ -27,11 +27,11 @@ func minimalServerApp(t *testing.T) *App {
 	}
 }
 
-// withServiceToken sets argus_API_TOKEN and returns a header value
+// withServiceToken sets ARGUS_API_TOKEN and returns a header value
 // that satisfies authenticateService.
 func withServiceToken(t *testing.T, token string) string {
 	t.Helper()
-	withEnv(t, "argus_API_TOKEN="+token)
+	withEnv(t, "ARGUS_API_TOKEN="+token)
 	return "Bearer " + token
 }
 
@@ -86,7 +86,7 @@ func TestServeHTTP_OptionsReturns200WithoutAuth(t *testing.T) {
 
 func TestServeHTTP_UnauthorizedWhenNoTokenAndNoAuth(t *testing.T) {
 	a := minimalServerApp(t)
-	withEnv(t, "argus_API_TOKEN=") // ensure unset
+	withEnv(t, "ARGUS_API_TOKEN=") // ensure unset
 	req := httptest.NewRequest(http.MethodPost, "/api/GetAppMode", strings.NewReader(`{"args":[]}`))
 	req.Header.Set("Origin", "http://localhost:5173")
 	rr := httptest.NewRecorder()
@@ -154,7 +154,7 @@ func TestHandleWebhook_RejectsNonPOST(t *testing.T) {
 
 func TestHandleWebhook_RejectsBadJSON(t *testing.T) {
 	a := minimalServerApp(t)
-	withEnv(t, "argus_WEBHOOK_TOKEN=") // unset so loopback alone authenticates
+	withEnv(t, "ARGUS_WEBHOOK_TOKEN=") // unset so loopback alone authenticates
 	req := httptest.NewRequest(http.MethodPost, "/webhooks/anomstack", strings.NewReader("not json"))
 	req.Header.Set("Origin", "http://localhost")
 	req.RemoteAddr = "127.0.0.1:0"
@@ -167,7 +167,7 @@ func TestHandleWebhook_RejectsBadJSON(t *testing.T) {
 
 func TestHandleWebhook_RemoteUnauthorizedWithoutToken(t *testing.T) {
 	a := minimalServerApp(t)
-	withEnv(t, "argus_WEBHOOK_TOKEN=expected")
+	withEnv(t, "ARGUS_WEBHOOK_TOKEN=expected")
 	body := strings.NewReader(`{"metric_name":"cpu","threshold":0.5,"score":0.4}`)
 	req := httptest.NewRequest(http.MethodPost, "/webhooks/anomstack", body)
 	req.Header.Set("Origin", "http://localhost")
@@ -181,7 +181,7 @@ func TestHandleWebhook_RemoteUnauthorizedWithoutToken(t *testing.T) {
 
 func TestHandleWebhook_AcceptsBearerAndAppendsAlert(t *testing.T) {
 	a := minimalServerApp(t)
-	withEnv(t, "argus_WEBHOOK_TOKEN=expected")
+	withEnv(t, "ARGUS_WEBHOOK_TOKEN=expected")
 	body := bytes.NewReader([]byte(`{
 		"title":"High CPU",
 		"metric_name":"cpu_pressure",
@@ -230,7 +230,7 @@ func TestHandleWebhook_AcceptsBearerAndAppendsAlert(t *testing.T) {
 
 func TestHandleWebhook_DefaultsTitleFromMetricName(t *testing.T) {
 	a := minimalServerApp(t)
-	withEnv(t, "argus_WEBHOOK_TOKEN=") // loopback path
+	withEnv(t, "ARGUS_WEBHOOK_TOKEN=") // loopback path
 	req := httptest.NewRequest(http.MethodPost, "/webhooks/anomstack",
 		strings.NewReader(`{"metric_name":"oom_kills","threshold":0.5}`))
 	req.Header.Set("Origin", "http://localhost")
@@ -252,7 +252,7 @@ func TestHandleWebhook_DefaultsTitleFromMetricName(t *testing.T) {
 
 func TestHandleWebhook_TrimsTo100AlertsRingBuffer(t *testing.T) {
 	a := minimalServerApp(t)
-	withEnv(t, "argus_WEBHOOK_TOKEN=")
+	withEnv(t, "ARGUS_WEBHOOK_TOKEN=")
 	for i := 0; i < 105; i++ {
 		req := httptest.NewRequest(http.MethodPost, "/webhooks/anomstack",
 			strings.NewReader(`{"metric_name":"cpu","threshold":0.1}`))

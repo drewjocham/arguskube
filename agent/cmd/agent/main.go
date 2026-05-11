@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"k8s.io/client-go/rest"
+
 	"github.com/argues/argus/agent/internal/config"
 	"github.com/argues/argus/agent/internal/k8s"
 	"github.com/argues/argus/agent/internal/server"
@@ -43,7 +45,11 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 		logger.Warn("SAAS_TOKEN not set. Running in local-only mode.")
 	} else {
 		logger.Info("SaaS Token detected. Will sync metadata to cloud.")
-		tunnelClient = tunnel.NewClient(cfg.SaaSServerURL, cfg.SaaSToken, "default", logger.With("component", "tunnel"))
+		restConfig, restErr := rest.InClusterConfig()
+		if restErr != nil {
+			logger.Warn("not running in cluster, tunnel CD applier will not be available", "error", restErr)
+		}
+		tunnelClient = tunnel.NewClient(cfg.SaaSServerURL, cfg.SaaSToken, "default", logger.With("component", "tunnel"), restConfig)
 	}
 
 	k8sClient, err := k8s.NewClient(ctx, logger.With("component", "k8s"))

@@ -197,7 +197,7 @@ func (a *App) GetTier() config.Tier {
 //     treats it as a separate application. Launched via `open -n` which
 //     forces a fresh instance and respects the bundle's app-ness.
 //  2. Dev (`wails dev` / `make run`): no second .app bundle exists, so
-//     fall back to spawning this same binary with argus_MODE=terminal.
+//     fall back to spawning this same binary with ARGUS_MODE=terminal.
 //     The user gets a normal multi-window experience but it's still the
 //     same Dock entry. Acceptable for development.
 func (a *App) LaunchPopOutTerminal() error {
@@ -217,7 +217,7 @@ func (a *App) LaunchPopOutTerminal() error {
 		return fmt.Errorf("locate self: %w", err)
 	}
 	cmd := exec.Command(self)
-	cmd.Env = append(os.Environ(), "argus_MODE=terminal")
+	cmd.Env = append(os.Environ(), "ARGUS_MODE=terminal")
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil

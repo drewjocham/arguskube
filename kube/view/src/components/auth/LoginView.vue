@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { useAuthStore } from '../../stores/auth'
 import OAuthLoginButton from './OAuthLoginButton.vue'
+import RevealableInput from '../common/RevealableInput.vue'
 
 const auth = useAuthStore()
 
@@ -104,23 +105,23 @@ function onOAuthError(msg) {
           </label>
           <label>
             <span>Password</span>
-            <input
-              type="password"
+            <RevealableInput
               v-model="password"
               :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
-              required
-              minlength="12"
+              :required="true"
+              :minlength="12"
               :placeholder="mode === 'signup' ? 'At least 12 characters' : ''"
+              aria-label="Password"
             />
           </label>
           <label v-if="mode === 'signup'">
             <span>Confirm password</span>
-            <input
-              type="password"
+            <RevealableInput
               v-model="passwordConfirm"
               autocomplete="new-password"
-              required
-              minlength="12"
+              :required="true"
+              :minlength="12"
+              aria-label="Confirm password"
             />
             <small v-if="passwordConfirm && password !== passwordConfirm" class="warn">
               Passwords don't match

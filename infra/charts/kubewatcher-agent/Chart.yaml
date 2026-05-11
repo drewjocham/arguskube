@@ -1,0 +1,15 @@
+apiVersion: v2
+name: kubewatcher-agent
+description: KubeWatcher in-cluster agent (DaemonSet) — informers, metrics streaming, WebSocket tunnel
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+keywords:
+  - kubernetes
+  - sre
+  - agent
+  - monitoring
+home: https://github.com/drewjocham/kube-watcher
+maintainers:
+  - name: Argus Infrastructure
+    email: dev@argusinfra.com

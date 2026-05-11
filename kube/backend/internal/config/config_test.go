@@ -124,16 +124,16 @@ func TestEnvOverrides(t *testing.T) {
 	clearEnv(t)
 	defer clearEnv(t)
 
-	os.Setenv("argus_PORT", "3000")
-	os.Setenv("argus_LOG_LEVEL", "debug")
-	os.Setenv("argus_LOG_FORMAT", "json")
-	os.Setenv("argus_TIER", "free")
+	os.Setenv("ARGUS_PORT", "3000")
+	os.Setenv("ARGUS_LOG_LEVEL", "debug")
+	os.Setenv("ARGUS_LOG_FORMAT", "json")
+	os.Setenv("ARGUS_TIER", "free")
 	os.Setenv("DEEPSEEK_API_KEY", "sk-test-key")
-	os.Setenv("argus_CONTEXT", "my-cluster")
-	os.Setenv("argus_IN_CLUSTER", "true")
-	os.Setenv("argus_S3_BUCKET", "my-bucket")
+	os.Setenv("ARGUS_CONTEXT", "my-cluster")
+	os.Setenv("ARGUS_IN_CLUSTER", "true")
+	os.Setenv("ARGUS_S3_BUCKET", "my-bucket")
 	os.Setenv("ARGOCD_INSECURE", "true")
-	os.Setenv("argus_TRIVY_BIN", "/usr/local/bin/trivy")
+	os.Setenv("ARGUS_TRIVY_BIN", "/usr/local/bin/trivy")
 
 	cfg, err := New()
 	if err != nil {
@@ -182,8 +182,8 @@ func TestConfigValidation(t *testing.T) {
 		clearEnv(t)
 		defer clearEnv(t)
 
-		os.Setenv("argus_KUBECONFIG", "/tmp/kubeconfig")
-		os.Setenv("argus_IN_CLUSTER", "true")
+		os.Setenv("ARGUS_KUBECONFIG", "/tmp/kubeconfig")
+		os.Setenv("ARGUS_IN_CLUSTER", "true")
 
 		_, err := New()
 		if err == nil {
@@ -195,7 +195,7 @@ func TestConfigValidation(t *testing.T) {
 		clearEnv(t)
 		defer clearEnv(t)
 
-		os.Setenv("argus_KUBECONFIG", "/tmp/kubeconfig")
+		os.Setenv("ARGUS_KUBECONFIG", "/tmp/kubeconfig")
 
 		cfg, err := New()
 		if err != nil {
@@ -210,7 +210,7 @@ func TestConfigValidation(t *testing.T) {
 		clearEnv(t)
 		defer clearEnv(t)
 
-		os.Setenv("argus_IN_CLUSTER", "true")
+		os.Setenv("ARGUS_IN_CLUSTER", "true")
 
 		cfg, err := New()
 		if err != nil {
@@ -249,7 +249,7 @@ func TestParseTier(t *testing.T) {
 }
 
 func TestEnvFunction(t *testing.T) {
-	key := "argus_TEST_ENV_VAR"
+	key := "ARGUS_TEST_ENV_VAR"
 	// Should return fallback when env var is not set.
 	os.Unsetenv(key)
 	if got := env(key, "fallback"); got != "fallback" {
@@ -268,19 +268,19 @@ func TestEnvFunction(t *testing.T) {
 func clearEnv(t testing.TB) {
 	t.Helper()
 	vars := []string{
-		"argus_CONTEXT", "argus_KUBECONFIG", "KUBECONFIG",
-		"argus_NAMESPACE", "argus_IN_CLUSTER",
+		"ARGUS_CONTEXT", "ARGUS_KUBECONFIG", "KUBECONFIG",
+		"ARGUS_NAMESPACE", "ARGUS_IN_CLUSTER",
 		"DEEPSEEK_API_KEY", "ANOMSTACK_URL", "ANOMSTACK_API_KEY",
 		"VERTEX_PROJECT", "VERTEX_LOCATION", "PROMETHEUS_URL",
-		"argus_POPEYE_BIN",
+		"ARGUS_POPEYE_BIN",
 		"ARGOCD_URL", "ARGOCD_TOKEN", "ARGOCD_INSECURE",
-		"SNYK_TOKEN", "argus_TRIVY_BIN", "argus_FALCO_URL",
-		"argus_TIER", "argus_LICENSE",
-		"argus_PORT", "argus_METRICS_PORT",
-		"argus_LOG_LEVEL", "argus_LOG_FORMAT",
-		"argus_DECISION_LOG",
-		"argus_S3_BUCKET", "argus_S3_REGION",
-		"argus_S3_ENDPOINT", "argus_S3_ACCESS_KEY", "argus_S3_SECRET_KEY",
+		"SNYK_TOKEN", "ARGUS_TRIVY_BIN", "ARGUS_FALCO_URL",
+		"ARGUS_TIER", "ARGUS_LICENSE",
+		"ARGUS_PORT", "ARGUS_METRICS_PORT",
+		"ARGUS_LOG_LEVEL", "ARGUS_LOG_FORMAT",
+		"ARGUS_DECISION_LOG",
+		"ARGUS_S3_BUCKET", "ARGUS_S3_REGION",
+		"ARGUS_S3_ENDPOINT", "ARGUS_S3_ACCESS_KEY", "ARGUS_S3_SECRET_KEY",
 	}
 	for _, v := range vars {
 		os.Unsetenv(v)

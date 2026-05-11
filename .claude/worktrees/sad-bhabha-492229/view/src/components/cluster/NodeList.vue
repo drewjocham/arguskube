@@ -1,0 +1,508 @@
+<script setup>
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useResources, useNodeLogs, callGo } from '../../composables/useWails'
+
+const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
+const { logs: rawNodeLogs, loading: logsLoading, error: logsError, fetchNodeLogs, clear: clearLogs } = useNodeLogs()
+
+const nodes = ref([])
+const nodeDetail = ref(null)
+const expandedNode = ref(null)
+const logSearch = ref('')
+const isStreamingLogs = ref(false)
+let logPollTimer = null
+
+async function fetchNodes() {
+  await listResources('nodes', '')
+  if (result.value && result.value.items && result.value.items.length > 0) {
+    nodes.value = result.value.items.map(mapNode)
+  } else {
+    nodes.value = []
+  }
+}
+
+onMounted(fetchNodes)
+
+onUnmounted(() => {
+  stopLogPolling()
+})
+
+function mapNode(item) {
+  return {
+    name: item.name,
+    status: item.status,
+    roles: item.fields?.roles || '—',
+    version: item.fields?.version || '—',
+    os: item.fields?.os_image || '—',
+    cpuCapacity: item.fields?.cpu_capacity || '—',
+    memCapacity: item.fields?.mem_capacity || '—',
+    internalIp: item.fields?.internal_ip || '—',
+    age: item.age || '—',
+    statusColor: item.statusColor
+  }
+}
+
+async function toggleExpand(nodeName) {
+  if (expandedNode.value === nodeName) {
+    expandedNode.value = null
+    nodeDetail.value = null
+    stopLogPolling()
+    clearLogs()
+    nodeMetrics.value = null
+  } else {
+    expandedNode.value = nodeName
+    // Fetch detail, logs, and live metrics in parallel.
+    const detailPromise = getResourceDetail('nodes', '', nodeName)
+    const logsPromise = fetchNodeLogs(nodeName, 200)
+    const metricsPromise = callGo('QueryTimeSeriesMetrics', `node:${nodeName}`, '1h')
+    await Promise.allSettled([detailPromise, logsPromise, metricsPromise])
+    if (detail.value) {
+      nodeDetail.value = detail.value
+    }
+    // Populate real metric sparklines from the response.
+    try {
+      const raw = await metricsPromise
+      if (raw && raw.datapoints) {
+        nodeMetrics.value = raw.datapoints
+      }
+    } catch (_) {
+      // Metrics-server may not be available — leave sparklines empty.
+    }
+  }
+}
+
+// Mapped + filtered log entries.
+const nodeLogs = computed(() => {
+  const entries = rawNodeLogs.value || []
+  return entries.map(e => ({
+    time: e.time || '',
+    level: e.level || 'INFO',
+    service: e.service || '',
+    msg: e.message || ''
+  }))
+})
+
+const filteredLogs = computed(() => {
+  if (!logSearch.value) return nodeLogs.value
+  const q = logSearch.value.toLowerCase()
+  return nodeLogs.value.filter(l =>
+    l.msg.toLowerCase().includes(q) ||
+    l.service.toLowerCase().includes(q)
+  )
+})
+
+// Polling for live log updates.
+function toggleStreaming() {
+  isStreamingLogs.value = !isStreamingLogs.value
+  if (isStreamingLogs.value && expandedNode.value) {
+    startLogPolling(expandedNode.value)
+  } else {
+    stopLogPolling()
+  }
+}
+
+function startLogPolling(nodeName) {
+  stopLogPolling()
+  logPollTimer = setInterval(() => {
+    fetchNodeLogs(nodeName, 200)
+  }, 5000)
+}
+
+function stopLogPolling() {
+  if (logPollTimer) {
+    clearInterval(logPollTimer)
+    logPollTimer = null
+  }
+  isStreamingLogs.value = false
+}
+
+// Real metric data — populated from QueryTimeSeriesMetrics when a node is expanded.
+const nodeMetrics = ref(null)
+
+function buildSparkPath(metricValues, height = 100) {
+  if (!metricValues || metricValues.length < 2) {
+    // Single-datapoint or empty — flat line at 50%.
+    return 'M0 50 L100 50'
+  }
+  const count = metricValues.length
+  const maxVal = Math.max(...metricValues, 10)
+  let path = ''
+  for (let i = 0; i < count; i++) {
+    const x = (i / (count - 1)) * 100
+    const y = (metricValues[i] / maxVal) * height
+    path += `${i === 0 ? 'M' : 'L'} ${x} ${Math.max(height - y, 1)} `
+  }
+  return path
+}
+
+function sparkLine(name) {
+  if (!nodeMetrics.value) return 'M0 50 L100 50'
+  const values = Array.isArray(nodeMetrics.value[name]) ? nodeMetrics.value[name] : null
+  if (!values || values.length < 2) return 'M0 50 L100 50'
+  return buildSparkPath(values)
+}
+</script>
+
+<template>
+  <div class="nodes-view">
+    <div class="header">
+      <div class="header-text">
+        <div class="title">Cluster Nodes</div>
+        <div class="subtitle">Physical and virtual machines hosting your workloads</div>
+      </div>
+      <button class="refresh-btn" @click="fetchNodes" :disabled="loading">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+        Refresh
+      </button>
+    </div>
+
+    <div class="nodes-grid" :class="{ 'has-expanded': expandedNode !== null }">
+      <div v-for="n in nodes" :key="n.name" 
+           class="node-card" 
+           :class="{
+             'not-ready': n.status !== 'Ready',
+             'is-expanded': expandedNode === n.name,
+             'is-hidden': expandedNode !== null && expandedNode !== n.name
+           }"
+           @click="expandedNode === null && toggleExpand(n.name)">
+        
+        <div class="node-header">
+          <div style="display:flex; align-items:center; gap:8px; cursor:pointer;" @click.stop="toggleExpand(n.name)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #0e639c;">
+              <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+              <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+              <line x1="6" y1="6" x2="6.01" y2="6"></line>
+              <line x1="6" y1="18" x2="6.01" y2="18"></line>
+            </svg>
+            <span class="node-name">{{ n.name }}</span>
+            <span v-if="expandedNode === n.name" class="collapse-icon">Collapse</span>
+          </div>
+          <div class="node-status" :class="n.status.toLowerCase()">{{ n.status }}</div>
+        </div>
+
+        <div class="node-meta">
+          <div class="meta-item"><span class="meta-label">Roles:</span> {{ n.roles }}</div>
+          <div class="meta-item"><span class="meta-label">Version:</span> {{ n.version }}</div>
+          <div class="meta-item"><span class="meta-label">OS:</span> {{ n.os }}</div>
+          <div class="meta-item"><span class="meta-label">Age:</span> {{ n.age }}</div>
+        </div>
+
+        <div class="node-resources" v-if="n.status === 'Ready'">
+          <div class="resource-bar-container">
+            <div class="res-label">CPU Capacity <span>{{ n.cpuCapacity }}</span></div>
+          </div>
+          <div class="resource-bar-container">
+            <div class="res-label">Memory Capacity <span>{{ n.memCapacity }}</span></div>
+          </div>
+          <div class="resource-bar-container">
+            <div class="res-label">Internal IP <span>{{ n.internalIp }}</span></div>
+          </div>
+        </div>
+
+        <!-- Expanded Detailed View -->
+        <div class="node-expanded-content" v-if="expandedNode === n.name">
+          <div class="expanded-grid">
+            
+            <!-- Info Panel -->
+            <div class="panel-section">
+              <h4 class="section-title">System Information</h4>
+              <div v-if="nodeDetail" class="info-list">
+                <div class="info-row" v-for="prop in nodeDetail.properties" :key="prop.key">
+                  <span class="label">{{ prop.key }}:</span>
+                  <span class="val">{{ prop.value }}</span>
+                </div>
+              </div>
+              <div v-else-if="detailLoading" class="info-list">
+                <div class="info-row"><span class="label">Loading details...</span></div>
+              </div>
+              <div v-else class="info-list">
+                <div class="info-row"><span class="label">Internal IP:</span> <span class="val">{{ n.internalIp }}</span></div>
+                <div class="info-row"><span class="label">Version:</span> <span class="val">{{ n.version }}</span></div>
+                <div class="info-row"><span class="label">OS:</span> <span class="val">{{ n.os }}</span></div>
+              </div>
+            </div>
+
+            <!-- Advanced Metrics -->
+            <div class="panel-section">
+              <h4 class="section-title">Historical Metrics (1h)</h4>
+              <div class="metrics-sparklines">
+                <div class="spark-box">
+                  <div class="spark-lbl">CPU Load</div>
+                  <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path :d="sparkLine('cpu')" fill="none" stroke="#f5a623" stroke-width="3" /></svg>
+                  <div v-if="!nodeMetrics" class="spark-hint">unavailable</div>
+                </div>
+                <div class="spark-box">
+                  <div class="spark-lbl">Memory</div>
+                  <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path :d="sparkLine('memory')" fill="none" stroke="#a78bfa" stroke-width="3" /></svg>
+                  <div v-if="!nodeMetrics" class="spark-hint">unavailable</div>
+                </div>
+                <div class="spark-box">
+                  <div class="spark-lbl">Disk I/O</div>
+                  <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path :d="sparkLine('disk')" fill="none" stroke="#3ecf8e" stroke-width="3" /></svg>
+                  <div v-if="!nodeMetrics" class="spark-hint">unavailable</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Log Streaming Area -->
+          <div class="node-logs-section">
+            <div class="logs-header">
+              <h4 class="section-title">System Service Logs (kubelet, containerd, kube-proxy)</h4>
+              <div class="logs-controls">
+                <input type="text" placeholder="Filter logs..." v-model="logSearch" class="log-search" />
+                <button class="log-btn" @click.stop="fetchNodeLogs(expandedNode, 200)" :disabled="logsLoading">
+                  {{ logsLoading ? 'Loading…' : 'Refresh' }}
+                </button>
+                <button class="log-btn" :class="{active: isStreamingLogs}" @click.stop="toggleStreaming">
+                  <span class="pulse-dot" v-if="isStreamingLogs"></span>
+                  {{ isStreamingLogs ? 'Streaming' : 'Stream' }}
+                </button>
+              </div>
+            </div>
+            <div v-if="logsError" class="logs-error">{{ logsError }}</div>
+            <div v-if="logsLoading && filteredLogs.length === 0" class="logs-loading">Loading node logs…</div>
+            <div class="logs-viewer">
+              <div v-for="(line, i) in filteredLogs" :key="i" class="log-line">
+                <span class="time">{{ line.time }}</span>
+                <span class="lvl" :class="line.level.toLowerCase()">{{ line.level }}</span>
+                <span class="svc">{{ line.service }}</span>
+                <span class="msg">{{ line.msg }}</span>
+              </div>
+              <div v-if="!logsLoading && filteredLogs.length === 0 && !logsError" class="logs-empty">
+                No logs available. The node may not support kubelet proxy log access.
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.nodes-view {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+  height: 100%;
+}
+.header { display: flex; justify-content: space-between; align-items: flex-start; }
+.header-text .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
+.header-text .subtitle { font-size: 13px; color: #8b8f96; }
+.refresh-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: transparent; border: 1px solid rgba(255,255,255,0.1); color: #8b8f96;
+  padding: 5px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; transition: all 0.2s;
+}
+.refresh-btn:hover { color: #fff; border-color: rgba(255,255,255,0.2); }
+.refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.nodes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.node-card {
+  background: #1e2023;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.node-card:not(.is-expanded):not(.is-hidden):hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  cursor: pointer;
+}
+
+.node-card.not-ready { opacity: 0.7; border-color: rgba(240, 84, 84, 0.3); }
+
+/* Expansion State */
+.nodes-grid.has-expanded {
+  display: flex;
+  flex-direction: column;
+}
+.node-card.is-hidden {
+  display: none;
+}
+.node-card.is-expanded {
+  flex: 1;
+  border-color: #0e639c;
+  background: #141517;
+  cursor: default;
+}
+.collapse-icon {
+  font-size: 11px;
+  color: #a5d6ff;
+  background: rgba(165, 214, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+}
+
+.node-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.node-name { font-size: 14px; font-weight: 600; color: #e8eaec; font-family: var(--mono); }
+
+.node-status { font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+.node-status.ready { background: rgba(62, 207, 142, 0.15); color: #3ecf8e; }
+.node-status.notready { background: rgba(240, 84, 84, 0.15); color: #f05454; }
+
+.node-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 12px;
+  color: #b0b4ba;
+}
+.meta-label { color: #6b7078; }
+
+.node-resources {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #141517;
+  padding: 12px;
+  border-radius: 6px;
+}
+.resource-bar-container { display: flex; flex-direction: column; gap: 4px; }
+.res-label { display: flex; justify-content: space-between; font-size: 11px; font-weight: 500; color: #8b8f96; }
+.res-label span { font-family: var(--mono); }
+.res-track { width: 100%; height: 6px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; }
+.res-fill { height: 100%; transition: width 0.3s ease; }
+
+/* Expanded Content */
+.node-expanded-content {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed rgba(255,255,255,0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.expanded-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.panel-section {
+  background: #1e2023;
+  border-radius: 6px;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e8eaec;
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.info-list { display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
+.info-row { display: flex; justify-content: space-between; align-items: flex-start; }
+.info-row .label { color: #8b8f96; }
+.info-row .val { color: #e8eaec; font-family: var(--mono); text-align: right; }
+.val.taints { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.badge { background: rgba(245, 166, 35, 0.15); color: #f5a623; padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap; }
+
+.metrics-sparklines {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+.spark-box {
+  background: #141517;
+  border-radius: 4px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 80px;
+}
+.spark-lbl { font-size: 11px; color: #8b8f96; text-align: center; }
+.spark-hint { font-size: 9px; color: #6b7078; text-align: center; font-style: italic; margin-top: -6px; }
+.spark-box svg { width: 100%; height: 100%; }
+
+/* Logs View */
+.node-logs-section {
+  display: flex;
+  flex-direction: column;
+  background: #0d0d0d;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.05);
+  overflow: hidden;
+}
+.logs-header {
+  padding: 12px 16px;
+  background: #1a1a1a;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.logs-header .section-title { margin: 0; }
+.logs-controls { display: flex; gap: 12px; align-items: center; }
+.log-search {
+  background: #2a2a2a;
+  border: 1px solid #333;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  outline: none;
+}
+.log-search:focus { border-color: #0e639c; }
+
+.log-btn {
+  background: #2a2a2a;
+  border: 1px solid #333;
+  color: #b0b4ba;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+}
+.log-btn.active { color: #3ecf8e; border-color: rgba(62, 207, 142, 0.3); background: rgba(62, 207, 142, 0.1); }
+.log-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: #3ecf8e; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0% { opacity: 1;} 50% {opacity: 0.3;} 100% {opacity: 1;} }
+
+.logs-error { padding: 8px 16px; font-size: 12px; color: #f05454; background: rgba(240, 84, 84, 0.08); border-bottom: 1px solid rgba(240, 84, 84, 0.15); }
+.logs-loading { padding: 12px 16px; font-size: 12px; color: #8b8f96; }
+.logs-empty { padding: 12px 0; font-size: 12px; color: #6b7078; text-align: center; }
+
+.logs-viewer {
+  padding: 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #d4d4d4;
+  height: 250px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.log-line { display: flex; gap: 12px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.02); }
+.log-line:hover { background: rgba(255,255,255,0.03); }
+.time { color: #8b8f96; flex-shrink: 0; }
+.lvl { flex-shrink: 0; width: 40px; font-weight: 600; }
+.lvl.info { color: #3ecf8e; }
+.lvl.warn { color: #f5a623; }
+.lvl.error { color: #f05454; }
+.svc { color: #a78bfa; flex-shrink: 0; min-width: 80px; font-weight: 500; }
+.msg { color: #d4d4d4; word-break: break-all; }
+</style>

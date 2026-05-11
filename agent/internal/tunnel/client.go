@@ -10,30 +10,56 @@ import (
 	"net/url"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
+
 	"github.com/argues/argus/agent/internal/cd"
 	"github.com/gorilla/websocket"
 )
 
 // Client represents the outbound WebSocket connection to the SaaS backend.
 type Client struct {
-	serverURL string
-	agentID   string
-	namespace string
-	logger    *slog.Logger
-	conn      *websocket.Conn
-	send      chan []byte
-	tlsCfg    *tls.Config // nil = no mTLS (insecure, dev only)
+	serverURL     string
+	agentID       string
+	namespace     string
+	logger        *slog.Logger
+	conn          *websocket.Conn
+	send          chan []byte
+	tlsCfg        *tls.Config // nil = no mTLS (insecure, dev only)
+	dynamicClient dynamic.Interface
+	restMapper    meta.RESTMapper
 }
 
 // NewClient creates a new Tunnel client.
-func NewClient(serverURL, agentID, namespace string, logger *slog.Logger) *Client {
-	return &Client{
+func NewClient(serverURL, agentID, namespace string, logger *slog.Logger, restConfig *rest.Config) *Client {
+	c := &Client{
 		serverURL: serverURL,
 		agentID:   agentID,
 		namespace: namespace,
 		logger:    logger,
 		send:      make(chan []byte, 256),
 	}
+	if restConfig != nil {
+		c.dynamicClient = dynamic.NewForConfigOrDie(restConfig)
+		c.restMapper = restMapperFromConfig(restConfig)
+	}
+	return c
+}
+
+// restMapperFromConfig builds a RESTMapper from a rest config.
+func restMapperFromConfig(cfg *rest.Config) meta.RESTMapper {
+	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		return meta.NewDefaultRESTMapper(nil)
+	}
+	apiGroupResources, err := restmapper.GetAPIGroupResources(dc)
+	if err != nil {
+		return meta.NewDefaultRESTMapper(nil)
+	}
+	return restmapper.NewDiscoveryRESTMapper(apiGroupResources)
 }
 
 // WithTLS configures mTLS for the tunnel connection. The tls.Config should be
@@ -112,8 +138,12 @@ func (c *Client) connectAndRun(ctx context.Context, u string) error {
 	// Create error channels for read/write loops
 	errChan := make(chan error, 2)
 	
-	// Create CD applier
-	applier := cd.NewApplier(c.logger.With("component", "cd"))
+	// Create CD applier with the dynamic client and rest mapper
+	applier := cd.NewApplier(cd.ApplierOptions{
+		Logger:        c.logger.With("component", "cd"),
+		DynamicClient: c.dynamicClient,
+		RESTMapper:    c.restMapper,
+	})
 
 	go func() {
 		defer c.logger.Debug("Read loop exited")
@@ -139,7 +169,7 @@ func (c *Client) connectAndRun(ctx context.Context, u string) error {
 					}
 					if err := json.Unmarshal(msg.Payload, &payload); err == nil {
 						// Run apply in a goroutine to not block the read loop
-						go applier.ApplyManifest(ctx, []byte(payload.YAML))
+						go func() { _ = applier.ApplyManifest(ctx, []byte(payload.YAML)) }()
 					}
 				}
 			}
@@ -154,7 +184,7 @@ func (c *Client) connectAndRun(ctx context.Context, u string) error {
 		for {
 			select {
 			case <-ctx.Done():
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			case msg := <-c.send:
 				if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {

@@ -105,10 +105,7 @@ func Parse(input string) Ref {
 		return Ref{Kind: KindInline, Value: raw[colon+1:], Raw: raw}
 	}
 	body := raw[colon+1:]
-	// Allow a single leading space so users can write "vault: gh-pat".
-	if strings.HasPrefix(body, " ") {
-		body = body[1:]
-	}
+	body = strings.TrimPrefix(body, " ")
 	value := body
 	key := ""
 	if hash := strings.LastIndex(body, "#"); hash >= 0 {

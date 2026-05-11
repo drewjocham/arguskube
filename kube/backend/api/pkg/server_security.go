@@ -12,11 +12,11 @@ import (
 //
 // Defaults are deny-by-default for non-localhost callers:
 //
-//   - Bind:        127.0.0.1 only (override with argus_API_BIND)
+//   - Bind:        127.0.0.1 only (override with ARGUS_API_BIND)
 //   - CORS:        no Access-Control-Allow-Origin echoed unless the request's
-//                  Origin is in argus_API_ALLOWED_ORIGINS (comma list)
+//                  Origin is in ARGUS_API_ALLOWED_ORIGINS (comma list)
 //                  OR is a localhost/127.0.0.1 origin.
-//   - Auth:        when argus_API_TOKEN is set, every non-OPTIONS,
+//   - Auth:        when ARGUS_API_TOKEN is set, every non-OPTIONS,
 //                  non-localhost request must carry a matching
 //                  "Authorization: Bearer <token>" header. Localhost calls
 //                  bypass to keep the embedded Wails frontend working.
@@ -29,7 +29,7 @@ import (
 // envBindAddr returns the address the SaaS HTTP server should listen on.
 // Default is loopback so a misconfigured firewall can't expose the API.
 func envBindAddr(port int) string {
-	host := strings.TrimSpace(os.Getenv("argus_API_BIND"))
+	host := strings.TrimSpace(os.Getenv("ARGUS_API_BIND"))
 	if host == "" {
 		host = "127.0.0.1"
 	}
@@ -69,7 +69,7 @@ func itoa(n int) string {
 // allowedOrigins returns the parsed comma-separated env list. An empty
 // slice means "no cross-origin browsers allowed except localhost."
 func allowedOrigins() []string {
-	raw := strings.TrimSpace(os.Getenv("argus_API_ALLOWED_ORIGINS"))
+	raw := strings.TrimSpace(os.Getenv("ARGUS_API_ALLOWED_ORIGINS"))
 	if raw == "" {
 		return nil
 	}
@@ -188,7 +188,7 @@ func applyCORS(w http.ResponseWriter, r *http.Request, allowed []string) bool {
 // flow. Loopback alone is no longer sufficient: the user must be
 // signed in (or carry a service token) to reach the API.
 //
-// When argus_AUTH_DISABLED is on AND the API listens on
+// When ARGUS_AUTH_DISABLED is on AND the API listens on
 // loopback (enforced in SetupAuth), this returns true unconditionally.
 // That's the local-dev escape hatch.
 func (a *App) authorizeAPIRequest(r *http.Request) bool {
@@ -204,7 +204,7 @@ func (a *App) authorizeAPIRequest(r *http.Request) bool {
 }
 
 // authenticateService is the legacy CI / external-tooling path: a static
-// token in argus_API_TOKEN. Kept so service accounts and CI jobs
+// token in ARGUS_API_TOKEN. Kept so service accounts and CI jobs
 // can call read-only endpoints without going through the user-account
 // flow. Returns true if a service token matches.
 //
@@ -213,7 +213,7 @@ func (a *App) authorizeAPIRequest(r *http.Request) bool {
 // all use. The legacy bypass for "loopback without any token" is GONE:
 // users must log in even on the desktop, by design.
 func authenticateService(r *http.Request) bool {
-	token := strings.TrimSpace(os.Getenv("argus_API_TOKEN"))
+	token := strings.TrimSpace(os.Getenv("ARGUS_API_TOKEN"))
 	if token == "" {
 		return false
 	}

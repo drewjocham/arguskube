@@ -9,6 +9,7 @@ import {
   SECRET_REF_KINDS,
   SECRET_REF_META,
 } from '../../lib/secretRef'
+import RevealableInput from './RevealableInput.vue'
 
 // SecretRefInput — a single text input that doubles as a "where does this
 // value come from?" picker. The user can either type a value directly
@@ -91,13 +92,14 @@ const wantsKey = computed(() => {
   return ['aws-secret', 'gcp-secret', 'vault', 'azure-vault'].includes(parsed.value.kind)
 })
 
-const inputType = computed(() => {
-  // Only mask when the value is being typed inline AND the parent asked.
-  // For source labels, masking the path "vault:gh-pat" is silly — those
-  // strings aren't secret in themselves.
-  if (props.passwordLike && parsed.value.kind === 'inline') return 'password'
-  return 'text'
-})
+// We mask only when the value is being typed inline AND the parent
+// asked. Source labels like "vault:gh-pat" aren't secret in themselves
+// so masking the *reference* would be silly — the eye toggle is also
+// hidden in that case.
+const shouldMask = computed(() =>
+  props.passwordLike && parsed.value.kind === 'inline'
+)
+const inputType = computed(() => (shouldMask.value ? 'password' : 'text'))
 
 const sourceMeta = computed(() => SECRET_REF_META[parsed.value.kind] || SECRET_REF_META.inline)
 const sourceDescription = computed(() => describeSecretRef(parsed.value))
@@ -126,7 +128,24 @@ defineExpose({ parsed, valid, sourceDescription })
         </option>
       </select>
 
+      <!-- Inline + passwordLike → mask the value AND show an eye toggle
+           so the user can confirm they typed the right token. For
+           non-inline kinds (env / file / aws-secret / vault) the field
+           holds a reference label, not the secret itself, so we render
+           a plain text input without the eye. -->
+      <RevealableInput
+        v-if="shouldMask"
+        class="srf-value-wrap"
+        input-class="srf-value mono"
+        :model-value="parsed.value"
+        :placeholder="placeholder || 'value'"
+        :disabled="disabled"
+        :aria-label="label || 'Secret value'"
+        :data-kind="parsed.kind"
+        @update:model-value="setValue"
+      />
       <input
+        v-else
         class="srf-value mono"
         :type="inputType"
         :value="parsed.value"
@@ -214,6 +233,19 @@ defineExpose({ parsed, valid, sourceDescription })
 .srf-kind[data-kind="azure-vault"] { color: #00a4ef; }
 .srf-kind[data-kind="vault"]       { color: var(--purple); }
 
+/* Wrapper used when the value is masked + revealable. The flex-grow
+   has to live on the wrapper rather than the inner input because the
+   wrapper is what sits inside .srf-row. The inner input picks up
+   its visual styling via inputClass="srf-value mono". */
+.srf-value-wrap {
+  flex: 1; min-width: 0;
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  transition: border-color 0.12s;
+}
+.srf-value-wrap:focus-within { border-color: var(--accent); }
+
 .srf-value {
   flex: 1; min-width: 0;
   background: var(--bg3);
@@ -228,6 +260,15 @@ defineExpose({ parsed, valid, sourceDescription })
 }
 .srf-value:focus { border-color: var(--accent); }
 .srf-value:disabled { opacity: 0.5; }
+
+/* When the value lives inside a wrapper, strip its border so the
+   wrapper's border owns the visual boundary instead of double-bordering. */
+.srf-value-wrap .srf-value {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  width: 100%;
+}
 
 .srf-key {
   width: 140px;

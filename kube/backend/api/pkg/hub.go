@@ -17,7 +17,7 @@ import (
 // previous implementation accepted any origin, which would have let any
 // website JS open a tunnel to a misconfigured server. We now defer to the
 // same allowlist used by the REST API: localhost / loopback always, plus
-// anything in argus_API_ALLOWED_ORIGINS.
+// anything in ARGUS_API_ALLOWED_ORIGINS.
 //
 // Agents that connect machine-to-machine over mTLS don't carry an Origin
 // header (it's a browser concept) and pass through cleanly.

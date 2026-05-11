@@ -394,7 +394,9 @@ func TestRandomToken_UniqueAndLongEnough(t *testing.T) {
 }
 
 func TestPKCEChallenge_DeterministicFromVerifier(t *testing.T) {
-	if pkceChallenge("abc") != pkceChallenge("abc") {
+	a := pkceChallenge("abc")
+	b := pkceChallenge("abc")
+	if a != b {
 		t.Error("PKCE challenge not deterministic")
 	}
 	if pkceChallenge("a") == pkceChallenge("b") {

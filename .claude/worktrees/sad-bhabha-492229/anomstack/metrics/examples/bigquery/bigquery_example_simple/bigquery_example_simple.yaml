@@ -1,0 +1,85 @@
+# a basic minimal example of a batch
+db: "bigquery"
+table_key: "andrewm4894.metrics.metrics"
+disable_batch: False
+metric_batch: "bigquery_example_simple"
+model_path: "gs://andrewm4894-tmp/models"
+ingest_cron_schedule: "*/10 * * * *" # ingest every 10 minutes
+train_cron_schedule: "15 */1 * * *" # train every 1 hour
+score_cron_schedule: "*/15 * * * *" # score every 15 minutes
+alert_cron_schedule: "*/20 * * * *" # alert every 20 minutes
+change_cron_schedule: "*/20 * * * *" # change detection every 20 minutes
+llmalert_cron_schedule: "*/20 * * * *" # alert every 20 minutes
+disable_llmalert: True
+disable_dashboard: True
+plot_cron_schedule: "*/25 * * * *" # plot every 25 minutes
+alert_always: False
+alert_methods: "email"
+# metric_tags is a map of metric key value tags to metric names
+metric_tags:
+  random_1:
+    priority: p1
+  random_2:
+    priority: p2
+  random_3:
+    priority: p3
+ingest_sql: >
+  select
+    *
+  from
+  (
+
+  -- random_1
+
+  select
+    current_timestamp() as metric_timestamp,
+    'random_1' as metric_name,
+    case
+      when rand() < 0.01 then
+        case floor(rand() * 5)
+          when 0 then rand() * 10 -- Sudden spike
+          when 1 then rand() * -10 -- Negative spike
+          when 2 then sin(rand() * 10) -- Sinusoidal anomaly
+          when 3 then log(rand() * 10) -- Logarithmic anomaly
+          when 4 then exp(rand() * 1) -- Exponential anomaly
+        end
+      else rand() -- Normal value
+    end as metric_value
+  union all
+
+  -- random_2
+
+  select
+    current_timestamp() as metric_timestamp,
+    'random_2' as metric_name,
+    case
+      when rand() < 0.01 then
+        case floor(rand() * 5)
+          when 0 then rand() * 10 -- Sudden spike
+          when 1 then rand() * -10 -- Negative spike
+          when 2 then sin(rand() * 10) -- Sinusoidal anomaly
+          when 3 then log(rand() * 10) -- Logarithmic anomaly
+          when 4 then exp(rand() * 1) -- Exponential anomaly
+        end
+      else rand() -- Normal value
+    end as metric_value
+  union all
+
+  -- random_3
+
+  select
+    current_timestamp() as metric_timestamp,
+    'random_3' as metric_name,
+    case
+      when rand() < 0.01 then
+        case floor(rand() * 5)
+          when 0 then rand() * 10 -- Sudden spike
+          when 1 then rand() * -10 -- Negative spike
+          when 2 then sin(rand() * 10) -- Sinusoidal anomaly
+          when 3 then log(rand() * 10) -- Logarithmic anomaly
+          when 4 then exp(rand() * 1) -- Exponential anomaly
+        end
+      else rand() -- Normal value
+    end as metric_value
+
+  );

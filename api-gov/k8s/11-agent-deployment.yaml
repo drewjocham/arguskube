@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent
+  namespace: api-gov
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: agent
+  template:
+    metadata:
+      labels:
+        app: agent
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: agent
+          image: ghcr.io/argus/api-gov-agent:latest
+          ports:
+            - containerPort: 8001
+              name: http
+          env:
+            - name: AGENT_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: api-gov-secrets
+                  key: agent_database_url
+            - name: AGENT_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: api-gov-secrets
+                  key: agent_redis_url
+            - name: AGENT_SILICONFLOW_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-gov-secrets
+                  key: siliconflow_api_key
+          envFrom:
+            - configMapRef:
+                name: api-gov-config
+          resources:
+            requests:
+              cpu: 2
+              memory: 2Gi
+            limits:
+              cpu: 4
+              memory: 4Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            periodSeconds: 10
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-svc
+  namespace: api-gov
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8001
+      targetPort: http
+      name: http
+  selector:
+    app: agent
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: agent-hpa
+  namespace: api-gov
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: agent
+  minReplicas: 3
+  maxReplicas: 15
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 120
+    scaleDown:
+      stabilizationWindowSeconds: 300
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75

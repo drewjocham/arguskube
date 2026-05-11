@@ -74,6 +74,40 @@ describe('SecretRefInput.vue', () => {
     expect(wEnv.find('input.srf-value').attributes('type')).toBe('text')
   })
 
+  it('shows an eye toggle alongside the value when inline + passwordLike', async () => {
+    const w = mountSRI({ modelValue: 'literal', passwordLike: true })
+    const eye = w.find('button.ri-toggle')
+    expect(eye.exists()).toBe(true)
+    expect(eye.attributes('aria-label')).toBe('Show value')
+    // Clicking the eye flips to plaintext.
+    await eye.trigger('click')
+    expect(w.find('input.srf-value').attributes('type')).toBe('text')
+  })
+
+  it('does NOT show the eye toggle for non-inline kinds even when passwordLike=true', () => {
+    // Source labels (env:HOST, aws-secret:foo) are not secrets in
+    // themselves — masking them adds nothing and the eye would be noise.
+    const w = mountSRI({ modelValue: 'aws-secret:db', passwordLike: true })
+    expect(w.find('button.ri-toggle').exists()).toBe(false)
+  })
+
+  it('still emits update:modelValue when the user types into the masked value', async () => {
+    const w = mountSRI({ modelValue: '', passwordLike: true })
+    const input = w.find('input.srf-value')
+    await input.setValue('new-pass')
+    const emitted = w.emitted('update:modelValue')
+    expect(emitted).toBeTruthy()
+    expect(emitted[emitted.length - 1][0]).toBe('new-pass')
+  })
+
+  it('removes the eye when the user switches kind from inline to a label kind', async () => {
+    const w = mountSRI({ modelValue: 'mypass', passwordLike: true })
+    expect(w.find('button.ri-toggle').exists()).toBe(true)
+    await w.find('select.srf-kind').setValue('aws-secret')
+    await nextTick()
+    expect(w.find('button.ri-toggle').exists()).toBe(false)
+  })
+
   it('reflects validity in the source description and error pill', async () => {
     const w = mountSRI({ modelValue: 'env:not valid name' })
     await nextTick()

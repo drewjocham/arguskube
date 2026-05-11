@@ -7,7 +7,7 @@
 //  2. Google — OAuth 2.0 Authorization Code flow with PKCE, against
 //     accounts.google.com discovery doc. Loopback callback (RFC 8252).
 //  3. Generic OIDC — corporate SSO (Okta, Azure AD, Auth0, Keycloak…),
-//     configured via argus_OIDC_ISSUER + client id/secret.
+//     configured via ARGUS_OIDC_ISSUER + client id/secret.
 //
 // Sessions are opaque random tokens. The DB stores only their SHA-256
 // hash so a leaked snapshot can't be used to log in.

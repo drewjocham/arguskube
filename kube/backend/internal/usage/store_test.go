@@ -17,7 +17,9 @@ func newTestStore(t *testing.T) *Store {
 
 func TestRecord_RoundTripAndSummary(t *testing.T) {
 	s := newTestStore(t)
-	now := time.Now().UTC()
+	// Use a fixed time well inside the current day so the -1h record
+	// cannot accidentally cross into yesterday near midnight.
+	now := time.Date(2026, 5, 11, 12, 0, 0, 0, time.UTC)
 
 	rates := Rates{InputPerMTokens: 0.50, OutputPerMTokens: 1.50}
 

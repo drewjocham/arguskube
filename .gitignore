@@ -1,7 +1,7 @@
 # Build
 build/
-kube/view/dist/
-kube/view/node_modules/
+**/view/dist/
+**/node_modules/
 
 # Terraform
 **/*.tfstate
@@ -78,9 +78,9 @@ go.work.sum
 
 -e
 # Tests
-kube/view/test-results/
-kube/view/e2e/playwright-report/
-node_modules/.vite/
+**/view/test-results/
+**/view/e2e/playwright-report/
+**/node_modules/.vite/
 
 # Infra — keep examples, ignore real config / state
 infra/vastai/config.yaml

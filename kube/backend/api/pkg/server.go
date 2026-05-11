@@ -26,7 +26,7 @@ type APIResponse struct {
 
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Default-deny CORS: only echo origins explicitly allowed (localhost or
-	// values in argus_API_ALLOWED_ORIGINS). The previous
+	// values in ARGUS_API_ALLOWED_ORIGINS). The previous
 	// `Access-Control-Allow-Origin: *` made every reflective method on App
 	// callable from any browser — including DeletePod, ApplyYaml, etc.
 	if !applyCORS(w, r, allowedOrigins()) {
@@ -114,7 +114,7 @@ type WebhookPayload struct {
 // HandleWebhook receives anomaly alerts from external systems (Anomstack, Grafana, etc.)
 // and merges them into the alert stream visible in the frontend.
 //
-// Webhook auth: when argus_WEBHOOK_TOKEN is set, the inbound request
+// Webhook auth: when ARGUS_WEBHOOK_TOKEN is set, the inbound request
 // must carry a matching `Authorization: Bearer <token>` OR a
 // `X-Webhook-Token: <token>` header. When unset, only loopback POSTs are
 // accepted — the previous open-CORS path made it trivial to inject fake
@@ -201,8 +201,8 @@ func (a *App) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 //
 // Bind address defaults to 127.0.0.1 — the loopback interface — so a
 // misconfigured firewall can't expose the API to the public internet.
-// Override via argus_API_BIND="0.0.0.0" once you've also configured
-// argus_API_TOKEN and argus_API_ALLOWED_ORIGINS.
+// Override via ARGUS_API_BIND="0.0.0.0" once you've also configured
+// ARGUS_API_TOKEN and ARGUS_API_ALLOWED_ORIGINS.
 func (a *App) StartHTTPServer(port int) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/", a.ServeHTTP)
@@ -214,11 +214,11 @@ func (a *App) StartHTTPServer(port int) {
 	mux.HandleFunc("/tunnel", a.hub.HandleTunnel)
 
 	addr := envBindAddr(port)
-	tokenSet := os.Getenv("argus_API_TOKEN") != ""
+	tokenSet := os.Getenv("ARGUS_API_TOKEN") != ""
 	bindIsLocal := strings.HasPrefix(addr, "127.0.0.1") || strings.HasPrefix(addr, "[::1]")
 
 	if !bindIsLocal && !tokenSet {
-		a.logger.Warn("SaaS API binding to a non-loopback address WITHOUT argus_API_TOKEN — refusing to start; set the token or restrict the bind",
+		a.logger.Warn("SaaS API binding to a non-loopback address WITHOUT ARGUS_API_TOKEN — refusing to start; set the token or restrict the bind",
 			slog.String("addr", addr),
 		)
 		return
@@ -245,7 +245,7 @@ func (a *App) StartHTTPServer(port int) {
 // either Authorization: Bearer or X-Webhook-Token to fit ops tooling that
 // can't easily set arbitrary headers.
 func authenticateWebhook(r *http.Request) bool {
-	token := strings.TrimSpace(os.Getenv("argus_WEBHOOK_TOKEN"))
+	token := strings.TrimSpace(os.Getenv("ARGUS_WEBHOOK_TOKEN"))
 	if token == "" {
 		return remoteIsLocal(r)
 	}

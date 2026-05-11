@@ -9,11 +9,11 @@ This document provides instructions for agentic coding agents operating in the A
 - **Self-Documenting Code**: Structure and name things clearly so the code explains itself without needing excessive comments. Reserve comments for explaining complex business logic or the "why" behind decisions.
 ## Build, Lint, and Test Commands
 
-- **Build**: Compile the project with `go build -o argursKube ./cmd/main.go`.
-- **Lint**: Run static code analysis using `golangci-lint run ./...` to ensure code quality.
-- **Test (All)**: Execute all tests with `go test ./... -v` for full coverage.
-- **Test (Single)**: Run a specific test with `go test -run TestName ./path/to/package -v`.
-- **Test (Coverage)**: Generate test coverage with `go test ./... -coverprofile=coverage.out && go tool cover -html=coverage.out`.
+- **Build**: Run `make build` to produce the production binary (Go + Vue).
+- **Lint**: Run `make lint-go` to lint all Go modules (kube/backend, kube/alert-ingress, agent).
+- **Test (All)**: Run `make test` for Go + Vue + Vector tests, or `make test-go` for Go only.
+- **Test (Single)**: Run `go test -run TestName ./kube/backend/... -v` for a specific backend test.
+- **Test (Coverage)**: Run `go test ./kube/backend/... -coverprofile=coverage.out && go tool cover -html=coverage.out`.
 
 ## Deploy Commands
 

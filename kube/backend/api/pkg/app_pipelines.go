@@ -139,7 +139,6 @@ func slugify(s string) string {
 // splitFrontmatter parses a "---\nkey: value\n---\n<body>" block. If the file
 // has no frontmatter the whole content is returned as the body and meta is nil.
 func splitFrontmatter(raw string) (meta map[string]string, body string) {
-	body = raw
 	if !strings.HasPrefix(raw, "---\n") {
 		return nil, raw
 	}

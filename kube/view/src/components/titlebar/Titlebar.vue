@@ -142,7 +142,7 @@ async function signOut() {
       <div
         v-if="auth.authDisabled"
         class="dev-badge"
-        title="argus_AUTH_DISABLED is set — every API request is unauthenticated. Local development only."
+        title="ARGUS_AUTH_DISABLED is set — every API request is unauthenticated. Local development only."
       >DEV · NO AUTH</div>
       <div v-if="auth.user" class="user-chip" style="--wails-draggable: no-drag">
         <button

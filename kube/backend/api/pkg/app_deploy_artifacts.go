@@ -146,8 +146,8 @@ resources:
   limits:   { cpu: 200m, memory: 256Mi }
 `,
 			EnvVars: []EnvVarSpec{
-				{Name: "argus_AGENT_TOKEN", Required: true, Hint: "Bearer token the agent uses to call the SaaS server."},
-				{Name: "argus_NAMESPACE", Required: false, Hint: "Namespace the agent deploys into.", Default: "argus"},
+				{Name: "ARGUS_AGENT_TOKEN", Required: true, Hint: "Bearer token the agent uses to call the SaaS server."},
+				{Name: "ARGUS_NAMESPACE", Required: false, Hint: "Namespace the agent deploys into.", Default: "argus"},
 			},
 		},
 		// ── Argus Agent — Docker run ─────────────────────────
@@ -156,12 +156,12 @@ resources:
 			Flavor:      "docker",
 			Description: "Run the agent locally as a one-shot docker container (development only).",
 			CommandText: `docker run --rm \
-  -e argus_AGENT_TOKEN=$argus_AGENT_TOKEN \
+  -e ARGUS_AGENT_TOKEN=$ARGUS_AGENT_TOKEN \
   -e SAAS_SERVER_URL=http://host.docker.internal:8080 \
   -v $HOME/.kube/config:/root/.kube/config:ro \
   ghcr.io/drewjocham/argus-agent:v1.0.0`,
 			EnvVars: []EnvVarSpec{
-				{Name: "argus_AGENT_TOKEN", Required: true, Hint: "Bearer token for the SaaS server."},
+				{Name: "ARGUS_AGENT_TOKEN", Required: true, Hint: "Bearer token for the SaaS server."},
 				{Name: "SAAS_SERVER_URL", Required: false, Hint: "URL the agent connects to.", Default: "http://host.docker.internal:8080"},
 			},
 		},
@@ -215,10 +215,10 @@ services:
     image: ghcr.io/drewjocham/argus-backend:v1.0.0
     ports: ["8080:8080"]
     environment:
-      argus_TIER: ${argus_TIER:-pro}
+      ARGUS_TIER: ${ARGUS_TIER:-pro}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      argus_API_BIND: 0.0.0.0
-      argus_API_TOKEN: ${argus_API_TOKEN}
+      ARGUS_API_BIND: 0.0.0.0
+      ARGUS_API_TOKEN: ${ARGUS_API_TOKEN}
     volumes:
       - ${HOME}/.kube/config:/root/.kube/config:ro
   argus-frontend:
@@ -238,9 +238,9 @@ services:
 `,
 			EnvVars: []EnvVarSpec{
 				{Name: "DEEPSEEK_API_KEY", Required: true, Hint: "API key for the AI features. Leave blank to disable."},
-				{Name: "argus_API_TOKEN", Required: true, Hint: "Service token so the frontend can hit the API."},
+				{Name: "ARGUS_API_TOKEN", Required: true, Hint: "Service token so the frontend can hit the API."},
 				{Name: "GF_SECURITY_ADMIN_PASSWORD", Required: true, Hint: "Initial Grafana admin password."},
-				{Name: "argus_TIER", Required: false, Hint: "free | pro", Default: "pro"},
+				{Name: "ARGUS_TIER", Required: false, Hint: "free | pro", Default: "pro"},
 			},
 		},
 	}

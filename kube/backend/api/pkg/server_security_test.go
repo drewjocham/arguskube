@@ -134,7 +134,7 @@ func TestApplyCORS_EchoesAllowedOrigin(t *testing.T) {
 // service token. These tests exercise the static-token path only.
 
 func TestAuthenticateService_NoTokenConfiguredDenies(t *testing.T) {
-	withEnv(t, "argus_API_TOKEN=")
+	withEnv(t, "ARGUS_API_TOKEN=")
 	req := httptest.NewRequest("POST", "/api/Foo", nil)
 	req.RemoteAddr = "127.0.0.1:54321"
 	if authenticateService(req) {
@@ -143,7 +143,7 @@ func TestAuthenticateService_NoTokenConfiguredDenies(t *testing.T) {
 }
 
 func TestAuthenticateService_RejectsRemoteWithoutToken(t *testing.T) {
-	withEnv(t, "argus_API_TOKEN=")
+	withEnv(t, "ARGUS_API_TOKEN=")
 	req := httptest.NewRequest("POST", "/api/Foo", nil)
 	req.RemoteAddr = "203.0.113.7:54321"
 	if authenticateService(req) {
@@ -152,7 +152,7 @@ func TestAuthenticateService_RejectsRemoteWithoutToken(t *testing.T) {
 }
 
 func TestAuthenticateService_AcceptsMatchingBearer(t *testing.T) {
-	withEnv(t, "argus_API_TOKEN=secret-abc")
+	withEnv(t, "ARGUS_API_TOKEN=secret-abc")
 	req := httptest.NewRequest("POST", "/api/Foo", nil)
 	req.RemoteAddr = "203.0.113.7:54321"
 	req.Header.Set("Authorization", "Bearer secret-abc")
@@ -162,7 +162,7 @@ func TestAuthenticateService_AcceptsMatchingBearer(t *testing.T) {
 }
 
 func TestAuthenticateService_RejectsWrongBearer(t *testing.T) {
-	withEnv(t, "argus_API_TOKEN=secret-abc")
+	withEnv(t, "ARGUS_API_TOKEN=secret-abc")
 	req := httptest.NewRequest("POST", "/api/Foo", nil)
 	req.RemoteAddr = "203.0.113.7:54321"
 	req.Header.Set("Authorization", "Bearer wrong-token")
@@ -172,7 +172,7 @@ func TestAuthenticateService_RejectsWrongBearer(t *testing.T) {
 }
 
 func TestAuthenticateService_RejectsBareToken(t *testing.T) {
-	withEnv(t, "argus_API_TOKEN=secret-abc")
+	withEnv(t, "ARGUS_API_TOKEN=secret-abc")
 	req := httptest.NewRequest("POST", "/api/Foo", nil)
 	req.RemoteAddr = "203.0.113.7:54321"
 	req.Header.Set("Authorization", "secret-abc") // missing "Bearer "
@@ -185,7 +185,7 @@ func TestAuthenticateService_LoopbackNoLongerBypasses(t *testing.T) {
 	// Regression guard: the previous build let any loopback caller
 	// reach /api/* without a token. Spec changed — no account, no
 	// access — so loopback is no longer special.
-	withEnv(t, "argus_API_TOKEN=secret-abc")
+	withEnv(t, "ARGUS_API_TOKEN=secret-abc")
 	req := httptest.NewRequest("POST", "/api/Foo", nil)
 	req.RemoteAddr = "127.0.0.1:54321"
 	if authenticateService(req) {
@@ -228,14 +228,14 @@ func TestMethodAllowedOverHTTP_Whitelist(t *testing.T) {
 }
 
 func TestEnvBindAddr_DefaultsToLoopback(t *testing.T) {
-	withEnv(t, "argus_API_BIND=")
+	withEnv(t, "ARGUS_API_BIND=")
 	if got := envBindAddr(8080); got != "127.0.0.1:8080" {
 		t.Errorf("default bind = %q, want 127.0.0.1:8080 (refusing to expose to all interfaces)", got)
 	}
 }
 
 func TestEnvBindAddr_RespectsOverride(t *testing.T) {
-	withEnv(t, "argus_API_BIND=0.0.0.0")
+	withEnv(t, "ARGUS_API_BIND=0.0.0.0")
 	if got := envBindAddr(8080); got != "0.0.0.0:8080" {
 		t.Errorf("override bind = %q, want 0.0.0.0:8080", got)
 	}
@@ -245,7 +245,7 @@ func TestEnvBindAddr_RespectsOverride(t *testing.T) {
 // open-CORS hole — a remote browser MUST NOT be able to call any reflective
 // method on App.
 func TestServeHTTP_DeniesUnknownOrigin(t *testing.T) {
-	withEnv(t, "argus_API_TOKEN=", "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_TOKEN=", "ARGUS_API_ALLOWED_ORIGINS=")
 	a := &App{}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/api/GetClusterInfo", strings.NewReader(`{"args":[]}`))
@@ -263,7 +263,7 @@ func TestServeHTTP_DeniesUnknownOrigin(t *testing.T) {
 // loopback. That bypass is gone — the frontend now logs in first and
 // presents a session token on every request.
 func TestServeHTTP_LoopbackWithoutSessionIsUnauthorized(t *testing.T) {
-	withEnv(t, "argus_API_TOKEN=", "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_TOKEN=", "ARGUS_API_ALLOWED_ORIGINS=")
 	a := &App{}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/api/GetClusterInfo", strings.NewReader(`{"args":[]}`))
@@ -276,10 +276,10 @@ func TestServeHTTP_LoopbackWithoutSessionIsUnauthorized(t *testing.T) {
 
 // TestServeHTTP_ServiceTokenReachesDispatcher confirms the legacy
 // CI/external-tooling path still works: a request bearing the
-// argus_API_TOKEN bypasses session auth and reaches the
+// ARGUS_API_TOKEN bypasses session auth and reaches the
 // reflective dispatcher.
 func TestServeHTTP_ServiceTokenReachesDispatcher(t *testing.T) {
-	withEnv(t, "argus_API_TOKEN=svc-token", "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_TOKEN=svc-token", "ARGUS_API_ALLOWED_ORIGINS=")
 	a := &App{}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/api/GetClusterInfo", strings.NewReader(`{"args":[]}`))
@@ -300,7 +300,7 @@ func TestServeHTTP_ServiceTokenReachesDispatcher(t *testing.T) {
 // can test the LATER gate (method allowlist) — without the service
 // token we'd just get 401 first.
 func TestServeHTTP_BlocksMutatingMethodViaHTTP(t *testing.T) {
-	withEnv(t, "argus_API_TOKEN=svc-token", "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_TOKEN=svc-token", "ARGUS_API_ALLOWED_ORIGINS=")
 	a := &App{}
 	for _, name := range []string{"DeletePod", "ApplyYaml", "LaunchPopOutTerminal"} {
 		t.Run(name, func(t *testing.T) {

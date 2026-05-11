@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  /* Microsoft-native typography — no Google Fonts */
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #1a1c1e;
+    --bg2: #212326;
+    --bg3: #282b2e;
+    --bg4: #2f3236;
+    --bg5: #363a3e;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #e8eaec;
+    --text2: #8d9299;
+    --text3: #5c6168;
+    --accent: #4f8ef7;
+    --accent2: #6ba3f9;
+    --red: #f05454;
+    --red2: #ff7575;
+    --amber: #f5a623;
+    --amber2: #ffc04d;
+    --green: #3ecf8e;
+    --green2: #5edba6;
+    --purple: #a78bfa;
+    --teal: #2dd4bf;
+    --font: 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --mono: 'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono', monospace;
+    --r: 10px;
+    --r2: 7px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    --shadow2: 0 4px 20px rgba(0,0,0,0.5);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    height: 680px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Titlebar */
+  .titlebar {
+    height: 44px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .traffic-lights {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+  }
+  .tl {
+    width: 12px; height: 12px; border-radius: 50%;
+    cursor: default;
+    transition: filter 0.15s;
+  }
+  .tl-r { background: #ff5f57; box-shadow: 0 0 0 0.5px rgba(0,0,0,0.3); }
+  .tl-y { background: #febc2e; box-shadow: 0 0 0 0.5px rgba(0,0,0,0.3); }
+  .tl-g { background: #28c840; box-shadow: 0 0 0 0.5px rgba(0,0,0,0.3); }
+  .titlebar-title {
+    flex: 1;
+    text-align: center;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text2);
+    letter-spacing: 0.01em;
+    margin-left: -84px;
+  }
+  .titlebar-title span { color: var(--text); }
+  .titlebar-right {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .env-badge {
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    font-family: var(--mono);
+  }
+  .env-prod { background: rgba(240,84,84,0.15); color: var(--red2); border: 1px solid rgba(240,84,84,0.25); }
+  .env-qa { background: rgba(245,166,35,0.12); color: var(--amber2); border: 1px solid rgba(245,166,35,0.2); }
+  .health-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  /* Main layout */
+  .main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 220px;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .sidebar-section {
+    padding: 10px 0 4px;
+  }
+  .sidebar-label {
+    padding: 0 14px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--text3);
+    text-transform: uppercase;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 14px;
+    cursor: pointer;
+    border-radius: 0;
+    transition: background 0.1s;
+    color: var(--text2);
+    font-size: 13px;
+    font-weight: 400;
+    position: relative;
+  }
+  .nav-item:hover { background: var(--bg3); color: var(--text); }
+  .nav-item.active { background: rgba(79,142,247,0.1); color: var(--accent2); }
+  .nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 4px; bottom: 4px;
+    width: 2.5px;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+  }
+  .nav-icon { width: 15px; height: 15px; opacity: 0.7; flex-shrink: 0; }
+  .nav-item.active .nav-icon { opacity: 1; }
+  .badge {
+    margin-left: auto;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: var(--mono);
+  }
+  .badge-red { background: rgba(240,84,84,0.2); color: var(--red2); }
+  .badge-amber { background: rgba(245,166,35,0.15); color: var(--amber2); }
+  .badge-gray { background: var(--bg4); color: var(--text2); }
+
+  .sidebar-divider {
+    margin: 6px 14px;
+    border: none;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Cluster selector */
+  .cluster-selector {
+    margin: 0 10px 6px;
+    padding: 8px 10px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: var(--r2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: border-color 0.15s;
+  }
+  .cluster-selector:hover { border-color: rgba(255,255,255,0.2); }
+  .cluster-icon { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, #4f8ef7 0%, #7c5bf7 100%); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .cluster-info { flex: 1; min-width: 0; }
+  .cluster-name { font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cluster-sub { font-size: 10.5px; color: var(--text2); }
+  .chevron { color: var(--text3); font-size: 10px; }
+
+  /* Content area */
+  .content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    align-items: center;
+    height: 38px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    padding: 0 16px;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 5px 12px;
+    font-size: 12.5px;
+    font-weight: 400;
+    color: var(--text2);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.1s;
+    white-space: nowrap;
+  }
+  .tab:hover { background: var(--bg3); color: var(--text); }
+  .tab.active { background: rgba(79,142,247,0.12); color: var(--accent2); font-weight: 500; }
+  .tab-dot {
+    display: inline-block;
+    width: 5px; height: 5px; border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+    position: relative; top: -1px;
+  }
+  .tab-spacer { flex: 1; }
+  .toolbar-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.1s;
+    border: 1px solid var(--border2);
+    background: var(--bg3);
+    color: var(--text2);
+  }
+  .toolbar-btn:hover { background: var(--bg4); color: var(--text); }
+  .toolbar-btn.primary { background: rgba(79,142,247,0.15); color: var(--accent2); border-color: rgba(79,142,247,0.3); }
+  .toolbar-btn.primary:hover { background: rgba(79,142,247,0.25); }
+
+  /* Scrollable content */
+  .scroll { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .scroll::-webkit-scrollbar { width: 5px; }
+  .scroll::-webkit-scrollbar-track { background: transparent; }
+  .scroll::-webkit-scrollbar-thumb { background: var(--bg5); border-radius: 3px; }
+
+  /* Metric row */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .metric-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .metric-card:hover { background: var(--bg4); border-color: var(--border2); }
+  .metric-label { font-size: 11px; color: var(--text2); font-weight: 400; margin-bottom: 5px; letter-spacing: 0.02em; }
+  .metric-value { font-size: 22px; font-weight: 500; font-family: var(--mono); letter-spacing: -0.02em; line-height: 1; }
+  .metric-sub { font-size: 10.5px; color: var(--text3); margin-top: 4px; }
+  .metric-up { color: var(--green); }
+  .metric-warn { color: var(--amber); }
+  .metric-crit { color: var(--red); }
+  .metric-norm { color: var(--text); }
+
+  /* Alert list */
+  .alerts-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .alerts-header h3 { font-size: 12px; font-weight: 600; color: var(--text2); letter-spacing: 0.05em; text-transform: uppercase; }
+  .count-pill {
+    padding: 1px 7px; border-radius: 10px; font-size: 10.5px; font-weight: 600; font-family: var(--mono);
+  }
+
+  .alert-item {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+  .alert-item:hover { background: var(--bg4); border-color: var(--border2); }
+  .alert-item.selected { background: rgba(79,142,247,0.08); border-color: rgba(79,142,247,0.3); }
+  .alert-severity {
+    width: 3px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    align-self: stretch;
+  }
+  .sev-critical { background: var(--red); }
+  .sev-warning { background: var(--amber); }
+  .sev-info { background: var(--teal); }
+  .alert-body { flex: 1; min-width: 0; }
+  .alert-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .alert-name { font-size: 13px; font-weight: 500; color: var(--text); }
+  .alert-namespace {
+    font-size: 10.5px; font-family: var(--mono); color: var(--text3);
+    padding: 1px 6px; background: var(--bg5); border-radius: 4px;
+  }
+  .alert-desc { font-size: 12px; color: var(--text2); line-height: 1.5; margin-bottom: 6px; }
+  .alert-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+  .tag {
+    padding: 1px 7px; border-radius: 4px; font-size: 10.5px; font-family: var(--mono);
+    font-weight: 400;
+  }
+  .tag-blue { background: rgba(79,142,247,0.12); color: #7eb3fa; }
+  .tag-red { background: rgba(240,84,84,0.12); color: #ff8080; }
+  .tag-amber { background: rgba(245,166,35,0.12); color: #ffc04d; }
+  .tag-purple { background: rgba(167,139,250,0.12); color: #c4b3fd; }
+  .tag-teal { background: rgba(45,212,191,0.12); color: #5ee8d4; }
+  .alert-time { font-size: 10.5px; color: var(--text3); font-family: var(--mono); flex-shrink: 0; margin-top: 1px; }
+  .alert-action {
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .diagnose-btn {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid rgba(79,142,247,0.35);
+    background: rgba(79,142,247,0.1);
+    color: var(--accent2);
+    white-space: nowrap;
+    transition: all 0.1s;
+  }
+  .diagnose-btn:hover { background: rgba(79,142,247,0.22); border-color: rgba(79,142,247,0.5); }
+
+  /* Right panel — AI Diagnostics */
+  .ai-panel {
+    width: 310px;
+    border-left: 1px solid var(--border);
+    background: var(--bg2);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .ai-panel-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .ai-orb {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: conic-gradient(from 0deg, #4f8ef7, #a78bfa, #2dd4bf, #4f8ef7);
+    animation: spin 4s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ai-panel-title { font-size: 12.5px; font-weight: 500; color: var(--text); }
+  .ai-panel-sub { font-size: 11px; color: var(--text3); margin-left: auto; }
+
+  .ai-scroll { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .ai-scroll::-webkit-scrollbar { width: 4px; }
+  .ai-scroll::-webkit-scrollbar-thumb { background: var(--bg5); border-radius: 2px; }
+
+  .ai-context-block {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--r2);
+    padding: 10px 12px;
+  }
+  .ai-block-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.07em; color: var(--text3);
+    text-transform: uppercase; margin-bottom: 7px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .ai-block-label-dot { width: 5px; height: 5px; border-radius: 50%; }
+  .ai-code {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .ai-code .hl-red { color: #ff8080; }
+  .ai-code .hl-amber { color: #ffc04d; }
+  .ai-code .hl-green { color: #5edba6; }
+  .ai-code .hl-blue { color: #7eb3fa; }
+  .ai-code .hl-gray { color: var(--text3); }
+
+  .ai-insight {
+    background: rgba(79,142,247,0.08);
+    border: 1px solid rgba(79,142,247,0.2);
+    border-radius: var(--r2);
+    padding: 10px 12px;
+  }
+  .ai-insight-title { font-size: 11.5px; font-weight: 500; color: var(--accent2); margin-bottom: 5px; display: flex; align-items: center; gap: 5px; }
+  .ai-insight-body { font-size: 12px; color: var(--text2); line-height: 1.6; }
+
+  .ai-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ai-step {
+    display: flex;
+    gap: 9px;
+    align-items: flex-start;
+    padding: 8px 10px;
+    background: var(--bg3);
+    border-radius: var(--r2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color 0.1s;
+  }
+  .ai-step:hover { border-color: var(--border2); }
+  .step-num {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--bg5);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600; color: var(--text2);
+    flex-shrink: 0; margin-top: 1px;
+  }
+  .step-text { font-size: 12px; color: var(--text2); line-height: 1.5; }
+  .step-cmd {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--accent2);
+    margin-top: 3px;
+    padding: 2px 6px;
+    background: rgba(79,142,247,0.08);
+    border-radius: 4px;
+    width: fit-content;
+  }
+
+  /* AI input */
+  .ai-input-area {
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 7px;
+    align-items: flex-end;
+  }
+  .ai-input {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 7px 10px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12.5px;
+    resize: none;
+    outline: none;
+    transition: border-color 0.15s;
+    min-height: 34px;
+    max-height: 80px;
+  }
+  .ai-input:focus { border-color: rgba(79,142,247,0.5); }
+  .ai-input::placeholder { color: var(--text3); }
+  .ai-send {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--accent);
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.1s;
+    flex-shrink: 0;
+  }
+  .ai-send:hover { background: var(--accent2); }
+
+  /* Context strip */
+  .ctx-strip {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .ctx-chip {
+    display: flex; align-items: center; gap: 4px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10.5px;
+    border: 1px solid var(--border2);
+    background: var(--bg3);
+    color: var(--text2);
+  }
+  .ctx-chip-dot { width: 5px; height: 5px; border-radius: 50%; }
+
+  /* Stream log area */
+  .log-stream {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.7;
+    max-height: 160px;
+    overflow-y: auto;
+    color: var(--text2);
+  }
+  .log-stream::-webkit-scrollbar { width: 4px; }
+  .log-stream::-webkit-scrollbar-thumb { background: var(--bg5); border-radius: 2px; }
+  .log-line-time { color: var(--text3); }
+  .log-line-err { color: var(--red2); }
+  .log-line-warn { color: var(--amber2); }
+  .log-line-ok { color: var(--green2); }
+  .log-line-info { color: var(--accent2); }
+
+  /* Sparkline bars */
+  .sparkline { display: flex; align-items: flex-end; gap: 2px; height: 24px; margin-top: 4px; }
+  .spark-bar { flex: 1; background: var(--bg5); border-radius: 2px; transition: background 0.2s; }
+  .spark-bar.hi { background: var(--red); }
+  .spark-bar.med { background: var(--amber); }
+  .spark-bar.lo { background: var(--green); }
+
+  /* Topology mini-map */
+  .topo-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .topo-node {
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: var(--mono);
+    border: 1px solid var(--border);
+    background: var(--bg3);
+    color: var(--text2);
+    white-space: nowrap;
+  }
+  .topo-node.crit { border-color: rgba(240,84,84,0.4); color: var(--red2); background: rgba(240,84,84,0.07); }
+  .topo-node.warn { border-color: rgba(245,166,35,0.35); color: var(--amber2); background: rgba(245,166,35,0.07); }
+  .topo-node.ok { border-color: rgba(62,207,142,0.3); color: var(--green2); background: rgba(62,207,142,0.06); }
+  .topo-arrow { color: var(--text3); font-size: 12px; }
+
+  .section-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  }
+  .section-title { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); }
+
+  .selected-indicator {
+    display: none;
+    font-size: 10.5px;
+    color: var(--accent2);
+    font-family: var(--mono);
+    margin-left: auto;
+  }
+  .has-selection .selected-indicator { display: block; }
+</style>
+</head>
+<body>
+
+<!-- Titlebar -->
+<div class="titlebar">
+  <div class="traffic-lights">
+    <div class="tl tl-r"></div>
+    <div class="tl tl-y"></div>
+    <div class="tl tl-g"></div>
+  </div>
+  <div class="titlebar-title"><span>KubeWatcher</span> — SRE Console</div>
+  <div class="titlebar-right">
+    <div class="env-badge env-prod">PROD</div>
+    <div class="env-badge env-qa">QA</div>
+    <div class="health-dot"></div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div style="padding: 10px 10px 6px;">
+      <div class="cluster-selector">
+        <div class="cluster-icon">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="4" stroke="white" stroke-width="1.5"/><circle cx="6" cy="6" r="1.5" fill="white"/></svg>
+        </div>
+        <div class="cluster-info">
+          <div class="cluster-name">prod-de-central-1</div>
+          <div class="cluster-sub">47 nodes · k8s 1.30</div>
+        </div>
+        <div class="chevron">⌄</div>
+      </div>
+    </div>
+
+    <hr class="sidebar-divider">
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Monitoring</div>
+      <div class="nav-item active" onclick="selectNav(this)">
+        <svg class="nav-icon" viewBox="0 0 15 15" fill="none"><path d="M1 11L5 7L8 9.5L11 5L14 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><rect x="1" y="1" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1"/></svg>
+        Alerts
+        <span class="badge badge-red">3</span>
+      </div>
+      <div class="nav-item" onclick="selectNav(this)">
+        <svg class="nav-icon" viewBox="0 0 15 15" fill="none"><rect x="1" y="4" width="13" height="10" rx="2" stroke="currentColor" stroke-width="1"/><path d="M5 4V2.5C5 1.7 5.7 1 7.5 1S10 1.7 10 2.5V4" stroke="currentColor" stroke-width="1" stroke-linecap="round"/><circle cx="7.5" cy="9" r="1.5" fill="currentColor"/></svg>
+        Workloads
+        <span class="badge badge-gray">124</span>
+      </div>
+      <div class="nav-item" onclick="selectNav(this)">
+        <svg class="nav-icon" viewBox="0 0 15 15" fill="none"><path d="M7.5 1L2 4.5V10.5L7.5 14L13 10.5V4.5L7.5 1Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M7.5 1V14M2 4.5L13 10.5M13 4.5L2 10.5" stroke="currentColor" stroke-width="0.7" opacity="0.4"/></svg>
+        Topology
+      </div>
+      <div class="nav-item" onclick="selectNav(this)">
+        <svg class="nav-icon" viewBox="0 0 15 15" fill="none"><rect x="1" y="1" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1"/><path d="M4 5h7M4 8h7M4 11h4" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+        Logs
+        <span class="badge badge-amber">!</span>
+      </div>
+    </div>
+
+    <hr class="sidebar-divider">
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Operations</div>
+      <div class="nav-item" onclick="selectNav(this)">
+        <svg class="nav-icon" viewBox="0 0 15 15" fill="none"><path d="M7.5 1L9.5 5H14L10.5 7.5L12 12L7.5 9L3 12L4.5 7.5L1 5H5.5L7.5 1Z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>
+        Runbooks
+      </div>
+      <div class="nav-item" onclick="selectNav(this)">
+        <svg class="nav-icon" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6" stroke="currentColor" stroke-width="1"/><path d="M7.5 4.5V8L9.5 9.5" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Incident Log
+      </div>
+      <div class="nav-item" onclick="selectNav(this)">
+        <svg class="nav-icon" viewBox="0 0 15 15" fill="none"><path d="M2 4h11M2 7.5h8M2 11h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="12" cy="10" r="2.5" stroke="currentColor" stroke-width="1"/><path d="M14 12L15 13" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+        Config Audit
+      </div>
+    </div>
+
+    <hr class="sidebar-divider">
+
+    <div style="padding: 6px 10px;">
+      <div style="background: rgba(79,142,247,0.08); border: 1px solid rgba(79,142,247,0.2); border-radius: 8px; padding: 9px 10px;">
+        <div style="font-size: 10.5px; font-weight: 600; color: var(--accent2); margin-bottom: 3px; display: flex; align-items: center; gap: 4px;">
+          <div style="width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0;"></div>
+          AI Context
+        </div>
+        <div style="font-size: 11px; color: var(--text2); line-height: 1.5;">3 active alerts · 12h window · RBAC: read-only</div>
+        <div style="margin-top: 6px; font-size: 11px; color: var(--accent2); cursor: pointer;">Attach runbook →</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="content">
+    <div class="tabs">
+      <div class="tab active">Overview</div>
+      <div class="tab"><span class="tab-dot" style="background: var(--red);"></span>Critical (2)</div>
+      <div class="tab"><span class="tab-dot" style="background: var(--amber);"></span>Warnings (1)</div>
+      <div class="tab">All Events</div>
+      <div class="tab-spacer"></div>
+      <div class="toolbar-btn">
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><circle cx="5" cy="5" r="4" stroke="currentColor" stroke-width="1.2"/><path d="M5 3V5L6.5 6.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        30m
+      </div>
+      <div class="toolbar-btn primary" style="margin-left: 6px;">
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2 5.5L4.5 8L9 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Diagnose All
+      </div>
+    </div>
+
+    <!-- Context strip -->
+    <div class="ctx-strip">
+      <div style="font-size: 10px; color: var(--text3); margin-right: 2px; text-transform: uppercase; letter-spacing: 0.05em;">Context</div>
+      <div class="ctx-chip"><div class="ctx-chip-dot" style="background: var(--green);"></div>prod-de-central-1</div>
+      <div class="ctx-chip"><div class="ctx-chip-dot" style="background: var(--amber);"></div>ns: payments, infra</div>
+      <div class="ctx-chip"><div class="ctx-chip-dot" style="background: var(--blue, #4f8ef7);"></div>DECISION_LOG.md</div>
+      <div class="ctx-chip">47 nodes healthy</div>
+      <div class="ctx-chip">last deploy: 14m ago</div>
+    </div>
+
+    <div class="scroll" id="mainScroll">
+
+      <!-- Metrics -->
+      <div class="metrics-row">
+        <div class="metric-card">
+          <div class="metric-label">Pod Health</div>
+          <div class="metric-value metric-up">98.2%</div>
+          <div class="metric-sub">1,124 / 1,145 running</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Error Rate</div>
+          <div class="metric-value metric-warn">0.84%</div>
+          <div class="metric-sub">↑ from 0.12% · 30m</div>
+          <div class="sparkline">
+            <div class="spark-bar lo" style="height: 20%"></div>
+            <div class="spark-bar lo" style="height: 25%"></div>
+            <div class="spark-bar lo" style="height: 22%"></div>
+            <div class="spark-bar lo" style="height: 18%"></div>
+            <div class="spark-bar med" style="height: 40%"></div>
+            <div class="spark-bar med" style="height: 55%"></div>
+            <div class="spark-bar hi" style="height: 80%"></div>
+            <div class="spark-bar hi" style="height: 100%"></div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Restart Count</div>
+          <div class="metric-value metric-crit">47</div>
+          <div class="metric-sub">payments-api: 32 in 15m</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">P99 Latency</div>
+          <div class="metric-value metric-norm">284ms</div>
+          <div class="metric-sub">SLO: &lt; 500ms ✓</div>
+        </div>
+      </div>
+
+      <!-- Active Alerts -->
+      <div>
+        <div class="section-header">
+          <div class="section-title">Active Alerts</div>
+          <span class="count-pill badge-red">2 critical</span>
+          <span class="count-pill badge-amber" style="margin-left: 2px;">1 warning</span>
+        </div>
+
+        <!-- Alert 1 - Critical -->
+        <div class="alert-item selected" id="alert1" onclick="selectAlert(this, 'oom')">
+          <div class="alert-severity sev-critical"></div>
+          <div class="alert-body">
+            <div class="alert-title-row">
+              <div class="alert-name">OOMKilled: payments-api</div>
+              <div class="alert-namespace">payments</div>
+            </div>
+            <div class="alert-desc">Container exceeded memory limit. 32 restarts in 15 minutes. Heap dump pattern matches a recent code deploy at 09:14 UTC.</div>
+            <div class="alert-tags">
+              <span class="tag tag-red">OOMKilled</span>
+              <span class="tag tag-blue">payments-api-7f9c</span>
+              <span class="tag tag-amber">post-deploy</span>
+              <span class="tag tag-purple">heap-leak</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+            <div class="alert-time">09:31</div>
+            <div class="diagnose-btn" onclick="event.stopPropagation(); diagnose('oom')">Diagnose ↗</div>
+          </div>
+        </div>
+
+        <!-- Alert 2 - Critical -->
+        <div class="alert-item" id="alert2" onclick="selectAlert(this, 'evict')">
+          <div class="alert-severity sev-critical"></div>
+          <div class="alert-body">
+            <div class="alert-title-row">
+              <div class="alert-name">Node Pressure: worker-node-09</div>
+              <div class="alert-namespace">infra</div>
+            </div>
+            <div class="alert-desc">DiskPressure condition triggered. 3 pods evicted. Prometheus volume fill rate: 18GB/day vs 22GB capacity.</div>
+            <div class="alert-tags">
+              <span class="tag tag-red">DiskPressure</span>
+              <span class="tag tag-teal">worker-node-09</span>
+              <span class="tag tag-amber">eviction</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+            <div class="alert-time">09:28</div>
+            <div class="diagnose-btn" onclick="event.stopPropagation(); diagnose('disk')">Diagnose ↗</div>
+          </div>
+        </div>
+
+        <!-- Alert 3 - Warning -->
+        <div class="alert-item" id="alert3" onclick="selectAlert(this, 'throttle')">
+          <div class="alert-severity sev-warning"></div>
+          <div class="alert-body">
+            <div class="alert-title-row">
+              <div class="alert-name">CPU Throttling: order-processor</div>
+              <div class="alert-namespace">payments</div>
+            </div>
+            <div class="alert-desc">CPU throttling at 72% over last 10 minutes. Requests piling in queue. Consider horizontal scale-out.</div>
+            <div class="alert-tags">
+              <span class="tag tag-amber">cpu-throttle</span>
+              <span class="tag tag-blue">order-processor</span>
+              <span class="tag tag-teal">scale-candidate</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+            <div class="alert-time">09:22</div>
+            <div class="diagnose-btn" onclick="event.stopPropagation(); diagnose('throttle')">Diagnose ↗</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Log stream -->
+      <div>
+        <div class="section-header">
+          <div class="section-title">Live Log Stream</div>
+          <div style="width: 6px; height: 6px; border-radius: 50%; background: var(--red); animation: pulse 1s ease-in-out infinite; margin-left: 4px;"></div>
+        </div>
+        <div class="log-stream" id="logStream">
+<span class="log-line-time">09:31:14</span> <span class="log-line-err">[payments-api-7f9c] FATAL java.lang.OutOfMemoryError: Java heap space</span>
+<span class="log-line-time">09:31:13</span> <span class="log-line-warn">[payments-api-7f9c] WARN  GC overhead limit exceeded — 92% heap used</span>
+<span class="log-line-time">09:31:12</span> <span class="log-line-info">[payments-api-7f9c] INFO  Processing order batch size=14,000 (peak=3,200)</span>
+<span class="log-line-time">09:31:09</span> <span class="log-line-ok">[order-processor]  INFO  Batch committed id=batch-99312</span>
+<span class="log-line-time">09:31:07</span> <span class="log-line-err">[worker-node-09]   ERROR kubelet: evicting pod prometheus-0 due to DiskPressure</span>
+<span class="log-line-time">09:30:55</span> <span class="log-line-warn">[payments-api-7f9c] WARN  Restart #31 — backoff 1.6s</span>
+        </div>
+      </div>
+
+      <!-- Topology -->
+      <div>
+        <div class="section-header">
+          <div class="section-title">Service Topology</div>
+        </div>
+        <div style="background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+          <div class="topo-row">
+            <div class="topo-node ok">nginx-ingress</div>
+            <div class="topo-arrow">→</div>
+            <div class="topo-node warn">order-processor</div>
+            <div class="topo-arrow">→</div>
+            <div class="topo-node crit">payments-api</div>
+          </div>
+          <div class="topo-row" style="padding-left: 140px;">
+            <div class="topo-arrow" style="transform: rotate(90deg);">→</div>
+          </div>
+          <div class="topo-row" style="padding-left: 127px;">
+            <div class="topo-node ok">postgres-primary</div>
+            <div class="topo-arrow" style="color: transparent;">→</div>
+            <div class="topo-node ok">redis-cluster</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- AI Diagnostics Panel -->
+  <div class="ai-panel" id="aiPanel">
+    <div class="ai-panel-header">
+      <div class="ai-orb"></div>
+      <div class="ai-panel-title">Argus</div>
+      <div class="ai-panel-sub" id="aiPanelSub">payments-api</div>
+    </div>
+
+    <div class="ai-scroll" id="aiScroll">
+
+      <!-- Alert context passed to AI -->
+      <div class="ai-context-block">
+        <div class="ai-block-label">
+          <div class="ai-block-label-dot" style="background: var(--red);"></div>
+          Alert Context
+        </div>
+        <div class="ai-code" id="aiContext"><span class="hl-red">OOMKilled</span> · <span class="hl-blue">payments-api</span>
+pod: payments-api-7f9cd82b-x9kzp
+ns:  payments · restarts: <span class="hl-red">32</span>
+mem: <span class="hl-red">512Mi limit</span> / requested 256Mi
+deploy: <span class="hl-amber">09:14 UTC</span> (17m before alert)
+image: payments-api:<span class="hl-amber">v2.4.1</span> ← new</div>
+      </div>
+
+      <!-- AI Insight -->
+      <div class="ai-insight">
+        <div class="ai-insight-title">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1L7.5 4H11L8.2 6.3L9.3 10L6 7.8L2.7 10L3.8 6.3L1 4H4.5L6 1Z" fill="#4f8ef7"/></svg>
+          Root Cause Hypothesis
+        </div>
+        <div class="ai-insight-body" id="aiHypothesis">Deploy at 09:14 introduced <strong>v2.4.1</strong> with batch size change (3.2k→14k). Heap exhausted processing large order batches. Prior version had identical memory config. Immediate rollback recommended.</div>
+      </div>
+
+      <!-- Recommended steps -->
+      <div>
+        <div class="ai-block-label" style="margin-bottom: 6px;">
+          <div class="ai-block-label-dot" style="background: var(--accent);"></div>
+          Recommended Actions
+        </div>
+        <div class="ai-steps" id="aiSteps">
+          <div class="ai-step">
+            <div class="step-num">1</div>
+            <div class="step-text">Rollback deployment to stable v2.4.0
+              <span class="step-cmd">kubectl rollout undo deploy/payments-api -n payments</span>
+            </div>
+          </div>
+          <div class="ai-step">
+            <div class="step-num">2</div>
+            <div class="step-text">Confirm pods stabilise and restarts stop
+              <span class="step-cmd">kubectl rollout status deploy/payments-api</span>
+            </div>
+          </div>
+          <div class="ai-step">
+            <div class="step-num">3</div>
+            <div class="step-text">Capture heap dump before full termination
+              <span class="step-cmd">kubectl exec -it payments-api-7f9c -- jcmd 1 GC.heap_dump /tmp/heap.hprof</span>
+            </div>
+          </div>
+          <div class="ai-step">
+            <div class="step-num">4</div>
+            <div class="step-text">Increase memory limit to 768Mi in staging before next deploy</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Related DECISION_LOG context -->
+      <div class="ai-context-block">
+        <div class="ai-block-label">
+          <div class="ai-block-label-dot" style="background: var(--purple);"></div>
+          From DECISION_LOG.md
+        </div>
+        <div class="ai-code"><span class="hl-gray"># 2026-04-10</span>
+payments-api heap config frozen at <span class="hl-amber">512Mi</span>
+pending batch-size review — <span class="hl-red">blocked</span>
+owner: @sre-team · ticket: SRE-412</div>
+      </div>
+
+    </div>
+
+    <div class="ai-input-area">
+      <textarea class="ai-input" id="aiInput" placeholder="Ask about this alert..." rows="1" onkeydown="handleKey(event)"></textarea>
+      <button class="ai-send" onclick="sendQuestion()">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 6.5h9M7.5 3L11 6.5L7.5 10" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const alerts = {
+  oom: {
+    sub: 'payments-api · OOMKilled',
+    ctx: `<span class="hl-red">OOMKilled</span> · <span class="hl-blue">payments-api</span>
+pod: payments-api-7f9cd82b-x9kzp
+ns:  payments · restarts: <span class="hl-red">32</span>
+mem: <span class="hl-red">512Mi limit</span> / requested 256Mi
+deploy: <span class="hl-amber">09:14 UTC</span> (17m before alert)
+image: payments-api:<span class="hl-amber">v2.4.1</span> ← new`,
+    hyp: 'Deploy at 09:14 introduced <strong>v2.4.1</strong> with batch size change (3.2k→14k). Heap exhausted processing large order batches. Prior version had identical memory config. Immediate rollback recommended.',
+    steps: [
+      { n:1, text:'Rollback deployment to stable v2.4.0', cmd:'kubectl rollout undo deploy/payments-api -n payments' },
+      { n:2, text:'Confirm pods stabilise and restarts stop', cmd:'kubectl rollout status deploy/payments-api' },
+      { n:3, text:'Capture heap dump before full termination', cmd:'kubectl exec -it payments-api-7f9c -- jcmd 1 GC.heap_dump /tmp/heap.hprof' },
+      { n:4, text:'Increase memory limit to 768Mi in staging before next deploy' },
+    ]
+  },
+  disk: {
+    sub: 'worker-node-09 · DiskPressure',
+    ctx: `<span class="hl-red">DiskPressure</span> · <span class="hl-blue">worker-node-09</span>
+node: worker-node-09 (zone: eu-central-1a)
+disk: <span class="hl-red">21.4GB / 22GB</span> (97% full)
+evicted: prometheus-0, loki-2, alertmanager-0
+fill rate: <span class="hl-amber">18GB/day</span>
+culprit: <span class="hl-amber">prometheus WAL</span> (14.2GB)`,
+    hyp: 'Prometheus WAL growth spiked after metrics cardinality increase in last deploy. Retention not trimmed. 3 pods evicted. Node will stabilise after WAL compaction or manual cleanup.',
+    steps: [
+      { n:1, text:'Drain and cordon node to prevent new scheduling', cmd:'kubectl cordon worker-node-09' },
+      { n:2, text:'Delete old Prometheus WAL segments', cmd:'kubectl exec -n monitoring prometheus-0 -- find /prometheus/wal -mtime +1 -delete' },
+      { n:3, text:'Increase Prometheus PVC or reduce retention window', cmd:'kubectl patch pvc prometheus-data -p \'{"spec":{"resources":{"requests":{"storage":"50Gi"}}}}\'' },
+      { n:4, text:'Uncordon node after disk < 70%', cmd:'kubectl uncordon worker-node-09' },
+    ]
+  },
+  throttle: {
+    sub: 'order-processor · CPU Throttle',
+    ctx: `<span class="hl-amber">CPU Throttle</span> · <span class="hl-blue">order-processor</span>
+ns: payments · replicas: <span class="hl-amber">2 / 2</span>
+cpu limit: <span class="hl-amber">500m</span> / request: 200m
+throttle: <span class="hl-amber">72%</span> over 10m
+queue depth: <span class="hl-red">4,200</span> pending orders
+HPA min: 2, max: 8 — <span class="hl-red">not scaling</span>`,
+    hyp: 'HPA is not triggering scale-out despite high CPU. Likely cause: metrics-server not delivering CPU data to HPA due to prometheus-adapter eviction (see DiskPressure alert). Fix node-09 first — HPA will recover.',
+    steps: [
+      { n:1, text:'Resolve DiskPressure on node-09 first (metrics-server evicted)', },
+      { n:2, text:'Verify HPA sees CPU metrics', cmd:'kubectl describe hpa order-processor -n payments' },
+      { n:3, text:'Temporarily bump replicas while HPA recovers', cmd:'kubectl scale deploy/order-processor --replicas=5 -n payments' },
+      { n:4, text:'Raise CPU limit to 1000m for order-processor in staging review' },
+    ]
+  }
+};
+
+let currentAlert = 'oom';
+
+function selectAlert(el, type) {
+  document.querySelectorAll('.alert-item').forEach(a => a.classList.remove('selected'));
+  el.classList.add('selected');
+  diagnose(type);
+}
+
+function selectNav(el) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function diagnose(type) {
+  currentAlert = type;
+  const a = alerts[type];
+  document.getElementById('aiPanelSub').textContent = a.sub;
+  document.getElementById('aiContext').innerHTML = a.ctx;
+  document.getElementById('aiHypothesis').innerHTML = a.hyp;
+
+  const stepsEl = document.getElementById('aiSteps');
+  stepsEl.innerHTML = a.steps.map(s => `
+    <div class="ai-step">
+      <div class="step-num">${s.n}</div>
+      <div class="step-text">${s.text}${s.cmd ? `<span class="step-cmd">${s.cmd}</span>` : ''}</div>
+    </div>
+  `).join('');
+
+  document.getElementById('aiScroll').scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendQuestion();
+  }
+}
+
+function sendQuestion() {
+  const input = document.getElementById('aiInput');
+  const val = input.value.trim();
+  if (!val) return;
+  input.value = '';
+
+  const stepsEl = document.getElementById('aiSteps');
+  const newStep = document.createElement('div');
+  newStep.className = 'ai-step';
+  newStep.style.borderColor = 'rgba(79,142,247,0.3)';
+  newStep.style.background = 'rgba(79,142,247,0.06)';
+  newStep.innerHTML = `
+    <div class="step-num" style="background: rgba(79,142,247,0.2); color: var(--accent2);">?</div>
+    <div class="step-text" style="color: var(--text2); font-style: italic;">Processing: "${val}"…</div>
+  `;
+  stepsEl.appendChild(newStep);
+  document.getElementById('aiScroll').scrollTo({ top: 9999, behavior: 'smooth' });
+}
+
+// Animate log stream
+let logLines = [
+  ['09:31:16', 'err', '[payments-api-7f9c] FATAL OOM restart #33 — backoff 3.2s'],
+  ['09:31:18', 'ok',  '[order-processor]  INFO  Heartbeat OK · queue: 4,198'],
+  ['09:31:20', 'warn','[worker-node-09]   WARN  DiskPressure still active — 97.1%'],
+  ['09:31:22', 'info','[kube-watcher]     INFO  Alert correlated: payments+infra cascade'],
+];
+let logIdx = 0;
+setInterval(() => {
+  const el = document.getElementById('logStream');
+  const l = logLines[logIdx % logLines.length];
+  const cls = l[1] === 'err' ? 'log-line-err' : l[1] === 'warn' ? 'log-line-warn' : l[1] === 'ok' ? 'log-line-ok' : 'log-line-info';
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="log-line-time">${l[0]}</span> <span class="${cls}">${l[2]}</span>`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  logIdx++;
+}, 2800);
+</script>
+</body>
+</html>

@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/argues/argus/internal/alerts"
-	"github.com/argues/argus/internal/k8s"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 // MetricsProvider is a thin abstraction over the cached metrics on App
@@ -19,11 +19,17 @@ type MetricsProvider interface {
 	CurrentMetrics() *alerts.ClusterMetrics
 }
 
+// K8sClient is the subset of k8s.Client that NodeReadyCheck needs.
+// Using an interface makes the check testable without a live cluster.
+type K8sClient interface {
+	GetClientset() kubernetes.Interface
+}
+
 // NodeReadyCheck flags any node that is not Ready or has memory/disk
 // pressure conditions set. Cheap — just lists nodes via the API and
 // reads conditions.
 type NodeReadyCheck struct {
-	K8s *k8s.Client
+	K8s K8sClient
 }
 
 func (NodeReadyCheck) Name() string        { return "nodes-ready" }

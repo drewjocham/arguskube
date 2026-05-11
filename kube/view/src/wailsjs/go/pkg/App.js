@@ -18,6 +18,10 @@ export function AuthRoutes(arg1) {
   return window['go']['pkg']['App']['AuthRoutes'](arg1);
 }
 
+export function CancelOAuthFlow(arg1) {
+  return window['go']['pkg']['App']['CancelOAuthFlow'](arg1);
+}
+
 export function CheckToolStatus() {
   return window['go']['pkg']['App']['CheckToolStatus']();
 }
@@ -28,6 +32,10 @@ export function ClearUsageHistory() {
 
 export function CloseExecSession() {
   return window['go']['pkg']['App']['CloseExecSession']();
+}
+
+export function CompleteOAuthFlow(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['CompleteOAuthFlow'](arg1, arg2, arg3);
 }
 
 export function ConnectToAgent(arg1) {
@@ -92,6 +100,10 @@ export function DeleteWorkflow(arg1) {
 
 export function DeployAgent(arg1) {
   return window['go']['pkg']['App']['DeployAgent'](arg1);
+}
+
+export function DescribeSecretRef(arg1) {
+  return window['go']['pkg']['App']['DescribeSecretRef'](arg1);
 }
 
 export function DiagnoseAlert(arg1) {
@@ -318,6 +330,10 @@ export function ListNotebooks() {
   return window['go']['pkg']['App']['ListNotebooks']();
 }
 
+export function ListOAuthProviders() {
+  return window['go']['pkg']['App']['ListOAuthProviders']();
+}
+
 export function ListResources(arg1, arg2) {
   return window['go']['pkg']['App']['ListResources'](arg1, arg2);
 }
@@ -354,6 +370,10 @@ export function MoveNotebook(arg1, arg2) {
   return window['go']['pkg']['App']['MoveNotebook'](arg1, arg2);
 }
 
+export function PollOAuthFlow(arg1) {
+  return window['go']['pkg']['App']['PollOAuthFlow'](arg1);
+}
+
 export function QueryLogs(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['QueryLogs'](arg1, arg2, arg3);
 }
@@ -372,6 +392,10 @@ export function ResizeExec(arg1, arg2) {
 
 export function ResizeTerminal(arg1, arg2) {
   return window['go']['pkg']['App']['ResizeTerminal'](arg1, arg2);
+}
+
+export function ResolveSecretRef(arg1) {
+  return window['go']['pkg']['App']['ResolveSecretRef'](arg1);
 }
 
 export function RestartDeployment(arg1, arg2) {
@@ -476,6 +500,10 @@ export function StartEventLoop(arg1) {
 
 export function StartHTTPServer(arg1) {
   return window['go']['pkg']['App']['StartHTTPServer'](arg1);
+}
+
+export function StartOAuthFlow(arg1) {
+  return window['go']['pkg']['App']['StartOAuthFlow'](arg1);
 }
 
 export function StartTerminal(arg1, arg2) {

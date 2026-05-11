@@ -50,7 +50,7 @@ type auditConfig struct {
 // AuditOptionsFromEnv returns AuditOptions derived from environment variables.
 func AuditOptionsFromEnv() []AuditOption {
 	var opts []AuditOption
-	if os.Getenv("argus_AUDIT") == "true" {
+	if os.Getenv("ARGUS_AUDIT") == "true" {
 		opts = append(opts, func(c *auditConfig) { c.enabled = true })
 	}
 	return opts

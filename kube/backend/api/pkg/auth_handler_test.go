@@ -45,7 +45,7 @@ func mustJSON(t *testing.T, body io.Reader) map[string]any {
 }
 
 func TestAuthRegister_HappyPath(t *testing.T) {
-	withEnv(t, "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_ALLOWED_ORIGINS=")
 	a := newAppWithAuth(t)
 	rec := httptest.NewRecorder()
 	body, _ := json.Marshal(map[string]string{
@@ -66,7 +66,7 @@ func TestAuthRegister_HappyPath(t *testing.T) {
 }
 
 func TestAuthRegister_Disabled(t *testing.T) {
-	withEnv(t, "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_ALLOWED_ORIGINS=")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := sqlitedb.Open(t.TempDir(), logger)
 	if err != nil {
@@ -89,7 +89,7 @@ func TestAuthRegister_Disabled(t *testing.T) {
 }
 
 func TestAuthLogin_HappyPath(t *testing.T) {
-	withEnv(t, "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_ALLOWED_ORIGINS=")
 	a := newAppWithAuth(t)
 	if _, err := a.auth.store.CreateLocalUser("user@x.com", "User", "correcthorsebattery!"); err != nil {
 		t.Fatal(err)
@@ -110,7 +110,7 @@ func TestAuthLogin_HappyPath(t *testing.T) {
 }
 
 func TestAuthLogin_WrongPassword(t *testing.T) {
-	withEnv(t, "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_ALLOWED_ORIGINS=")
 	a := newAppWithAuth(t)
 	if _, err := a.auth.store.CreateLocalUser("user@x.com", "User", "correcthorsebattery!"); err != nil {
 		t.Fatal(err)
@@ -130,7 +130,7 @@ func TestServeHTTP_AcceptsValidSessionToken(t *testing.T) {
 	// past authorizeAPIRequest, so the user can hit /api/* without
 	// the static service token. This is the actual happy path the
 	// frontend uses.
-	withEnv(t, "argus_API_TOKEN=", "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_TOKEN=", "ARGUS_API_ALLOWED_ORIGINS=")
 	a := newAppWithAuth(t)
 	user, err := a.auth.store.CreateLocalUser("u@x.com", "U", "correcthorsebattery!")
 	if err != nil {
@@ -151,7 +151,7 @@ func TestServeHTTP_AcceptsValidSessionToken(t *testing.T) {
 }
 
 func TestServeHTTP_RejectsRevokedToken(t *testing.T) {
-	withEnv(t, "argus_API_TOKEN=", "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_TOKEN=", "ARGUS_API_ALLOWED_ORIGINS=")
 	a := newAppWithAuth(t)
 	user, _ := a.auth.store.CreateLocalUser("u@x.com", "U", "correcthorsebattery!")
 	sess, _ := a.auth.store.CreateSession(user.ID)
@@ -169,7 +169,7 @@ func TestServeHTTP_RejectsRevokedToken(t *testing.T) {
 }
 
 func TestAuthMe_RequiresValidSession(t *testing.T) {
-	withEnv(t, "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_ALLOWED_ORIGINS=")
 	a := newAppWithAuth(t)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
@@ -181,10 +181,10 @@ func TestAuthMe_RequiresValidSession(t *testing.T) {
 }
 
 // TestDevMode_BypassesAuthOnLoopback covers the local-dev escape
-// hatch: when argus_AUTH_DISABLED=true, /api/* is reachable
+// hatch: when ARGUS_AUTH_DISABLED=true, /api/* is reachable
 // without any token at all.
 func TestDevMode_BypassesAuthOnLoopback(t *testing.T) {
-	withEnv(t, "argus_API_TOKEN=", "argus_API_BIND=", "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_TOKEN=", "ARGUS_API_BIND=", "ARGUS_API_ALLOWED_ORIGINS=")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := sqlitedb.Open(t.TempDir(), logger)
 	if err != nil {
@@ -210,7 +210,7 @@ func TestDevMode_BypassesAuthOnLoopback(t *testing.T) {
 // asks for auth-disabled, we refuse to honor it when the API binds
 // somewhere a remote attacker can reach.
 func TestDevMode_RefusedOnPublicBind(t *testing.T) {
-	withEnv(t, "argus_API_TOKEN=", "argus_API_BIND=0.0.0.0", "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_TOKEN=", "ARGUS_API_BIND=0.0.0.0", "ARGUS_API_ALLOWED_ORIGINS=")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := sqlitedb.Open(t.TempDir(), logger)
 	if err != nil {
@@ -235,7 +235,7 @@ func TestDevMode_RefusedOnPublicBind(t *testing.T) {
 // TestAuthProviders_ExposesAuthDisabledFlag — frontend reads this to
 // decide whether to render LoginView.
 func TestAuthProviders_ExposesAuthDisabledFlag(t *testing.T) {
-	withEnv(t, "argus_API_BIND=", "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_BIND=", "ARGUS_API_ALLOWED_ORIGINS=")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db, err := sqlitedb.Open(t.TempDir(), logger)
 	if err != nil {
@@ -259,7 +259,7 @@ func TestAuthProviders_ExposesAuthDisabledFlag(t *testing.T) {
 }
 
 func TestAuthLogout_RevokesSession(t *testing.T) {
-	withEnv(t, "argus_API_ALLOWED_ORIGINS=")
+	withEnv(t, "ARGUS_API_ALLOWED_ORIGINS=")
 	a := newAppWithAuth(t)
 	user, _ := a.auth.store.CreateLocalUser("u@x.com", "U", "correcthorsebattery!")
 	sess, _ := a.auth.store.CreateSession(user.ID)

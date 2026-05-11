@@ -3,12 +3,13 @@
 import {alertproc} from '../models';
 import {http} from '../models';
 import {setup} from '../models';
+import {context} from '../models';
+import {oauthproviders} from '../models';
 import {agentconn} from '../models';
 import {pkg} from '../models';
 import {incidents} from '../models';
 import {runbooks} from '../models';
 import {alerts} from '../models';
-import {context} from '../models';
 import {k8s} from '../models';
 import {ai} from '../models';
 import {anomaly} from '../models';
@@ -29,11 +30,15 @@ export function ApplyYaml(arg1:string):Promise<string>;
 
 export function AuthRoutes(arg1:http.ServeMux):Promise<void>;
 
+export function CancelOAuthFlow(arg1:string):Promise<boolean>;
+
 export function CheckToolStatus():Promise<Array<setup.ToolStatus>>;
 
 export function ClearUsageHistory():Promise<void>;
 
 export function CloseExecSession():Promise<void>;
+
+export function CompleteOAuthFlow(arg1:context.Context,arg2:string,arg3:string):Promise<oauthproviders.UserInfo>;
 
 export function ConnectToAgent(arg1:string):Promise<Array<agentconn.Anomaly>>;
 
@@ -66,6 +71,8 @@ export function DeleteVaultSecret(arg1:string):Promise<void>;
 export function DeleteWorkflow(arg1:string):Promise<void>;
 
 export function DeployAgent(arg1:string):Promise<setup.SetupResult>;
+
+export function DescribeSecretRef(arg1:string):Promise<pkg.SecretRefInfo>;
 
 export function DiagnoseAlert(arg1:string):Promise<context.Bundle>;
 
@@ -179,6 +186,8 @@ export function ListIncidents():Promise<Array<incidents.Incident>>;
 
 export function ListNotebooks():Promise<Array<notebooks.FileEntry>>;
 
+export function ListOAuthProviders():Promise<Array<oauthproviders.ProviderInfo>>;
+
 export function ListResources(arg1:string,arg2:string):Promise<k8s.ResourceListResult>;
 
 export function ListRunbooks():Promise<Array<runbooks.Runbook>>;
@@ -197,6 +206,8 @@ export function MarkAlertIgnored(arg1:string):Promise<void>;
 
 export function MoveNotebook(arg1:string,arg2:string):Promise<void>;
 
+export function PollOAuthFlow(arg1:string):Promise<pkg.OAuthPollResult>;
+
 export function QueryLogs(arg1:string,arg2:string,arg3:number):Promise<k8s.LogQueryResult>;
 
 export function QueryTimeSeriesMetrics(arg1:string,arg2:string):Promise<Array<number>>;
@@ -206,6 +217,8 @@ export function RefreshArgusCDApp(arg1:string,arg2:boolean):Promise<void>;
 export function ResizeExec(arg1:number,arg2:number):Promise<void>;
 
 export function ResizeTerminal(arg1:number,arg2:number):Promise<void>;
+
+export function ResolveSecretRef(arg1:string):Promise<string|string>;
 
 export function RestartDeployment(arg1:string,arg2:string):Promise<void>;
 
@@ -258,6 +271,8 @@ export function SilenceAlert(arg1:string,arg2:number,arg3:string):Promise<void>;
 export function StartEventLoop(arg1:context.Context):Promise<void>;
 
 export function StartHTTPServer(arg1:number):Promise<void>;
+
+export function StartOAuthFlow(arg1:string):Promise<string>;
 
 export function StartTerminal(arg1:number,arg2:number):Promise<void>;
 

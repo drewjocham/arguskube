@@ -66,13 +66,13 @@ func (a *App) SetupAuth(store *auth.Store, cfg config.AuthConfig) {
 		})
 	}
 	// DevMode is a local-development convenience — it bypasses the
-	// entire auth gate. We refuse to honor it when argus_API_BIND
+	// entire auth gate. We refuse to honor it when ARGUS_API_BIND
 	// points at anything other than loopback, so a deploy that
 	// accidentally inherits this env var doesn't ship without a gate.
 	devMode := cfg.DevMode
-	if devMode && !isLoopbackBind(os.Getenv("argus_API_BIND")) {
-		a.logger.Warn("argus_AUTH_DISABLED ignored — API is not bound to loopback",
-			"bind", os.Getenv("argus_API_BIND"),
+	if devMode && !isLoopbackBind(os.Getenv("ARGUS_API_BIND")) {
+		a.logger.Warn("ARGUS_AUTH_DISABLED ignored — API is not bound to loopback",
+			"bind", os.Getenv("ARGUS_API_BIND"),
 		)
 		devMode = false
 	}

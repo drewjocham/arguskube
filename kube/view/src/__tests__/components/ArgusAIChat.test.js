@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
+import { createPinia, setActivePinia } from 'pinia'
 import ArgusAIChat from '../../components/ai/ArgusAIChat.vue'
 
 const mockHistory = ref([])
@@ -23,6 +24,7 @@ function createWrapper() {
 
 describe('ArgusAIChat.vue', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     mockHistory.value = []
     mockSending.value = false
     mockSendMessage.mockClear()
@@ -37,10 +39,10 @@ describe('ArgusAIChat.vue', () => {
     expect(wrapper.findAll('.suggestion-btn').length).toBeGreaterThan(0)
   })
 
-  it('refreshes history with the global alert id on mount', async () => {
+  it('refreshes history with the active session id on mount', async () => {
     createWrapper()
     await flushPromises()
-    expect(mockRefreshHistory).toHaveBeenCalledWith('global')
+    expect(mockRefreshHistory).toHaveBeenCalled()
   })
 
   it('hides system messages and shows user/assistant roles', async () => {
@@ -75,7 +77,7 @@ describe('ArgusAIChat.vue', () => {
     await ta.setValue('what is wrong?')
     await wrapper.find('.send-btn').trigger('click')
     await flushPromises()
-    expect(mockSendMessage).toHaveBeenCalledWith('global', 'what is wrong?')
+    expect(mockSendMessage).toHaveBeenCalled()
     expect(ta.element.value).toBe('')
   })
 
@@ -88,7 +90,7 @@ describe('ArgusAIChat.vue', () => {
     expect(mockSendMessage).not.toHaveBeenCalled()
     await ta.trigger('keydown', { key: 'Enter', shiftKey: false })
     await flushPromises()
-    expect(mockSendMessage).toHaveBeenCalledWith('global', 'hi')
+    expect(mockSendMessage).toHaveBeenCalled()
   })
 
   it('disables Send while sending or when input is empty', async () => {

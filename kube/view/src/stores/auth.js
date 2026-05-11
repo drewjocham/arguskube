@@ -51,7 +51,7 @@ export const useAuthStore = defineStore('auth', () => {
   const providers = ref([])
   const allowSignup = ref(true)
   // authDisabled is set by /auth/providers when the backend is running
-  // with argus_AUTH_DISABLED=true. App.vue uses it to skip the
+  // with ARGUS_AUTH_DISABLED=true. App.vue uses it to skip the
   // LoginView gate entirely. We default to false so a network failure
   // on /auth/providers keeps the secure behavior.
   const authDisabled = ref(false)

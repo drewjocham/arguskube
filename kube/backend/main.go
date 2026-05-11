@@ -95,7 +95,7 @@ func run() error {
 		detector = anomaly.NewAnomstackClient(cfg, logger)
 		logger.Info("anomaly detector initialized", slog.String("backend", "anomstack"), slog.String("url", cfg.AI.AnomstackURL))
 	default:
-		logger.Warn("anomaly detection disabled — set argus_FLINK_URL or ANOMSTACK_URL to enable")
+		logger.Warn("anomaly detection disabled — set ARGUS_FLINK_URL or ANOMSTACK_URL to enable")
 	}
 
 	assembler := ctxassembly.NewAssembler(cfg, gate, detector, logger)
@@ -174,11 +174,11 @@ func run() error {
 		logger,
 	)
 
-	// argus_MODE controls which view this binary boots into. When the
+	// ARGUS_MODE controls which view this binary boots into. When the
 	// user clicks "Pop out" in the dashboard, the app spawns itself with
 	// MODE=terminal so the new process opens its own OS-level window with
 	// just the terminal. Default is "dashboard".
-	appMode := os.Getenv("argus_MODE")
+	appMode := os.Getenv("ARGUS_MODE")
 	if appMode == "" {
 		appMode = "dashboard"
 	}
