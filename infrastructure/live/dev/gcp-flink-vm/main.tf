@@ -5,7 +5,7 @@ module "flink" {
   region     = var.region
   zone       = var.zone
 
-  name_prefix = "kubewatcher-dev"
+  name_prefix = "argus-dev"
 
   network    = var.network
   subnetwork = var.subnetwork

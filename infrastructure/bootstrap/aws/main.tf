@@ -28,7 +28,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project   = "kubewatcher"
+      Project   = "argus"
       Stack     = "bootstrap/aws"
       ManagedBy = "terraform"
     }

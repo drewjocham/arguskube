@@ -41,7 +41,7 @@ resource "google_storage_bucket" "tfstate" {
   }
 
   labels = {
-    project = "kubewatcher"
+    project = "argus"
     stack   = "bootstrap-gcp"
   }
 }

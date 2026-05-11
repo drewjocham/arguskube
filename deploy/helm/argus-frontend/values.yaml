@@ -1,0 +1,52 @@
+# ── Image ──────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/drewjocham/argus-frontend
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# ── Replicas ───────────────────────────────────────────────────────
+replicaCount: 1
+nameOverride: ""
+fullnameOverride: ""
+
+# ── Service ────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 3000
+
+# ── Backend Connection ─────────────────────────────────────────────
+backendService: argus-backend
+backendPort: 8080
+
+# ── Autoscaling ────────────────────────────────────────────────────
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# ── Resource Limits ────────────────────────────────────────────────
+resources:
+  limits:
+    cpu: 200m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# ── Security Contexts ──────────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  fsGroup: 101
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# ── Scheduling ─────────────────────────────────────────────────────
+nodeSelector: {}
+tolerations: []

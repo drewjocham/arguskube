@@ -5,7 +5,7 @@ One-time setup for the shared S3 + DynamoDB used by every
 
 ## When to run
 
-- First time you deploy KubeWatcher into a new AWS account.
+- First time you deploy Argus into a new AWS account.
 - Never again, unless you're migrating accounts.
 
 ## Run
@@ -18,8 +18,8 @@ terraform apply
 
 This creates:
 
-- `s3://kubewatcher-tfstate` (versioning + KMS-SSE + public access blocked)
-- `dynamodb table kubewatcher-tfstate-lock` (PITR + encryption)
+- `s3://argus-tfstate` (versioning + KMS-SSE + public access blocked)
+- `dynamodb table argus-tfstate-lock` (PITR + encryption)
 
 ## After apply
 

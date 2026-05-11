@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         client = VastClient()
         instances = client.list_instances()
-        tag = "kube-watcher-llm"
+        tag = "argus-llm"
         try:
             cfg = load_config(args.config)
             tag = cfg.get("tag", tag)

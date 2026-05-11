@@ -12,5 +12,5 @@ variable "region" {
 variable "state_bucket_name" {
   description = "Globally-unique GCS bucket name for Terraform state."
   type        = string
-  default     = "kubewatcher-tfstate"
+  default     = "argus-tfstate"
 }

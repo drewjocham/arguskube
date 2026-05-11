@@ -1,6 +1,6 @@
 version: "3.9"
 
-# ─── KubeWatcher SaaS Stack ─────────────────────────────────────────
+# ─── Argus SaaS Stack ─────────────────────────────────────────
 # Usage:
 #   cp .env.example .env   # edit to taste
 #   docker compose up -d
@@ -18,9 +18,9 @@ services:
   # ── Go backend (SaaS HTTP mode) ──────────────────────────────────
   backend:
     build:
-      context: ./backend
+      context: kube/backend
       dockerfile: Dockerfile
-    container_name: kubewatcher-backend
+    container_name: argus-backend
     restart: unless-stopped
     env_file: .env
     environment:
@@ -45,9 +45,9 @@ services:
   # ── Vector alert-ingress (replaces custom Go service) ────────────
   alert-ingress:
     build:
-      context: ./alert-ingress
+      context: ./kube/alert-ingress
       dockerfile: Dockerfile
-    container_name: kubewatcher-alert-ingress
+    container_name: argus-alert-ingress
     restart: unless-stopped
     ports:
       - "8081:8080"                             # Webhook receiver
@@ -63,9 +63,9 @@ services:
   # ── Vue frontend via nginx ───────────────────────────────────────
   frontend:
     build:
-      context: ./view
+      context: ./kube/view
       dockerfile: Dockerfile.nginx
-    container_name: kubewatcher-frontend
+    container_name: argus-frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -78,10 +78,10 @@ services:
   # ── Prometheus ───────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.53.0
-    container_name: kubewatcher-prometheus
+    container_name: argus-prometheus
     restart: unless-stopped
     volumes:
-      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./kube/docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     ports:
       - "9090:9090"
@@ -95,15 +95,15 @@ services:
   # ── Grafana ──────────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:11.1.0
-    container_name: kubewatcher-grafana
+    container_name: argus-grafana
     restart: unless-stopped
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-kubewatcher}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-argus}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./kube/docker/grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
       - "3001:3000"
     networks:
@@ -115,7 +115,7 @@ services:
   # ── Ollama (local LLM) ──────────────────────────────────────────
   ollama:
     image: ollama/ollama:latest
-    container_name: kubewatcher-ollama
+    container_name: argus-ollama
     restart: unless-stopped
     volumes:
       - ollama-data:/root/.ollama

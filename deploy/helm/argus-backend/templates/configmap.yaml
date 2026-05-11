@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "argus-backend.fullname" . }}-config
+  labels:
+    {{- include "argus-backend.labels" . | nindent 4 }}
+data:
+  KUBEWATCHER_PORT: {{ .Values.service.port | default "8080" | quote }}
+  KUBEWATCHER_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  KUBEWATCHER_LOG_FORMAT: {{ .Values.config.logFormat | quote }}
+  KUBEWATCHER_TIER: {{ .Values.config.tier | quote }}
+  {{- if .Values.config.prometheusURL }}
+  PROMETHEUS_URL: {{ .Values.config.prometheusURL | quote }}
+  {{- end }}
+  {{- if .Values.config.ollamaBaseURL }}
+  OLLAMA_BASE_URL: {{ .Values.config.ollamaBaseURL | quote }}
+  {{- end }}
+  {{- if .Values.config.anomstackURL }}
+  ANOMSTACK_URL: {{ .Values.config.anomstackURL | quote }}
+  {{- end }}
+  {{- if .Values.config.argocdURL }}
+  ARGOCD_URL: {{ .Values.config.argocdURL | quote }}
+  {{- end }}
+  {{- if .Values.config.argocdInsecure }}
+  ARGOCD_INSECURE: {{ .Values.config.argocdInsecure | quote }}
+  {{- end }}
+  {{- if .Values.config.kubeContext }}
+  KUBEWATCHER_CONTEXT: {{ .Values.config.kubeContext | quote }}
+  {{- end }}
+  {{- if .Values.config.kubeNamespace }}
+  KUBEWATCHER_NAMESPACE: {{ .Values.config.kubeNamespace | quote }}
+  {{- end }}
+  {{- if .Values.config.inCluster }}
+  KUBEWATCHER_IN_CLUSTER: {{ .Values.config.inCluster | quote }}
+  {{- end }}

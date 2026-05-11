@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/argues/kube-watcher/agent/internal/cd"
+	"github.com/argues/argus/agent/internal/cd"
 	"github.com/gorilla/websocket"
 )
 

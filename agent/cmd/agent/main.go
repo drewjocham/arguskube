@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/argues/kube-watcher/agent/internal/config"
-	"github.com/argues/kube-watcher/agent/internal/k8s"
-	"github.com/argues/kube-watcher/agent/internal/server"
-	"github.com/argues/kube-watcher/agent/internal/tunnel"
+	"github.com/argues/argus/agent/internal/config"
+	"github.com/argues/argus/agent/internal/k8s"
+	"github.com/argues/argus/agent/internal/server"
+	"github.com/argues/argus/agent/internal/tunnel"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -36,7 +36,7 @@ func main() {
 }
 
 func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
-	logger.Info("Starting KubeWatcher In-Cluster Agent")
+	logger.Info("Starting Argus In-Cluster Agent")
 
 	var tunnelClient *tunnel.Client
 	if cfg.SaaSToken == "" {

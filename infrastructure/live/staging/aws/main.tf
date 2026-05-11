@@ -1,9 +1,9 @@
 locals {
   environment  = "staging"
-  cluster_name = "kubewatcher-staging"
+  cluster_name = "argus-staging"
 
   tags = {
-    Project     = "kubewatcher"
+    Project     = "argus"
     Environment = local.environment
     ManagedBy   = "terraform"
     Stack       = "live/staging/aws"
@@ -34,7 +34,7 @@ module "platform" {
 }
 
 module "apps" {
-  source = "../../../modules/kubewatcher-helm"
+  source = "../../../modules/argus-helm"
 
   environment = local.environment
   chart_path  = "${path.module}/../../../../deploy/helm"

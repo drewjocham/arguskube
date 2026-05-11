@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
             offer_id=chosen.id,
             image=args.image,
             onstart_cmd=onstart,
-            label=cfg.get("tag", "kube-watcher-llm"),
+            label=cfg.get("tag", "argus-llm"),
             disk_gb=int(cfg["host"].get("min_disk_gb", 60)),
         )
         print(f"Instance #{instance_id} created. Waiting for port :{port} to be exposed…")

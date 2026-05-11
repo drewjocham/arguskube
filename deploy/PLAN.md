@@ -1,8 +1,8 @@
-# KubeWatcher — Deployment Architecture Plan
+# Argus — Deployment Architecture Plan
 
 ## 1. System Overview
 
-KubeWatcher is an **SRE console** for Kubernetes operations. It runs in three modes:
+Argus is an **SRE console** for Kubernetes operations. It runs in three modes:
 
 | Mode | Entry Point | Target |
 |------|-------------|--------|
@@ -13,7 +13,7 @@ KubeWatcher is an **SRE console** for Kubernetes operations. It runs in three mo
 ```
 # this plan is not even considering atomstack as a local launch option.
 ┌─────────────────────────────────────────────────────────────────┐
-│                        KubeWatcher SaaS                         │
+│                        Argus SaaS                         │
 │                                                                 │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────────────┐  │
 │  │ Frontend │  │ Backend  │  │ Alert    │  │ MCP Server     │  │
@@ -164,7 +164,7 @@ Alert Ingress ──PubSub──▶ GCP (prod)
 | Grafana | 1 | ✅ | Not needed if no cluster |
 | Ollama | 0 | ✅ | Use DeepSeek API instead |
 
-**Dev config:** `helm install kubewatcher -f values-dev.yaml`
+**Dev config:** `helm install argus -f values-dev.yaml`
 
 ### 4.2 Production
 | Component | Min | Max | Trigger |
@@ -250,12 +250,12 @@ For the initial release, the simpler path (Prometheus → alert-ingress → anom
 deploy/
 ├── PLAN.md                                    # This document
 ├── helm/
-│   ├── kubewatcher-backend/                   # Backend HTTP API
-│   ├── kubewatcher-frontend/                  # Vue SPA + nginx
-│   ├── kubewatcher-agent/                     # In-cluster DaemonSet
-│   ├── kubewatcher-alert-ingress/             # Webhook receiver
-│   ├── kubewatcher-mcp/                       # MCP AI tools server
-│   └── kubewatcher-monitoring/                # Prometheus + Grafana + Ollama
+│   ├── argus-backend/                   # Backend HTTP API
+│   ├── argus-frontend/                  # Vue SPA + nginx
+│   ├── argus-agent/                     # In-cluster DaemonSet
+│   ├── argus-alert-ingress/             # Webhook receiver
+│   ├── argus-mcp/                       # MCP AI tools server
+│   └── argus-monitoring/                # Prometheus + Grafana + Ollama
 └── terraform/
     ├── providers.tf                           # AWS/GCP/K8s providers
     ├── variables.tf                           # Input variables

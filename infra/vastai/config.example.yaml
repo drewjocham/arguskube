@@ -42,4 +42,4 @@ bootstrap:
   internal_port: 8000
 
 # Tag every instance we create so `llm_down.py` knows which ones are ours.
-tag: kube-watcher-llm
+tag: argus-llm

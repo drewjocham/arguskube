@@ -1,6 +1,6 @@
 # Self-hosted LLM infrastructure
 
-KubeWatcher's AI features speak the OpenAI Chat Completions API. By default
+Argus's AI features speak the OpenAI Chat Completions API. By default
 they hit DeepSeek's hosted endpoint, but you can point them at any
 OpenAI-compatible server. This directory contains IaC for two such backends:
 
@@ -58,7 +58,7 @@ picks the cheapest matching offer, rents it, runs the cloud-init script as
 the instance's `onstart`, then waits for the public port to come up.
 
 The endpoint it prints looks like `http://<ip>:<port>`. Add that, plus
-`$LLM_API_KEY`, to KubeWatcher's settings (see
+`$LLM_API_KEY`, to Argus's settings (see
 **Wiring the app** below).
 
 ## Quick start — GCP (backup / scale)
@@ -87,7 +87,7 @@ cycles, so the endpoint URL is stable even if the VM is reprovisioned.
 ## Wiring the app
 
 vLLM's OpenAI-compatible server can be substituted for DeepSeek without
-code changes. In KubeWatcher's **Settings → AI & Integrations** set:
+code changes. In Argus's **Settings → AI & Integrations** set:
 
 | Field | Value |
 |-------|-------|

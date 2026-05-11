@@ -18,7 +18,7 @@ variable "zone" {
 variable "name_prefix" {
   description = "Prefix applied to every resource name."
   type        = string
-  default     = "kubewatcher"
+  default     = "argus"
 }
 
 variable "machine_type" {

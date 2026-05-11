@@ -1,4 +1,4 @@
-# KubeWatcher — SRE Console
+# Argus — SRE Console
 
 A native macOS desktop application for Kubernetes operations. Built with [Wails v2](https://wails.io) (Go + Vue 3).
 
@@ -17,7 +17,7 @@ cd backend && wails dev
 
 ## Architecture
 
-KubeWatcher runs as a native macOS binary with two communication modes:
+Argus runs as a native macOS binary with two communication modes:
 
 - **Desktop mode** — Vue frontend calls Go directly via Wails bindings (`window.go.api.pkg.App.Method()`)
 - **SaaS mode** — Same methods exposed as HTTP endpoints on port 8080 (`POST /api/{MethodName}`)
@@ -115,7 +115,7 @@ cd view && npm run test:run
 
 ## Agent Pipeline
 
-KubeWatcher includes an automated development pipeline at `.kube-watcher/hooks/kube-pipeline.js`. It runs specialized sub-agents before and after each session:
+Argus includes an automated development pipeline at `.argus/hooks/kube-pipeline.js`. It runs specialized sub-agents before and after each session:
 
 - **Pre-flight** — Guard-rail agent reads `.context.md`, warns about fragile code
 - **Post-session** — Build check → Test suite → QA sweep → Architecture review → Test generation → Context update

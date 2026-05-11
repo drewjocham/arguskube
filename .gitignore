@@ -1,7 +1,7 @@
 # Build
 build/
-view/dist/
-view/node_modules/
+kube/view/dist/
+kube/view/node_modules/
 
 # Terraform
 **/*.tfstate
@@ -25,7 +25,7 @@ Thumbs.db
 *.dylib
 
 # Wails
-view/src/wailsjs/
+kube/view/src/wailsjs/
 
 # Terraform local state + provider downloads. The provider binaries are
 # multi-hundred-MB and trip GitHub's 100MB-per-file ceiling.
@@ -78,8 +78,8 @@ go.work.sum
 
 -e
 # Tests
-view/test-results/
-view/e2e/playwright-report/
+kube/view/test-results/
+kube/view/e2e/playwright-report/
 node_modules/.vite/
 
 # Infra — keep examples, ignore real config / state

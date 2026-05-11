@@ -12,7 +12,7 @@ variable "region" {
 variable "name_prefix" {
   description = "Prefix for every resource name (services, secrets)."
   type        = string
-  default     = "kubewatcher"
+  default     = "argus"
 }
 
 # ── Global config ─────────────────────────────────────────────────

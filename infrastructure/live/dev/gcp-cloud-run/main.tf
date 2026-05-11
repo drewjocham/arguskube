@@ -4,7 +4,7 @@ module "cloud_run" {
   project_id = var.project_id
   region     = var.region
 
-  name_prefix = "kubewatcher-dev"
+  name_prefix = "argus-dev"
   tier        = "free"
 
   service_account_email = var.service_account_email

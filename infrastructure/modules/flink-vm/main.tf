@@ -1,5 +1,5 @@
 # Flink VM module — provisions a single Compute Engine instance running
-# Apache Flink for the KubeWatcher anomaly-detection backend.
+# Apache Flink for the Argus anomaly-detection backend.
 #
 # Provider configuration is the caller's responsibility (root module).
 # This module is intentionally provider-config-free so it can be used
@@ -28,7 +28,7 @@ resource "google_compute_instance" "flink" {
 
   metadata = {
     flink-version    = var.flink_version
-    kubewatcher-role = "anomaly-detection"
+    argus-role = "anomaly-detection"
   }
 
   metadata_startup_script = templatefile("${path.module}/startup.sh", {
@@ -43,7 +43,7 @@ resource "google_compute_instance" "flink" {
     scopes = ["cloud-platform"]
   }
 
-  tags = ["flink", "kubewatcher"]
+  tags = ["flink", "argus"]
 
   depends_on = [google_service_account.flink_sa]
 }

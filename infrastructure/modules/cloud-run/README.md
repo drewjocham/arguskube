@@ -1,6 +1,6 @@
 # `cloud-run`
 
-GCP module: every KubeWatcher service deployed as a Cloud Run revision
+GCP module: every Argus service deployed as a Cloud Run revision
 (backend, frontend, mcp), plus the Secret Manager containers and IAM
 bindings they need.
 
@@ -19,8 +19,8 @@ This module creates the secret *containers* but never the *versions*.
 After `terraform apply`, populate the values yourself:
 
 ```sh
-echo -n "$DEEPSEEK_KEY" | gcloud secrets versions add kubewatcher-deepseek-api-key --data-file=-
-echo -n "$FLINK_KEY"    | gcloud secrets versions add kubewatcher-flink-api-key    --data-file=-
+echo -n "$DEEPSEEK_KEY" | gcloud secrets versions add argus-deepseek-api-key --data-file=-
+echo -n "$FLINK_KEY"    | gcloud secrets versions add argus-flink-api-key    --data-file=-
 ```
 
 That keeps secret values out of state and out of plan output.

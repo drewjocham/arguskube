@@ -18,7 +18,7 @@ variable "zone" {
 variable "name" {
   description = "Resource name prefix."
   type        = string
-  default     = "kube-watcher-llm"
+  default     = "argus-llm"
 }
 
 variable "machine_type" {

@@ -6,7 +6,7 @@ managed node group + cluster add-ons + optional scheduled scaling.
 This module is environment-agnostic — pass in the environment name and
 sizing and it will tune itself (NAT gateway count, public-API access,
 scaling schedule). It does **not** install Helm releases; pair it with
-`kubewatcher-helm` for that.
+`argus-helm` for that.
 
 ## Usage
 
@@ -15,7 +15,7 @@ module "platform" {
   source = "../../../modules/eks-platform"
 
   environment           = "dev"
-  cluster_name          = "kubewatcher-dev"
+  cluster_name          = "argus-dev"
   cluster_version       = "1.30"
   cluster_endpoint_public_access = true
 

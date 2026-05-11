@@ -2,7 +2,7 @@
 """Destroy vast.ai LLM instances.
 
 Usage:
-  python3 llm_down.py             # destroy every instance tagged kube-watcher-llm
+  python3 llm_down.py             # destroy every instance tagged argus-llm
   python3 llm_down.py 12345 6789  # destroy specific instance ids
   python3 llm_down.py --all       # destroy ALL of your vast.ai instances (careful)
 """
@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.all:
                 targets = [i.id for i in instances]
             else:
-                tag = "kube-watcher-llm"
+                tag = "argus-llm"
                 try:
                     cfg = load_config(args.config)
                     tag = cfg.get("tag", tag)

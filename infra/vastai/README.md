@@ -5,7 +5,7 @@ Three Python scripts that talk to vast.ai's REST API directly:
 | Script | What it does |
 |--------|--------------|
 | `llm_up.py` | Search for an offer matching `config.yaml`, rent it, run cloud-init, wait for the public port, print the endpoint. |
-| `llm_status.py` | List every instance tagged `kube-watcher-llm` (or `--all`) with its endpoint URL. |
+| `llm_status.py` | List every instance tagged `argus-llm` (or `--all`) with its endpoint URL. |
 | `llm_down.py` | Destroy every tagged instance (or specific ids). |
 
 `vastai_client.py` is the shared client + helpers; it has no `__main__`.
@@ -42,7 +42,7 @@ Relax any of these if `llm_up.py --dry-run` returns no offers.
 
 ## Tag-based ownership
 
-Every instance gets `label: kube-watcher-llm` (overridable via `tag:` in
+Every instance gets `label: argus-llm` (overridable via `tag:` in
 `config.yaml`). `llm_down.py` and `llm_status.py` filter on this label so
 they never touch instances you spun up for other purposes. Pass `--all` to
 override.
@@ -61,7 +61,7 @@ Content-Type: application/json
   "messages": [{"role": "user", "content": "ping"}] }
 ```
 
-Wire it into KubeWatcher via Settings (LLM Base URL = `http://<ip>:<port>/v1`,
+Wire it into Argus via Settings (LLM Base URL = `http://<ip>:<port>/v1`,
 LLM Model = whatever you served).
 
 ## Cost discipline

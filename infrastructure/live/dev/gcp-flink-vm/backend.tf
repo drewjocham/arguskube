@@ -1,6 +1,6 @@
 terraform {
   backend "gcs" {
-    bucket = "kubewatcher-tfstate"
+    bucket = "argus-tfstate"
     prefix = "live/dev/gcp-flink-vm"
   }
 }

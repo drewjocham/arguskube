@@ -82,7 +82,7 @@ systemctl start flink-jobmanager flink-taskmanager
 
 # Deploy Flink gateway as Docker container
 apt-get install -y docker.io
-docker pull ghcr.io/drewjocham/kubewatcher-flink-gateway:latest
+docker pull ghcr.io/drewjocham/argus-flink-gateway:latest
 docker run -d \
     --name flink-gateway \
     --restart always \
@@ -90,6 +90,6 @@ docker run -d \
     -e FLINK_URL=http://localhost:8081 \
     -e GATEWAY_PORT=${GATEWAY_PORT} \
     -e GATEWAY_API_KEY=${API_KEY} \
-    ghcr.io/drewjocham/kubewatcher-flink-gateway:latest
+    ghcr.io/drewjocham/argus-flink-gateway:latest
 
 echo "Flink deployment complete"

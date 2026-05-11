@@ -1,6 +1,6 @@
 # `infrastructure/`
 
-Terraform for KubeWatcher, organised the way a real SRE team would
+Terraform for Argus, organised the way a real SRE team would
 keep it: reusable modules in one place, per-environment compositions
 in another, bootstrap state isolated from everything else.
 
@@ -9,18 +9,18 @@ in another, bootstrap state isolated from everything else.
 ```
 infrastructure/
 ├── bootstrap/          # one-time per cloud account: state bucket + lock table
-│   ├── aws/            # creates s3://kubewatcher-tfstate + dynamodb lock
-│   └── gcp/            # creates gs://kubewatcher-tfstate
+│   ├── aws/            # creates s3://argus-tfstate + dynamodb lock
+│   └── gcp/            # creates gs://argus-tfstate
 │
 ├── modules/            # reusable, environment-agnostic building blocks
 │   ├── eks-platform/        # AWS: VPC + EKS + node group + scheduled scaling
-│   ├── kubewatcher-helm/    # Helm releases for every KubeWatcher component
+│   ├── argus-helm/    # Helm releases for every Argus component
 │   ├── flink-vm/            # GCP: Compute Engine VM running Apache Flink
 │   └── cloud-run/           # GCP: Cloud Run services (backend, frontend, mcp)
 │
 └── live/               # per-environment compositions (root modules)
     ├── dev/
-    │   ├── aws/             # EKS dev cluster + KubeWatcher releases
+    │   ├── aws/             # EKS dev cluster + Argus releases
     │   ├── gcp-flink-vm/    # Flink anomaly-detection VM
     │   └── gcp-cloud-run/   # Cloud Run dev deploy
     ├── staging/
@@ -78,7 +78,7 @@ terraform apply -var project_id=my-gcp-project ...
 
 | Goal                                       | Where to look                                       |
 | ------------------------------------------ | --------------------------------------------------- |
-| Add a new Helm chart to all environments   | `modules/kubewatcher-helm/main.tf` + new variable   |
+| Add a new Helm chart to all environments   | `modules/argus-helm/main.tf` + new variable   |
 | Bump the EKS Kubernetes version            | `live/<env>/aws/main.tf` → `cluster_version`        |
 | Resize the dev node group                  | `live/dev/aws/main.tf` → `node_group_*`             |
 | Switch to a private cluster API in staging | `live/staging/aws/main.tf` → `cluster_endpoint_public_access = false` |

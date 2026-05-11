@@ -1,6 +1,6 @@
 # Argus Agents
 
-Multi-agent AI system for KubeWatcher — a framework of specialised LLM-powered agents for Kubernetes operations.
+Multi-agent AI system for Argus — a framework of specialised LLM-powered agents for Kubernetes operations.
 
 ## Installation
 
