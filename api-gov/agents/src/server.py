@@ -18,6 +18,9 @@ from pydantic import BaseModel
 
 from src.config import config
 from src.database import db
+import asyncio
+
+from src.anomaly.batch_worker import batch_loop
 from src.anomaly.counters import AnomalyCounters
 from src.anomaly.stats import RunningStats
 from src.anomaly.structural import FieldTracker
@@ -30,7 +33,7 @@ from src.graphs.sentinel import scan as sentinel_scan
 
 logger = logging.getLogger(__name__)
 
-# ── OpenTelemetry setup ─────────────────────────────────────────
+# OpenTelemetry
 
 resource = Resource.create({"service.name": "api-gov-agents"})
 
@@ -74,7 +77,8 @@ async def startup() -> None:
     await db.connect()
     from src.redis_client import redis_client
     await redis_client.connect()
-    logger.info("agent service started")
+    asyncio.create_task(batch_loop())
+    logger.info("agent service started (batch worker running)")
 
 
 @app.on_event("shutdown")
@@ -127,7 +131,7 @@ class HealRequest(BaseModel):
     report: dict
 
 
-# ── Endpoints 
+# Endpoints 
 
 @app.post("/analyze/{spec_id}")
 async def analyze_spec(spec_id: str) -> AnalyzeResponse:
@@ -224,7 +228,15 @@ async def metrics_endpoint() -> dict:
     return {"status": "metrics_available_via_otel"}
 
 
-# ── Anomaly Endpoints ──────────────────────────────────────────
+# Anomaly Endpoints
+
+
+@app.post("/anomaly/flush")
+async def flush_batches() -> dict:
+    """Force an immediate batch cycle — drain all pending candidates to LLM."""
+    from src.anomaly.batch_worker import run_batch_cycle
+    await run_batch_cycle()
+    return {"status": "flush_complete"}
 
 
 @app.get("/anomaly/stats/{spec_id}")

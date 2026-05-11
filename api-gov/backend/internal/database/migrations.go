@@ -27,7 +27,7 @@ func (db *DB) migrate(ctx context.Context) error {
 			request_body JSONB,
 			responses JSONB,
 			parameters JSONB,
-			security TEXT[] DEFAULT '{}',
+			security JSONB DEFAULT '[]'::jsonb,
 			tags TEXT[] DEFAULT '{}',
 			embedding vector(768)
 		)`,

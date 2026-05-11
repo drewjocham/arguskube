@@ -7,7 +7,9 @@ from langgraph.graph import END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.redis import RedisSaver
 
+# pyrefly: ignore [missing-import]
 from src.config import config
+# pyrefly: ignore [missing-import]
 from src.graphs.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -21,8 +23,7 @@ Return a JSON array:
 
 Endpoint:
 {m}')
-```
-
+"""
 
 async def load_endpoints(state: AgentState) -> dict:
     from src.database import db

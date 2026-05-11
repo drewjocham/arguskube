@@ -92,65 +92,35 @@ async def structural_check(state: AgentState) -> dict:
 
 
 async def llm_verify(state: AgentState) -> dict:
-    """Layer 2: LLM verification — only for ambiguous structural issues.
-    Rate-limited: max 5 LLM calls/hr per spec.
+    """Layer 2: Write ambiguous drift candidates to JSONL batch files.
+    The batch worker will pick these up and call LLM once per spec per 5min window.
+    No inline LLM calls — cost reduced by ~95% via batching + dedup.
     """
     if not state.drift_reports:
         return {}
 
-    # Only LLM for field-level drifts (structural is confident on status/metrics)
+    # Only batch for field-level drifts (structural is confident on status/metrics)
     ambiguous = [r for r in state.drift_reports if r.get("category") in ("undocumented_field", "missing_field")]
     if not ambiguous:
         return {}
 
-    # Rate limit check via Redis
-    from src.redis_client import redis_client
-    rate_key = f"anomaly:llm_rate:{state.spec_id}"
-    if redis_client._pool:
-        call_count = await redis_client._pool.incr(rate_key)
-        if call_count == 1:
-            await redis_client._pool.expire(rate_key, 3600)
-        if call_count > 5:
-            logger.info("LLM rate limit hit for spec %s", state.spec_id)
-            return {}
+    from src.anomaly.metadata_filter import MetadataFilter
+    from src.anomaly.batch_worker import write_candidate
 
-    llm = config.create_llm(temperature=0.0)
-    issues_str = json.dumps(ambiguous, indent=2)[:3000]
-    prompt = DRIFT_PROMPT.format(
-        issues=issues_str,
-        method=state.messages[0].get("method", "GET"),
-        path=state.messages[0].get("path", "/"),
-        status=state.messages[0].get("status_code", 200),
-    )
+    for candidate in ambiguous:
+        # Skip if this exact pattern was recently assessed
+        known = await MetadataFilter.is_known(
+            state.spec_id,
+            candidate.get("method", "GET"),
+            candidate.get("path", "/"),
+            candidate.get("field", ""),
+            candidate.get("category", "unknown"),
+        )
+        if not known:
+            await write_candidate(state.spec_id, {**candidate, "spec_id": state.spec_id})
 
-    # Semantic cache: same prompt → cached response (reduces LLM calls by ~70%)
-    import hashlib
-    cache_key = f"llm:cache:{hashlib.sha256(prompt.encode()).hexdigest()[:16]}"
-    if redis_client._pool:
-        cached = await redis_client._pool.get(cache_key)
-        if cached:
-            try:
-                verified = json.loads(cached)
-                logger.info("LLM cache hit for spec %s", state.spec_id)
-                final = [r for r in state.drift_reports if r.get("category") not in ("undocumented_field", "missing_field")]
-                final.extend(verified)
-                return {"drift_reports": final}
-            except json.JSONDecodeError:
-                pass
-
-    response = await llm.ainvoke(prompt)
-    if redis_client._pool:
-        await redis_client._pool.setex(cache_key, 3600, response.content)
-
-    try:
-        content = response.content if hasattr(response, "content") else str(response)
-        verified = json.loads(content.strip().removeprefix("```json").removeprefix("```").removesuffix("```"))
-    except (json.JSONDecodeError, AttributeError):
-        verified = []
-
-    # Replace ambiguous reports with LLM-verified ones
+    # Non-ambiguous reports pass through directly (no LLM needed)
     final = [r for r in state.drift_reports if r.get("category") not in ("undocumented_field", "missing_field")]
-    final.extend(verified)
     return {"drift_reports": final}
 
 

@@ -1,0 +1,44 @@
+# macOS / editor noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Secrets — never check in
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# Go
+backend/build/
+*.test
+*.out
+coverage.txt
+
+# Logs and runtime artifacts
+*.log
+tmp/
+.cache/
+
+# Docker
+docker-compose.override.yml
+
+# Local DB dumps
+*.dump
+*.sql.gz

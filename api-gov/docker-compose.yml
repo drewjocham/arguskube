@@ -39,7 +39,7 @@ services:
       PORT: "8080"
       DATABASE_URL: "postgres://api-gov:api-gov@postgres:5432/api-gov?sslmode=disable"
       AGENT_SERVICE_URL: "http://agent:8001"
-      LLM_API_KEY: "${LLM_API_KEY}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_ENDPOINT}"
     depends_on:
       postgres:
@@ -52,10 +52,14 @@ services:
     ports:
       - "8001:8001"
     environment:
-      AGENT_SILICONFLOW_API_KEY: "${SILICONFLOW_API_KEY}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY}"
+      AGENT_LLM_MODEL: "deepseek-chat"
       AGENT_DATABASE_URL: "postgresql+psycopg://api-gov:api-gov@postgres:5432/api-gov"
       AGENT_REDIS_URL: "redis://redis:6379/0"
+      LLM_BATCH_DIR: "/data/batches"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_ENDPOINT}"
+    volumes:
+      - batch-data:/data/batches
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,3 +69,4 @@ services:
 volumes:
   pgdata:
   redis-data:
+  batch-data:

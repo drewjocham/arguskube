@@ -13,7 +13,7 @@ from typing import Any
 from src.redis_client import redis_client
 
 # Redis key prefixes
-HLL_KEY = "anomaly:hll:{spec_id}:{metric}"          # HyperLogLog for cardinality
+HLL_KEY = "anomaly:hll:{spec_id}:{metric}"            # HyperLogLog for cardinality
 RATE_KEY = "anomaly:rate:{spec_id}:{metric}:{window}" # INCR counter per window
 STATUS_KEY = "anomaly:status:{spec_id}:{code}"        # Status code counter
 FIELD_KEY = "anomaly:field:{spec_id}:{endpoint}"      # Field presence Bloom-like
