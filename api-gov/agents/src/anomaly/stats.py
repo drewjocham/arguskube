@@ -45,7 +45,7 @@ class RunningStats:
         mean = float(raw.get(b"mean", raw.get("mean", 0.0)))
         m2 = float(raw.get(b"m2", raw.get("m2", 0.0)))
 
-        # Welford's online update
+        # Welford's online
         n += 1
         delta = value - mean
         mean += delta / n

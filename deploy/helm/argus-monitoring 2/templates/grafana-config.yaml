@@ -1,0 +1,17 @@
+{{- if .Values.grafana.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "argus-monitoring.fullname" . }}-grafana-datasources
+  labels:
+    {{- include "argus-monitoring.labels" . | nindent 4 }}
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: {{ .Values.grafana.prometheusURL | default "http://argus-prometheus:9090" | quote }}
+        access: proxy
+        isDefault: true
+{{- end }}

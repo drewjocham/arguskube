@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/argus/api-gov/internal/models"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type DriftStore struct {
@@ -19,12 +20,13 @@ func NewDriftStore(db *DB) *DriftStore {
 
 func (d *DriftStore) Create(ctx context.Context, r *models.DriftReport) error {
 	r.ID = uuid.New().String()
-	r.CreatedAt = time.Now()
+	r.CreatedAt = time.Now().UTC()
 
 	q := InsertInto("drift_reports",
 		"id", "spec_id", "endpoint_id", "severity", "category", "score",
 		"source", "observed", "expected", "actual", "suggestion", "created_at")
 
+	// Assuming the builder only formats column names here, we pass args manually
 	sql, _ := q.Build()
 	_, err := d.db.Pool.Exec(ctx, sql,
 		r.ID, r.SpecID, r.EndpointID, r.Severity, r.Category, r.Score,
@@ -37,30 +39,44 @@ func (d *DriftStore) Create(ctx context.Context, r *models.DriftReport) error {
 }
 
 func (d *DriftStore) CreateBatch(ctx context.Context, reports []*models.DriftReport) error {
-	tx, err := d.db.Pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
+	batch := &pgx.Batch{}
 
 	for _, r := range reports {
 		r.ID = uuid.New().String()
-		r.CreatedAt = time.Now()
+		r.CreatedAt = time.Now().UTC()
 
-		_, err := tx.Exec(ctx,
+		batch.Queue(
 			`INSERT INTO drift_reports (id, spec_id, endpoint_id, severity, category, score, source, observed, expected, actual, suggestion, created_at)
 			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
 			r.ID, r.SpecID, r.EndpointID, r.Severity, r.Category, r.Score,
 			r.Source, r.Observed, r.Expected, r.Actual, r.Suggestion, r.CreatedAt,
 		)
-		if err != nil {
-			return fmt.Errorf("insert drift report: %w", err)
+	}
+
+	// Send all queries in a single network round-trip
+	br := d.db.Pool.SendBatch(ctx, batch)
+	defer br.Close()
+
+	for i := 0; i < len(reports); i++ {
+		if _, err := br.Exec(); err != nil {
+			return fmt.Errorf("batch insert drift report at index %d: %w", i, err)
 		}
 	}
-	return tx.Commit(ctx)
+
+	return br.Close()
 }
 
 func (d *DriftStore) List(ctx context.Context, specID string, filter *models.DriftFilter) ([]*models.DriftReport, int, error) {
+	// Repeatable Read to ensure the COUNT matches the data rows retrieved
+	tx, err := d.db.Pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.RepeatableRead,
+		AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("begin list tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	q := Select("drift_reports",
 		"id", "spec_id", "endpoint_id", "severity", "category", "score",
 		"source", "observed", "expected", "actual", "suggestion", "resolved", "created_at", "resolved_at").
@@ -69,35 +85,29 @@ func (d *DriftStore) List(ctx context.Context, specID string, filter *models.Dri
 		Limit(filter.Limit).
 		Offset(filter.Offset())
 
+	countQ := Select("drift_reports", "COUNT(*)").Where("spec_id", OpEq, specID)
+
 	if filter.Resolved != nil {
 		q.Where("resolved", OpEq, *filter.Resolved)
-	}
-	if filter.Severity != "" {
-		q.Where("severity", OpEq, filter.Severity)
-	}
-	if filter.Category != "" {
-		q.Where("category", OpEq, filter.Category)
-	}
-
-	countQ := Select("drift_reports", "COUNT(*)").Where("spec_id", OpEq, specID)
-	if filter.Resolved != nil {
 		countQ.Where("resolved", OpEq, *filter.Resolved)
 	}
 	if filter.Severity != "" {
+		q.Where("severity", OpEq, filter.Severity)
 		countQ.Where("severity", OpEq, filter.Severity)
 	}
 	if filter.Category != "" {
+		q.Where("category", OpEq, filter.Category)
 		countQ.Where("category", OpEq, filter.Category)
 	}
 
 	countSQL, countArgs := countQ.Build()
 	var total int
-	if err := d.db.Pool.QueryRow(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+	if err := tx.QueryRow(ctx, countSQL, countArgs...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count drift reports: %w", err)
 	}
 
 	sql, args := q.Build()
-	rows, err := d.db.Pool.Query(ctx, sql, args...)
+	rows, err := tx.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list drift reports: %w", err)
 	}
@@ -115,10 +125,24 @@ func (d *DriftStore) List(ctx context.Context, specID string, filter *models.Dri
 		}
 		reports = append(reports, r)
 	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, 0, fmt.Errorf("commit list tx: %w", err)
+	}
+
 	return reports, total, nil
 }
 
 func (d *DriftStore) Summary(ctx context.Context, specID string) (*models.DriftSummary, error) {
+	tx, err := d.db.Pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.RepeatableRead,
+		AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("begin summary tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
 	q := Select("drift_reports",
 		"COUNT(*)", "COALESCE(SUM(CASE WHEN severity='critical' THEN 1 ELSE 0 END), 0)",
 		"COALESCE(SUM(CASE WHEN severity='high' THEN 1 ELSE 0 END), 0)",
@@ -129,11 +153,12 @@ func (d *DriftStore) Summary(ctx context.Context, specID string) (*models.DriftS
 	sql, args := q.Build()
 	summary := &models.DriftSummary{SpecID: specID}
 
-	if err := d.db.Pool.QueryRow(ctx, sql, args...).Scan(
+	if err := tx.QueryRow(ctx, sql, args...).Scan(
 		&summary.TotalDrifts, &summary.CriticalCount, &summary.HighCount,
 		&summary.AvgScore, &summary.LastDetected,
 	); err != nil {
-		return summary, nil
+		// Stop swallowing errors here
+		return nil, fmt.Errorf("query summary aggregates: %w", err)
 	}
 
 	catQ := Select("drift_reports", "category", "COUNT(*)").
@@ -142,9 +167,9 @@ func (d *DriftStore) Summary(ctx context.Context, specID string) (*models.DriftS
 		GroupBy("category")
 
 	catSQL, catArgs := catQ.Build()
-	rows, err := d.db.Pool.Query(ctx, catSQL, catArgs...)
+	rows, err := tx.Query(ctx, catSQL, catArgs...)
 	if err != nil {
-		return summary, nil
+		return nil, fmt.Errorf("query summary categories: %w", err)
 	}
 	defer rows.Close()
 
@@ -153,15 +178,20 @@ func (d *DriftStore) Summary(ctx context.Context, specID string) (*models.DriftS
 		var cat string
 		var count int
 		if err := rows.Scan(&cat, &count); err != nil {
-			break
+			return nil, fmt.Errorf("scan summary categories: %w", err)
 		}
 		summary.ByCategory[cat] = count
 	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit summary tx: %w", err)
+	}
+
 	return summary, nil
 }
 
 func (d *DriftStore) Resolve(ctx context.Context, id string) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	_, err := d.db.Pool.Exec(ctx,
 		`UPDATE drift_reports SET resolved = TRUE, resolved_at = $1 WHERE id = $2`,
 		now, id,
