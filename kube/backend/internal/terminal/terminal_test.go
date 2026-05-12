@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -18,9 +19,21 @@ func TestNew(t *testing.T) {
 func TestStartAndWrite(t *testing.T) {
 	term := New(slog.New(slog.NewTextHandler(os.Stderr, nil)))
 
-	var output strings.Builder
+	// strings.Builder isn't safe for concurrent use; OnOutput is called from
+	// the readLoop goroutine while the test goroutine inspects the buffer.
+	var (
+		mu     sync.Mutex
+		output strings.Builder
+	)
 	term.OnOutput = func(data string) {
+		mu.Lock()
+		defer mu.Unlock()
 		output.WriteString(data)
+	}
+	snapshot := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return output.String()
 	}
 
 	// Start with a simple shell simulation — use "sh" with output.
@@ -38,8 +51,8 @@ func TestStartAndWrite(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// We should see "hello" somewhere.
-	if !strings.Contains(output.String(), "hello") {
-		t.Logf("output so far: %q", output.String())
+	if !strings.Contains(snapshot(), "hello") {
+		t.Logf("output so far: %q", snapshot())
 	}
 
 	// Write "exit" to clean up.

@@ -68,8 +68,9 @@ func (t *Terminal) Start(shell string, rows, cols uint16) error {
 		slog.Int("cols", int(cols)),
 	)
 
-	// Read output in background.
-	go t.readLoop()
+	// Read output in background. Pass ptmx explicitly so a subsequent
+	// Start() reassigning t.ptmx does not race with this goroutine.
+	go t.readLoop(ptmx)
 
 	return nil
 }
@@ -125,10 +126,13 @@ func (t *Terminal) closeLocked() error {
 	return nil
 }
 
-func (t *Terminal) readLoop() {
+// readLoop reads from the given PTY file and calls OnOutput. The file is
+// passed in (rather than read off t.ptmx) so a later Start() that swaps
+// t.ptmx cannot race with this goroutine.
+func (t *Terminal) readLoop(ptmx *os.File) {
 	buf := make([]byte, 8192)
 	for {
-		n, err := t.ptmx.Read(buf)
+		n, err := ptmx.Read(buf)
 		if n > 0 && t.OnOutput != nil {
 			t.OnOutput(string(buf[:n]))
 		}
