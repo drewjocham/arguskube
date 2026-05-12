@@ -1,0 +1,32 @@
+MODIFIED FILES:
+===============
+1. internal/k8s/client.go
+   - Added appsv1 import
+   - Expanded StartInformers() to initialize 5 informers (pods, nodes, services, deployments, events)
+   - Added GetInformerFactory() method
+   - Added GetPods(), GetNodes(), GetServices(), GetDeployments(), GetEvents() accessor methods
+   - All use informer listers for cached reads
+
+2. internal/server/server.go
+   - Added imports: fmt, corev1
+   - Added 5 new types: TopologyNode, TopologyEdge, TopologyGraph, MetricsFrame, NodeMetrics, PodMetrics
+   - Updated registerRoutes() to add 5 new endpoints
+   - Added handleGetEvents(), handleGetDeployments(), handleGetServices(), handleGetTopology(), handleStreamMetrics()
+   - Added buildMetricsFrame() helper method
+   - Topology endpoint builds node-edge graph using label selector matching
+
+CREATED FILES:
+==============
+1. agent/Dockerfile
+   - Multi-stage build for static binary
+   - golang:1.26-alpine -> alpine:3.21
+
+2. agent/deploy/helm/kubewatcher-agent/Chart.yaml
+3. agent/deploy/helm/kubewatcher-agent/values.yaml
+4. agent/deploy/helm/kubewatcher-agent/templates/_helpers.tpl
+5. agent/deploy/helm/kubewatcher-agent/templates/daemonset.yaml
+6. agent/deploy/helm/kubewatcher-agent/templates/serviceaccount.yaml
+7. agent/deploy/helm/kubewatcher-agent/templates/clusterrole.yaml
+8. agent/deploy/helm/kubewatcher-agent/templates/clusterrolebinding.yaml
+
+All files follow Go and Kubernetes best practices.

@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "alert-ingress.fullname" . }}-vector-config
+  labels:
+    {{- include "alert-ingress.labels" . | nindent 4 }}
+data:
+  vector.toml: |
+    [api]
+    enabled = true
+    address = "0.0.0.0:8686"
+
+    [sources.webhook]
+    type = "http"
+    address = "0.0.0.0:{{ .Values.service.port }}"
+    path = "/webhooks/anomstack"
+    encoding = "json"
+
+    [transforms.to_alert]
+    type = "remap"
+    inputs = ["webhook"]
+    source = """
+      score = .threshold
+      smooth = .anomaly_details.metric_score_smooth
+      if !is_nullish(smooth) {
+        score = smooth
+      }
+
+      severity = "warning"
+      if !is_nullish(score) {
+        v = to_float!(score)
+        if v > 0.9 {
+          severity = "critical"
+        }
+      }
+
+      metric_value = 0.0
+      mv = .anomaly_details.metric_value
+      if !is_nullish(mv) {
+        metric_value = mv
+      }
+
+      description = .title
+      if !is_nullish(.message) {
+        description = .message
+      }
+
+      . = {
+        "id": uuid_v4(),
+        "source": "anomstack",
+        "severity": severity,
+        "title": .title,
+        "description": description,
+        "metric_name": .metric_name,
+        "metric_value": metric_value,
+        "score": score,
+        "threshold": .threshold,
+        "labels": {},
+        "timestamp": now()
+      }
+    """
+
+    [sinks.stdout]
+    type = "console"
+    inputs = ["to_alert"]
+    encoding.codec = "json"
+    target = "stdout"
+{{- if .Values.sinks.s3.enabled }}
+    [sinks.s3]
+    type = "aws_s3"
+    inputs = ["to_alert"]
+    bucket = "{{ .Values.sinks.s3.bucket }}"
+    key_prefix = "alerts/dt=%F/"
+    region = "{{ .Values.sinks.s3.region }}"
+    encoding.codec = "json"
+    compression = "gzip"
+    batch.max_bytes = 10485760
+    batch.timeout_secs = 60
+{{- end }}
+{{- if .Values.sinks.gcpPubSub.enabled }}
+    [sinks.gcp_pubsub]
+    type = "gcp_pubsub"
+    inputs = ["to_alert"]
+    project = "{{ .Values.sinks.gcpPubSub.project }}"
+    topic = "{{ .Values.sinks.gcpPubSub.topic }}"
+    encoding.codec = "json"
+{{- end }}

@@ -1,0 +1,65 @@
+{{- if .Values.vector.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubewatcher-agent.fullname" . }}-vector-config
+  labels:
+    {{- include "kubewatcher-agent.labels" . | nindent 4 }}
+data:
+  vector.toml: |
+    [api]
+    enabled = false
+
+    [sources.k8s_logs]
+    type = "kubernetes_logs"
+    auto_partial_merge = true
+    glob_minimum_cooldown_ms = 15000
+
+    [sources.host_metrics]
+    type = "host_metrics"
+    scrape_interval_secs = 30
+    collectors = ["cpu", "memory", "disk", "load", "host", "network"]
+
+    [transforms.enrich_logs]
+    type = "remap"
+    inputs = ["k8s_logs"]
+    source = """
+      ._service = "kube-agent"
+      ._node = get!(., "kubernetes.host") ?? "unknown"
+    """
+
+    [sinks.stdout_logs]
+    type = "console"
+    inputs = ["enrich_logs"]
+    encoding.codec = "json"
+    target = "stdout"
+
+    [sinks.stdout_metrics]
+    type = "console"
+    inputs = ["host_metrics"]
+    encoding.codec = "json"
+    target = "stdout"
+{{- if .Values.vector.sinks.s3.enabled }}
+    [sinks.s3_logs]
+    type = "aws_s3"
+    inputs = ["enrich_logs"]
+    bucket = "{{ .Values.vector.sinks.s3.bucket }}"
+    key_prefix = "agent/logs/dt=%F/"
+    region = "{{ .Values.vector.sinks.s3.region }}"
+    encoding.codec = "json"
+    compression = "gzip"
+    batch.max_bytes = 10485760
+    batch.timeout_secs = 60
+
+    [sinks.s3_metrics]
+    type = "aws_s3"
+    inputs = ["host_metrics"]
+    bucket = "{{ .Values.vector.sinks.s3.bucket }}"
+    key_prefix = "agent/metrics/dt=%F/"
+    region = "{{ .Values.vector.sinks.s3.region }}"
+    encoding.codec = "json"
+    compression = "gzip"
+    batch.max_bytes = 10485760
+    batch.timeout_secs = 60
+{{- end }}
+{{- end }}

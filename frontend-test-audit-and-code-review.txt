@@ -1,0 +1,679 @@
+================================================================================
+  KubeWatcher — Frontend Test Audit & Code Review
+  Generated: May 10, 2026
+================================================================================
+
+TABLE OF CONTENTS
+  1. Test Coverage Summary
+  2. Utility Tests
+  3. Composable Tests
+  4. Store Tests
+  5. Component Tests
+  6. E2E Tests
+  7. Go Backend Tests
+  8. Code Review — Vue/JS Frontend
+  9. Code Review — Go Backend
+  10. Top 10 Critical Gaps
+
+================================================================================
+1. TEST COVERAGE SUMMARY
+================================================================================
+
+  Layer        Files  With Tests  Untested  Coverage
+  ───────────  ─────  ──────────  ────────  ────────
+  Utils            5           4         1      80%
+  Composables     20          17         3      85%
+  Stores          10           7         3      70%
+  Components      48          16        32      33%
+  Go Backend      65+         44+       21+     68%
+
+────────────────────────────────────────────────────────────────────────────────
+  Total test files: 45 frontend + 44 backend = 89
+  Missing tests needed: ~38 unit/component + 8+ E2E flows + ~21 Go packages
+────────────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+2. UTILITY TESTS — view/src/utils/
+================================================================================
+
+  STATUS KEY:
+    ✅ = Has adequate tests
+    ⚠️  = Partially tested
+    ❌ = Missing tests
+
+  ┌─────────────────────────────┬────────┬───────┬──────────────────────────────────┐
+  │ File                        │ Status │ Tests │ Notes                            │
+  ├─────────────────────────────┼────────┼───────┼──────────────────────────────────┤
+  │ logQuery.js                 │ ✅     │    11 │ label filtering, fix syntax,      │
+  │                             │        │       │ suggestions                      │
+  │ parseCodeBlocks.js          │ ✅     │     8 │ fences, language tags, edge cases│
+  │ parseRunbookSegments.js     │ ✅     │    10 │ headings, sections, slugify      │
+  │ renderMarkdown.js           │ ✅     │    11 │ HTML sanitization, XSS prevention│
+  │ logHighlight.js             │ ❌     │     0 │ 9 regex rules, dedup logic       │
+  └─────────────────────────────┴────────┴───────┴──────────────────────────────────┘
+
+  logHighlight.js (68 lines) — Missed Tests:
+
+    tokenize() needs testing for:
+    □ FATAL/PANIC level regex
+    □ ERROR/ERR level regex
+    □ WARN/WARNING level regex
+    □ INFO level regex
+    □ DEBUG/TRACE level regex
+    □ HTTP method regex (GET, POST, PUT, DELETE, etc.)
+    □ IP address regex (IPv4)
+    □ Duration regex (e.g. "3.2s", "150ms")
+    □ Quoted string regex
+    □ Key=value pattern regex
+    □ Overlapping matches (e.g. IP inside quoted string)
+    □ Null/non-string input (number, object, undefined)
+    □ Empty string input
+    □ No-match (plain text, single segment)
+    □ Deduplication of overlapping hits
+
+
+================================================================================
+3. COMPOSABLE TESTS — view/src/composables/
+================================================================================
+
+  ┌──────────────────────────┬────────┬───────┬────────────────────────────────────┐
+  │ File                     │ Status │ Tests │ Notes                              │
+  ├──────────────────────────┼────────┼───────┼────────────────────────────────────┤
+  │ useAlerts.js             │ ✅     │    97 │ refresh, diagnose, error handling  │
+  │ useArgusCD.js            │ ✅     │   145 │ status, apps, sync, rollback       │
+  │ useBridge.js             │ ✅     │   467 │ Wails + SaaS mode, error paths     │
+  │ useCluster.js            │ ✅     │    74 │ topology fetch, namespace arg      │
+  │ useData.js               │ ✅     │  1197 │ features, chat, notebooks,         │
+  │                          │        │       │ runbooks, incidents, workflows     │
+  │ useLogs.js               │ ✅     │   249 │ pod logs, streaming, query         │
+  │ useManifestEdit.js       │ ✅     │   139 │ open/close/apply, content guard    │
+  │ useMetrics.js            │ ✅     │    97 │ metrics refresh, cost estimate     │
+  │ useMisc.js               │ ✅     │   202 │ code block, AI suggestion          │
+  │ useMonitoring.js         │ ✅     │   250 │ argus scan, vulnerabilities        │
+  │ useNetwork.js            │ ✅     │   110 │ service pods fetch                 │
+  │ usePods.js               │ ✅     │   180 │ pods, revisions, VPA               │
+  │ useResources.js          │ ✅     │   246 │ list, detail, namespaces           │
+  │ useSetup.js              │ ✅     │   571 │ tools, anomaly CRUD                │
+  │ useShell.js              │ ✅     │   175 │ terminal, pod exec                 │
+  │ useTerminalDispatch.js   │ ✅     │    55 │ pending command lifecycle          │
+  │ useToast.js              │ ✅     │   111 │ add/remove, duration, auto-remove  │
+  │ useBackgroundTasks.js    │ ❌     │     0 │ task lifecycle, singleton state     │
+  │ useEvents.js             │ ❌     │     0 │ Wails event sub, cleanup           │
+  │ useSpotCheck.js          │ ❌     │     0 │ event handling, runAll/runOne      │
+  └──────────────────────────┴────────┴───────┴────────────────────────────────────┘
+
+  useBackgroundTasks.js (109 lines) — Missed Tests:
+
+    □ Task lifecycle: start -> complete -> get -> clear
+    □ Task lifecycle: start -> fail -> get -> clear
+    □ Overwriting existing task (update with same key)
+    □ Shared singleton state across callers
+    □ hasTask() for existing and non-existing keys
+    □ isRunning() state transitions (running -> completed -> running)
+    □ lastResult() returns result only when status=completed
+    □ lastResult() returns null when status=running or failed
+    □ clearTask() removes task entirely
+    □ getTask() returns null for non-existing key
+    □ meta passthrough in startTask()
+    □ Timestamps (ISO strings) on start/complete/fail
+
+  useEvents.js (30 lines) — Missed Tests:
+
+    □ Subscribes to Wails event on mount (onMounted)
+    □ Calls EventsOn with correct event name
+    □ Calls cancelFn on unmount (onUnmounted)
+    □ Gracefully handles missing window.runtime
+    □ Gracefully handles missing EventsOn function
+    □ Double subscription behavior
+    □ Callback invoked on event trigger
+    □ Cancel function returned
+
+  useSpotCheck.js (43 lines) — Missed Tests:
+
+    □ Event subscription sets active ref correctly
+    □ null/undefined data resets active to null
+    □ runAll() calls callGo with correct method
+    □ runOne(name) calls callGo with correct method
+    □ runOne() returns early when name is empty
+    □ Error handling: runAll catches and warns
+    □ Error handling: runOne catches and warns
+    □ active ref shape matches { checkName, description }
+
+  useBridge.js (110 lines) — Coverage Gaps (partial):
+
+    □ cachedCallGo TTL behavior (DEFAULT_TTL=30s, FAST_TTL=5s)
+    □ cachedCallGo cache hit returns cached value
+    □ cachedCallGo cache miss calls callGo
+    □ invalidateCache() clears specific entry
+    □ invalidateCachePrefix() clears by prefix pattern
+    □ Cache does not grow unbounded (eviction test)
+
+
+================================================================================
+4. STORE TESTS — view/src/stores/
+================================================================================
+
+  ┌─────────────────────────┬────────┬───────┬────────────────────────────────────┐
+  │ File                    │ Status │ Tests │ Notes                              │
+  ├─────────────────────────┼────────┼───────┼────────────────────────────────────┤
+  │ argusContext.js         │ ✅     │     7 │ set, clear, replace, consumeForSend│
+  │ notifications.js        │ ✅     │    14 │ add/remove, cap eviction, sort     │
+  │ outputCapture.js        │ ✅     │    11 │ ANSI stripping, buffer lifecycle   │
+  │ runbookTerminals.js     │ ✅     │    13 │ pins, overrides, localStorage      │
+  │ savedFilters.js         │ ✅     │    11 │ CRUD, dedup, MAX_ENTRIES cap       │
+  │ terminalDispatch.js     │ ✅     │     8 │ lifecycle, guards, requestId       │
+  │ uiPrefs.js              │ ✅     │     8 │ width clamping, persistence        │
+  │ agentAnalysis.js        │ ❌     │     0 │ checklist CRUD, dedup, validation  │
+  │ appearance.js           │ ❌     │     0 │ theme/sliders, DOM manipulation    │
+  │ auth.js                 │ ❌     │     0 │ login/OAuth, session, 9 API paths  │
+  └─────────────────────────┴────────┴───────┴────────────────────────────────────┘
+
+  agentAnalysis.js (30 lines) — Missed Tests:
+
+    □ Default checklist has 5 items
+    □ addItem() adds non-duplicate item
+    □ addItem() rejects duplicate item
+    □ addItem() guards against null/empty
+    □ removeItem() removes at valid index
+    □ removeItem() handles invalid index (no crash)
+    □ updateItem() updates at valid index
+    □ updateItem() validates truthy + non-empty after trim
+    □ updateItem() handles out-of-bounds index
+
+  appearance.js (224 lines) — Missed Tests:
+
+    □ Store initialization from localStorage
+    □ Fallback to defaults when localStorage empty
+    □ clamp() handles NaN, Infinity, negative, over-max
+    □ resolveTheme('dark') returns 'dark'
+    □ resolveTheme('light') returns 'light'
+    □ resolveTheme('auto') respects prefers-color-scheme
+    □ setTheme() applies and persists
+    □ setBrightness() clamps to [50, 150]
+    □ setContrast() clamps to [50, 150]
+    □ setOpacity() clamps to [50, 100]
+    □ setBlur() clamps to [0, 20]
+    □ setSaturation() clamps to [50, 150]
+    □ setDensity('compact') sets fontScale/padScale/gapScale
+    □ applyToDocument() sets CSS custom properties
+    □ applyToDocument() builds filter chain correctly
+    □ applyToDocument() light mode adds invert(1) hue-rotate(180deg)
+    □ reset() restores all DEFAULTS
+    □ OS media query listener fires on change
+    □ localStorage error caught silently
+    □ Watcher fires apply + persist on value change
+
+  auth.js (214 lines) — Missed Tests (CRITICAL):
+
+    □ readPersisted() parses valid localStorage
+    □ readPersisted() handles malformed JSON
+    □ readPersisted() checks token expiry
+    □ writePersisted() saves to localStorage
+    □ writePersisted() handles private mode errors
+    □ isAuthenticated computed: true when authDisabled
+    □ isAuthenticated computed: true when token + user present
+    □ isAuthenticated computed: false when no token
+    □ authHeaders() adds Bearer token
+    □ authHeaders() returns empty when no token
+    □ _post() sends correct Content-Type
+    □ _post() handles JSON error response
+    □ _post() handles plain-text error response
+    □ _post() throws on non-ok response
+    □ _adopt() sets token, user, expiresAt
+    □ _adopt() defaults to 14-day expiry
+    □ _adopt() validates token and user present
+    □ loadProviders() sets providers list
+    □ loadProviders() detects authDisabled
+    □ loadProviders() falls back on network error
+    □ login() success sets auth state
+    □ login() failure throws error
+    □ register() success sets auth state
+    □ register() validates password match
+    □ logout() clears local state
+    □ logout() best-effort server revoke
+    □ restoreSession() verifies /auth/me
+    □ restoreSession() clears on 401
+    □ startOAuth() returns authUrl + state
+    □ pollOAuth() handles ok/error/pending statuses
+    □ OAuth poll loop with timeout (5 min)
+
+
+================================================================================
+5. COMPONENT TESTS — view/src/components/
+================================================================================
+
+  ALREADY TESTED (16 components):
+    AlertList           (9 tests)  - render, severity, selection, tags
+    ArgusAIChat         (9 tests)  - header, send, suggestions, error
+    ArgusCDList         (18 tests) - loading/error/empty, sync, rollback
+    CenterPanel         (22 tests) - 18 nav route mappings
+    ChatPopOut          (5 tests)  - overlay, close, escape key
+    CodeBlock           (8 tests)  - language label, copy, run, feedback
+    ConfigMapList       (8 tests)  - scroll, expand, type switching
+    DiagnosticsPanel    (9 tests)  - chat tab, diagnostics, error surfacing
+    HpaList             (6 tests)  - scroll, expand, scrollIntoView
+    ManifestEditPopup   (9 tests)  - open/close, viewer/editor toggle, apply
+    MetricsRow          (11 tests) - 4 cards, color thresholds, formatting
+    NodeList            (8 tests)  - cards, status, capacity, collapse
+    Sidebar             (8 tests)  - 36 nav items, badges, cluster, collapse
+    StatefulDaemonSetList (4 tests) - scroll, expand, collapse
+    TerminalView        (8 tests)  - visible/hidden, init, resize, dispose
+    VolumeList          (5 tests)  - PVC vs PV, namespace, scope, expansion
+
+  ⚠️  NOTE: Most component tests use heavy mocking (stubbed children/mocks).
+      They verify basic rendering, not complex interactions or state flows.
+
+────────────────────────────────────────────────────────────────────────────────
+
+  MISSING COMPONENT TESTS (32 components):
+
+  PRIORITY: 🔴 HIGH  🟡 MEDIUM  🟢 LOW
+
+  ┌─────────────────────────────────────────────────┬────────┬───────┬─────────────────────────┐
+  │ Component                                       │ Prio   │ Lines │ Key features to test     │
+  ├─────────────────────────────────────────────────┼────────┼───────┼─────────────────────────┤
+  │ center/LogExplorer.vue                          │ 🔴     │  1202 │ saved filters CRUD,      │
+  │                                                 │        │       │ streaming pause/resume,  │
+  │                                                 │        │       │ pinned logs, query fix,  │
+  │                                                 │        │       │ 3 view modes, completions │
+  │ workloads/PodList.vue                           │ 🔴     │  1146 │ 5 detail tabs, log       │
+  │                                                 │        │       │ viewer w/ tokenize,      │
+  │                                                 │        │       │ xterm exec, delete,      │
+  │                                                 │        │       │ namespace filter          │
+  │ center/MetricsExplorer.vue                      │ 🔴     │   917 │ 6 panel types, CRUD,     │
+  │                                                 │        │       │ drag-reorder, resize,    │
+  │                                                 │        │       │ AI query gen, live mode  │
+  │ setup/SettingsPanel.vue                         │ 🔴     │   953 │ 8 settings sections,     │
+  │                                                 │        │       │ appearance sliders,      │
+  │                                                 │        │       │ ArgoCD test, integrations │
+  │ center/AnomalyDetection.vue                     │ 🔴     │   743 │ dashboard vs rules view, │
+  │                                                 │        │       │ SVG charts, rule CRUD    │
+  │ center/ArgusScanReport.vue                      │ 🔴     │   565 │ severity filter, search, │
+  │                                                 │        │       │ findings detail,         │
+  │                                                 │        │       │ scheduler, "Ask Argus"   │
+  │ center/S3Notebook.vue                           │ 🔴     │   591 │ TipTap init, file CRUD, │
+  │                                                 │        │       │ drag-drop tree,          │
+  │                                                 │        │       │ auto-save debounce       │
+  │ operations/WorkflowEditor.vue                   │ 🔴     │   646 │ step cards + connectors, │
+  │                                                 │        │       │ undo/redo history,       │
+  │                                                 │        │       │ step CRUD, canvas toggle │
+  │ App.vue                                         │ 🟡     │   381 │ auth gate (4 templates), │
+  │                                                 │        │       │ drag-resize, event wiring│
+  │ auth/LoginView.vue                              │ 🟡     │   371 │ login/signup tabs,       │
+  │                                                 │        │       │ OAuth polling, validation │
+  │ workloads/DeploymentList.vue                    │ 🟡     │   517 │ health bar, manifest     │
+  │                                                 │        │       │ popup, revision timeline │
+  │ workloads/JobCronJobList.vue                    │ 🟡     │   499 │ type prop switching,     │
+  │                                                 │        │       │ inline manifest, delete  │
+  │ network/NetworkPolicyList.vue                   │ 🟡     │   453 │ type-switched columns,   │
+  │                                                 │        │       │ AI review, save-to-S3    │
+  │ network/ServiceList.vue                         │ 🟡     │   513 │ type badge, shell-to-pod,│
+  │                                                 │        │       │ exec lifecycle           │
+  │ resources/ResourceDetail.vue                    │ 🟡     │   423 │ dynamic tabs, watch      │
+  │                                                 │        │       │ prop changes             │
+  │ resources/ResourceTable.vue                     │ 🟡     │   385 │ cluster vs namespaced,  │
+  │                                                 │        │       │ sort pipeline, status    │
+  │ setup/SetupPanel.vue                            │ 🟡     │   471 │ tool checklist, install/ │
+  │                                                 │        │       │ remove, deploy artifacts │
+  │ setup/DeployArtifactsPanel.vue                  │ 🟡     │   384 │ flavor tabs, env upload, │
+  │                                                 │        │       │ missing var validation   │
+  │ center/FinOpsView.vue                           │ 🟡     │   350 │ provider selector, chart │
+  │                                                 │        │       │ bar, cost breakdown      │
+  │ center/VulnerabilityList.vue                    │ 🟡     │   369 │ engine selector, CVE     │
+  │                                                 │        │       │ list, AI remediation     │
+  │ cluster/NamespaceList.vue                       │ 🟡     │   351 │ expand/collapse, network │
+  │                                                 │        │       │ graph, quota grid        │
+  │ cluster/EventStream.vue                         │ 🟡     │   189 │ type filter, auto-refresh│
+  │ titlebar/Titlebar.vue                           │ 🟡     │   374 │ Wails vs SaaS,           │
+  │                                                 │        │       │ notification badge, menu │
+  │ titlebar/EnvironmentSelector.vue                │ 🟡     │   286 │ pre-created vs custom,   │
+  │                                                 │        │       │ localStorage, click-out  │
+  │ notifications/NotificationsPanel.vue            │ 🟡     │   282 │ panel open/close,        │
+  │                                                 │        │       │ mark read, rerun         │
+  │ operations/RunbooksView.vue                     │ 🟡     │   408 │ edit/preview split,      │
+  │                                                 │        │       │ auto-save, segment parse │
+  │ operations/IncidentLog.vue                      │ 🟡     │   245 │ merged timeline, CRUD,   │
+  │                                                 │        │       │ filter by type           │
+  │ operations/RunbookCodeBlock.vue                 │ 🟢     │   201 │ copy, run dispatch, pin  │
+  │ center/CodeBlockComponent.vue                   │ 🟢     │   199 │ language selector, copy  │
+  │ center/TopologyMap.vue                          │ 🟢     │   123 │ backend vs fallback,     │
+  │                                                 │        │       │ kind grouping            │
+  │ center/LogStream.vue                            │ 🟢     │    72 │ auto-scroll, level colors│
+  │ common/AgentAnalysisNotification.vue            │ 🟢     │   308 │ state machine, drag,     │
+  │                                                 │        │       │ auto-hide timer          │
+  │ desktop/ProDesktopApp.vue                       │ 🟢     │   254 │ terminal lifecycle,      │
+  │                                                 │        │       │ ResizeObserver, Escape   │
+  │ shared/ProGateOverlay.vue                       │ 🟢     │    89 │ static presentation      │
+  │ storage/VolumeCylinder.js                       │ 🟢     │   101 │ render function, SVG     │
+  │ ToastContainer.vue                              │ 🟢     │    54 │ transition-group, empty  │
+  │ operations/ConfigAudit.vue                      │ 🟢     │    21 │ thin wrapper (trivial)   │
+  └─────────────────────────────────────────────────┴────────┴───────┴─────────────────────────┘
+
+
+================================================================================
+6. E2E TESTS — view/e2e/
+================================================================================
+
+  CURRENT:
+    kubewatcher-smoke.spec.js   - 1 spec (basic smoke test)
+
+  MISSING E2E FLOWS (8+ critical flows):
+
+    □ Auth flow (login, register, logout, session persistence)
+    □ OAuth flow (provider selection, browser redirect, poll completion)
+    □ Cluster context switching
+    □ Log streaming (start/stop stream, filter by namespace/pod)
+    □ Terminal exec (open shell, send input, close)
+    □ Settings CRUD (appearance sliders, notification cap, save/load)
+    □ Manifest editing (open, edit, apply, close)
+    □ Runbook CRUD (create, edit, save, delete)
+    □ Workflow editor (add steps, reorder, save, deploy)
+    □ S3 notebook (browse files, create, edit, save, delete)
+    □ Resource browser (list resources, expand detail, filter by namespace)
+    □ Alert management (acknowledge, silence, ignore)
+    □ ArgoCD integration (status, sync, rollback)
+
+
+================================================================================
+7. GO BACKEND TESTS — backend/
+================================================================================
+
+  ┌─────────────────────────────────────┬────────┬────────────────────────────────┐
+  │ Package                             │ Status │ Test files                     │
+  ├─────────────────────────────────────┼────────┼────────────────────────────────┤
+  │ api/pkg (server/App layer)          │ ⚠️     │ server_security_test.go        │
+  │                                     │        │ auth_handler_test.go           │
+  │                                     │        │ app_arguscd_test.go            │
+  │                                     │        │ app_desktop_test.go            │
+  │                                     │        │                                │
+  │                                     │        │ MISSING: app.go, app_ai.go,    │
+  │                                     │        │ app_alertproc.go,              │
+  │                                     │        │ app_resources.go,              │
+  │                                     │        │ app_operations.go,             │
+  │                                     │        │ app_deploy_artifacts.go,       │
+  │                                     │        │ app_saas.go, app_spotcheck.go, │
+  │                                     │        │ server.go (reflection dispatch)│
+  │                                     │        │ hub.go, events.go              │
+  │ internal/k8s                        │ ⚠️     │ client_test.go                 │
+  │                                     │        │ helpers_test.go                │
+  │                                     │        │ resources_detail_test.go       │
+  │                                     │        │ topology_test.go               │
+  │                                     │        │ finops_test.go                 │
+  │                                     │        │                                │
+  │                                     │        │ MISSING: logs.go, exec.go,     │
+  │                                     │        │ metrics.go, resources*.go      │
+  │                                     │        │ (workloads, network, config,   │
+  │                                     │        │ storage, cluster, ops, types)  │
+  │ internal/ai                         │ ✅     │ agent_test.go, deepseek_test.go │
+  │ internal/anomaly                    │ ✅     │ flink_test.go, anomstack_test.go│
+  │                                     │        │ settings_test.go               │
+  │ internal/alertproc                  │ ✅     │ alertproc_test.go              │
+  │ internal/alerts                     │ ✅     │ alerts_test.go (model)         │
+  │ internal/auth                       │ ⚠️     │ auth_test.go                   │
+  │                                     │        │                                │
+  │                                     │        │ MISSING: password.go test,     │
+  │                                     │        │ oidc.go test, store.go test    │
+  │ internal/config                     │ ✅     │ config_test.go,                │
+  │                                     │        │ persistence_test.go            │
+  │ internal/context                    │ ⚠️     │ assembler_test.go,             │
+  │                                     │        │ diagnose_test.go               │
+  │                                     │        │ (partial coverage)             │
+  │ internal/apperrors                  │ ✅     │ errors_test.go                 │
+  │ internal/argocd                     │ ✅     │ client_test.go                 │
+  │ internal/features                   │ ✅     │ features_test.go               │
+  │ internal/incidents                  │ ✅     │ store_test.go                  │
+  │ internal/logger                     │ ✅     │ logger_test.go                 │
+  │ internal/notebooks                  │ ✅     │ notebooks_test.go              │
+  │ internal/popeye                     │ ✅     │ runner_test.go                 │
+  │ internal/runbooks                   │ ✅     │ runbooks_test.go               │
+  │ internal/setup                      │ ✅     │ setup_test.go,                │
+  │                                     │        │ parse_popeye_version_test.go   │
+  │ internal/sqlitedb                   │ ✅     │ db_test.go                     │
+  │ internal/terminal                   │ ✅     │ terminal_test.go               │
+  │ internal/tlsconfig                  │ ✅     │ certs_test.go                  │
+  │ internal/vulnscan                   │ ✅     │ scanner_test.go                │
+  │ internal/workflows                  │ ✅     │ store_test.go                  │
+  │ internal/agentconn                  │ ✅     │ connector_test.go              │
+  │ internal/spotcheck                  │ ❌     │                             0 │
+  │ internal/agentanalysis              │ ❌     │                             0 │
+  └─────────────────────────────────────┴────────┴────────────────────────────────┘
+
+  MISSING BACKEND TESTS (21+ files):
+
+    Critical:
+    □ api/pkg/app.go           - App construction, startup/shutdown lifecycle
+    □ api/pkg/server.go        - Reflection dispatch, webhook handler
+    □ api/pkg/events.go        - Background polling loops
+    □ api/pkg/hub.go           - WebSocket agent tunnel
+    □ api/pkg/app_ai.go        - AI diagnostics, chat, investigations
+    □ api/pkg/app_alertproc.go - Alert processor integration
+    □ api/pkg/app_resources.go - Resource listing bindings
+    □ internal/k8s/logs.go     - Log query engine, histogram, node logs
+    □ internal/k8s/exec.go     - Pod exec sessions, SPDY streaming
+    □ internal/k8s/metrics.go  - Time-series metrics queries
+    □ internal/k8s/resources_workloads.go - Pod/deployment listers
+    □ internal/auth/store.go   - SQLite auth persistence
+    □ internal/auth/oidc.go    - OAuth/OIDC flow
+
+    Medium:
+    □ internal/spotcheck/*     - Spot check engine & checks
+    □ internal/agentanalysis   - Periodic analysis agent
+    □ internal/k8s/resources_ops.go    - Delete, apply, scale
+    □ internal/k8s/resources_network.go - Service/network listers
+    □ internal/k8s/resources_config.go  - ConfigMap/secret listers
+    □ internal/k8s/resources_storage.go - PVC/PV listers
+    □ internal/k8s/resources_cluster.go - Node/namespace listers
+    □ internal/auth/password.go - bcrypt hashing tests
+
+
+================================================================================
+8. CODE REVIEW — VUE/JS FRONTEND
+================================================================================
+
+  8.1 Architecture & Patterns
+  ──────────────────────────────────────────────────────────────────────────────
+
+  STRENGTHS:
+    ✓ Clean composable pattern: ref() + async fetch*() with try/catch
+    ✓ Defensive against missing window/document/localStorage (non-Wails env)
+    ✓ Good separation: components are thin, logic is in composables + stores
+    ✓ Consistent error handling: console.warn with helpful context
+    ✓ Pinia stores with proper state isolation (setup file clears between tests)
+    ✓ Bridge pattern (callGo) abstracts Wails vs REST cleanly
+    ✓ Feature gating via provide/inject (tier, isAllowed)
+
+  IMPROVEMENT AREAS:
+
+    [I1] Circular dependency boundary
+      useBridge.js reads localStorage directly to avoid importing auth store.
+      Fragile — if localStorage key naming changes, both must be updated.
+      Suggestion: extract localStorage helpers into a shared utility.
+
+    [I2] Cache memory leak
+      useBridge.js _cache map grows unbounded (no eviction, no TTL enforcement
+      for values that are never re-requested).
+      Suggestion: add max-size cap or LRU eviction.
+
+    [I3] Module-level state in composables
+      useBackgroundTasks and useSpotCheck use module-level reactive/ref state.
+      Survives component re-creation but not test-friendly (can't isolate).
+      Suggestion: use inject/provide or a Pinia store for testable state.
+
+    [I4] Large v-if chains in CenterPanel.vue (30+ conditions)
+      Works but verbose. Would benefit from dynamic <component :is="..."> map.
+      Suggestion: refactor to component map for maintainability.
+
+    [I5] No TypeScript
+      JSDoc types provide IDE hints but no compile-time safety.
+      Suggestion: gradual TS migration for stores and composables.
+
+    [I6] useBackgroundTasks memory leak
+      Tasks accumulate with no max-age eviction.
+      Suggestion: add stale-task cleanup (e.g., remove tasks older than 1 hour).
+
+    [I7] var vs const/let in logHighlight.js
+      Uses var instead of const/let — inconsistent with rest of codebase.
+      Suggestion: replace var with const.
+
+    [I8] App.vue double onMounted call
+      onMounted is invoked twice (lines 26 and 42).
+      Works in Vue but is confusing and could cause subtle bugs.
+
+  8.2 Testing Patterns to Follow
+  ──────────────────────────────────────────────────────────────────────────────
+
+  EXISTING TEST PATTERNS (use these as templates):
+
+    For pure functions (utils):
+      - Direct function calls with known inputs/outputs
+      - Table-driven where multiple inputs share same structure
+      - See: renderMarkdown.test.js, logQuery.test.js
+
+    For composables:
+      - Mock callGo/fetch via vi.stubGlobal
+      - Assert state refs (.value) after async operations
+      - Test initial state, success, error, edge cases
+      - See: useAlerts.test.js, useToast.test.js
+
+    For Pinia stores:
+      - setActivePinia(createPinia()) in beforeEach (handled by setup)
+      - Direct store method calls and state assertions
+      - Mock localStorage via vi.stubGlobal or Object.defineProperty
+      - See: notifications.test.js, savedFilters.test.js
+
+    For components:
+      - Mount with shallow or stubs for child components
+      - Provide mocks for composables/stores
+      - Verify rendered output, class bindings, conditional rendering
+      - See: MetricsRow.test.js, ArgusCDList.test.js
+
+  8.3 Test Setup Notes
+  ──────────────────────────────────────────────────────────────────────────────
+
+    ✓ vitest.config.js: uses jsdom, globals: true
+    ✓ vitest.setup.js: beforeEach(() => setActivePinia(createPinia()))
+    ✓ Run: `npx vitest run` (CI) or `npx vitest` (watch)
+    ✓ Coverage: no coverage config yet — add via vitest.config.js
+
+
+================================================================================
+9. CODE REVIEW — GO BACKEND
+================================================================================
+
+  9.1 Architecture & Patterns
+  ──────────────────────────────────────────────────────────────────────────────
+
+  STRENGTHS:
+    ✓ Clean flat DI via AppConfig struct — no framework magic
+    ✓ Dual-mode architecture (Wails desktop + HTTP SaaS) sharing same App type
+    ✓ Strategy pattern for anomaly detection (Flink/Anomstack via Detector interface)
+    ✓ Alert processing pipeline: detect -> deduplicate -> investigate -> notify
+    ✓ Context assembly with concurrent goroutine + timeout pattern
+    ✓ Strong security posture: deny-by-default CORS, loopback-only bind,
+      constant-time comparison, bcrypt cost 12, SHA-256 token hashing
+    ✓ SQLite/WAL mode with versioned migrations
+    ✓ Feature gating with free vs pro tier
+    ✓ OAuth PKCE flow following RFC 8252 (native apps)
+    ✓ Centralized error types with HTTP disposition mapping
+
+  IMPROVEMENT AREAS:
+
+    [G1] Reflective HTTP dispatch is fragile
+      server.go uses reflect.ValueOf(a).MethodByName() — any public method
+      signature change silently breaks API compatibility.
+      Suggestion: explicit handler registration via interface or code-gen.
+
+    [G2] Multiple K8s client implementations
+      Two independent K8s client layers: internal/k8s (desktop) and pkg/kube (MCP).
+      Shared types exist (pkg/kube/types.go) but no shared client abstraction.
+      Suggestion: unify under a shared client interface.
+
+    [G3] Polling instead of watching
+      events.go uses 5s/10s/3s polling for alerts/metrics/logs.
+      Suggestion: use K8s informers/watch API for real-time updates.
+
+    [G4] Spot-check engine is untested
+      spotcheck/spotcheck.go and checks.go have zero test files.
+      Suggestion: at minimum, unit-test the individual Check implementations.
+
+    [G5] App.go is a god struct
+      App struct embeds 20+ dependencies. NewApp constructor is very long.
+      Suggestion: split into domain-specific sub-structs or use interface segregation.
+
+    [G6] Missing password.go tests
+      bcrypt hash/verify has no dedicated test file.
+      Suggestion: add table-driven tests for hash + verify + cost + edge cases.
+
+    [G7] agentanalysis is a no-op
+      agent.go has a 3-second sleep as "analysis" — placeholder for future work.
+      Suggestion: either implement real analysis or remove the stub.
+
+    [G8] MCP CORS is wide open
+      mcp/api/api.go uses AllowAll() CORS — contrast with backend's restrictive policy.
+      Suggestion: align with KUBEWATCHER_API_ALLOWED_ORIGINS when possible.
+
+  9.2 Testing Patterns
+  ──────────────────────────────────────────────────────────────────────────────
+
+  ⚠️  HARD REQUIREMENT: All Go tests MUST be table-driven
+      using `[]struct{name string, args ..., want ...}`.
+      See AGENTS.md for the full template and rationale.
+      This is a non-negotiable repository requirement.
+
+  Run: `go test ./... -v` from backend/ directory
+  Lint: `golangci-lint run ./...`
+
+  EXISTING TEST PATTERNS:
+
+    For stores (SQLite):
+      - Create in-memory SQLite DB per test
+      - Run migration, then test CRUD operations
+      - See: incidents/store_test.go, workflows/store_test.go
+
+    For pure logic:
+      - Table-driven tests with struct{name, args, want}
+      - See: alertproc/alertproc_test.go, apperrors/errors_test.go
+
+    For API handlers:
+      - httptest.NewRecorder with mocked App
+      - Assert status code, response body
+      - See: auth_handler_test.go, server_security_test.go
+
+    For k8s client:
+      - Use fake.NewSimpleClientset() from client-go
+      - Pre-seed with testing objects
+      - See: internal/k8s/client_test.go
+
+
+================================================================================
+10. TOP 10 MOST CRITICAL GAPS
+================================================================================
+
+  RANK  COMPONENT                   LINES  LAYER     WHY CRITICAL
+  ────  ──────────────────────────  ─────  ────────  ──────────────────────────
+   1    auth.js store                 214  Stores    9 API paths, session mgmt,
+                                                      OAuth polling, zero tests
+   2    appearance.js store           224  Stores    Complex DOM manipulation,
+                                                      filter chains, OS detection
+   3    LogExplorer.vue              1202  Component Most complex component,
+                                                      saved filters, streaming
+   4    PodList.vue                  1146  Component 5 detail tabs, xterm exec,
+                                                      log viewer, zero tests
+   5    MetricsExplorer.vue           917  Component 6 panel types, AI query
+                                                      gen, drag-reorder
+   6    SettingsPanel.vue             953  Component 8 settings sections,
+                                                      multiple integrations
+   7    AnomalyDetection.vue          743  Component SVG charts, rule CRUD,
+                                                      dual view
+   8    S3Notebook.vue                591  Component TipTap init, file CRUD,
+                                                      drag-drop tree
+   9    WorkflowEditor.vue            646  Component Undo/redo, step CRUD,
+                                                      visual canvas
+  10    useBackgroundTasks +          182  Composables Task lifecycle, Wails
+        useEvents + useSpotCheck            (3 files)  events, spot checks
+
+
+================================================================================
+END OF REPORT
+================================================================================

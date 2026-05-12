@@ -1,0 +1,26 @@
+# ---------- Build stage ----------
+FROM node:20-alpine AS build-stage
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+
+# Inject empty API base so fetch() uses relative URLs (nginx proxies /api/).
+RUN echo 'window.__KUBEWATCHER_API_BASE__ = "";' > public/config.js
+
+# Override outDir since the default points outside this build context.
+RUN npx vite build --outDir dist
+
+# ---------- Runtime stage ----------
+FROM nginx:1.27-alpine
+
+# Remove default config.
+RUN rm /etc/nginx/conf.d/default.conf
+
+COPY docker/nginx.conf /etc/nginx/conf.d/argus.conf
+COPY --from=build-stage /app/dist /usr/share/nginx/html
+
+EXPOSE 3000
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -8,10 +8,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/argues/kube-watcher/agent/internal/config"
-	"github.com/argues/kube-watcher/agent/internal/k8s"
-	"github.com/argues/kube-watcher/agent/internal/server"
-	"github.com/argues/kube-watcher/agent/internal/tunnel"
+	"k8s.io/client-go/rest"
+
+	"github.com/argues/argus/agent/internal/config"
+	"github.com/argues/argus/agent/internal/k8s"
+	"github.com/argues/argus/agent/internal/server"
+	"github.com/argues/argus/agent/internal/tunnel"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -36,14 +38,18 @@ func main() {
 }
 
 func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
-	logger.Info("Starting KubeWatcher In-Cluster Agent")
+	logger.Info("Starting Argus In-Cluster Agent")
 
 	var tunnelClient *tunnel.Client
 	if cfg.SaaSToken == "" {
 		logger.Warn("SAAS_TOKEN not set. Running in local-only mode.")
 	} else {
 		logger.Info("SaaS Token detected. Will sync metadata to cloud.")
-		tunnelClient = tunnel.NewClient(cfg.SaaSServerURL, cfg.SaaSToken, "default", logger.With("component", "tunnel"))
+		restConfig, restErr := rest.InClusterConfig()
+		if restErr != nil {
+			logger.Warn("not running in cluster, tunnel CD applier will not be available", "error", restErr)
+		}
+		tunnelClient = tunnel.NewClient(cfg.SaaSServerURL, cfg.SaaSToken, "default", logger.With("component", "tunnel"), restConfig)
 	}
 
 	k8sClient, err := k8s.NewClient(ctx, logger.With("component", "k8s"))

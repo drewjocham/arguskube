@@ -1,0 +1,71 @@
+KubeWatcher In-Cluster Agent - Build Summary
+=============================================
+
+COMPLETED COMPONENTS:
+
+1. EXPANDED K8S INFORMERS (internal/k8s/client.go)
+   - Added informers for: nodes, services, deployments, events
+   - All informers initialized in StartInformers() with cache sync
+   - New accessor methods using cached listers:
+     * GetPods() -> []corev1.Pod
+     * GetNodes() -> []corev1.Node
+     * GetServices() -> []corev1.Service
+     * GetDeployments() -> []appsv1.Deployment
+     * GetEvents() -> []corev1.Event
+   - GetInformerFactory() exposes factory for direct access
+   - Imports added: appsv1, updated cache sync calls
+
+2. EXPANDED HTTP ENDPOINTS (internal/server/server.go)
+   - New types for topology and metrics responses
+   - New endpoints registered:
+     * GET /api/v1/events - returns event informer cache
+     * GET /api/v1/deployments - returns deployment informer cache
+     * GET /api/v1/services - returns service informer cache
+     * GET /api/v1/topology - builds node-edge graph (nodes, pods, services with edges)
+     * GET /stream/metrics - HTTP streaming endpoint sending metrics frames every 5s
+   - Topology building logic:
+     * Nodes with status
+     * Pods with namespace/name and edges to their nodes
+     * Services with label selector matching to pods
+     * Edges connect services->pods via label selectors, pods->nodes
+   - Metrics streaming:
+     * Sends JSON MetricsFrame every 5 seconds
+     * Includes timestamp, node metrics, pod metrics
+     * Currently returns synthetic metrics (0m CPU, 0Mi memory as placeholder)
+   - All endpoints return cached informer data, not live API calls
+
+3. DOCKERFILE (agent/Dockerfile)
+   - Multi-stage build: golang:1.26-alpine -> alpine:3.21
+   - Dependencies: ca-certificates for TLS
+   - Statically compiled binary (CGO_ENABLED=0)
+   - Entrypoint: /agent
+
+4. HELM CHART (agent/deploy/helm/kubewatcher-agent/)
+   Files created:
+   - Chart.yaml: metadata (name, version 0.1.0, appVersion 0.1.0)
+   - values.yaml: defaults for image, port, resources, RBAC, security
+     * Image: ghcr.io/drewjocham/kubewatcher-agent:latest
+     * Port: 8080
+     * Resource limits: 500m CPU / 256Mi memory
+     * Security: non-root, read-only fs, no capabilities
+   - templates/daemonset.yaml: DaemonSet with agent container, health probes
+   - templates/serviceaccount.yaml: ServiceAccount
+   - templates/clusterrole.yaml: Read access to pods/nodes/services/events/deployments/metrics
+   - templates/clusterrolebinding.yaml: Bind ClusterRole to ServiceAccount
+   - templates/_helpers.tpl: Standard Helm template helpers
+
+NOTES FOR NEXT STEPS:
+
+- Go module: no changes to go.mod needed (all types from existing k8s.io dependencies)
+- Image registry: Update ghcr.io/drewjocham/kubewatcher-agent as needed
+- Metrics endpoint: Currently returns synthetic data. To integrate Kubernetes metrics API:
+  * Add k8s.io/metrics client in NewClient()
+  * Update buildMetricsFrame() to query PodMetrics and NodeMetrics from metrics server
+- WebSocket: Currently uses HTTP chunked streaming; can upgrade to golang.org/x/net/websocket if needed
+- All informer cache operations are safe (cached reads, no direct API calls on hot path)
+
+DEPLOYMENT:
+  helm install kubewatcher-agent ./deploy/helm/kubewatcher-agent/ \
+    --namespace kube-system \
+    --set image.repository=<your-registry>/kubewatcher-agent \
+    --set image.tag=<version>

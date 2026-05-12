@@ -1,0 +1,25 @@
+# KubeWatcher Backend — Development overrides
+# Scale to 0 when not in use, minimal resources otherwise.
+
+replicaCount: 1
+autoscaling:
+  enabled: false
+
+persistence:
+  enabled: false
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+config:
+  logLevel: debug
+  logFormat: text
+  tier: pro
+  prometheusURL: ""
+  ollamaBaseURL: ""
+  inCluster: "false"

@@ -1,0 +1,78 @@
+# ── Image ──────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/drewjocham/kubewatcher-agent
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# ── Naming ─────────────────────────────────────────────────────────
+nameOverride: ""
+fullnameOverride: ""
+
+# ── Service ────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 8080
+
+# ── Agent Environment ──────────────────────────────────────────────
+env:
+  saasToken: false
+  saasServerURL: ""
+
+existingSecret: ""
+
+# ── Vector Sidecar ─────────────────────────────────────────────────
+vector:
+  enabled: false
+  image:
+    repository: timberio/vector
+    tag: 0.44.0-alpine
+    pullPolicy: IfNotPresent
+  logLevel: info
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  # Log collection sinks
+  sinks:
+    s3:
+      enabled: false
+      bucket: ""
+      region: ""
+
+# ── DaemonSet Settings ─────────────────────────────────────────────
+hostNetwork: false
+
+# ── Resource Limits ────────────────────────────────────────────────
+resources:
+  limits:
+    cpu: 200m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 32Mi
+
+# ── ServiceAccount ─────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: ""
+
+# ── Security Contexts ──────────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# ── Scheduling ─────────────────────────────────────────────────────
+nodeSelector: {}
+tolerations:
+  - operator: Exists
+    effect: NoSchedule

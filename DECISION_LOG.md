@@ -1,32 +1,26 @@
-# 2026-04-28
-payments-api heap config frozen at 512Mi pending batch-size review — blocked
-owner: @sre-team · ticket: SRE-412
-Note: v2.4.0 stable with batch size 3,200. Any increase requires memory limit review.
+# Decision Log
 
-# 2026-04-25
-order-processor HPA min replicas set to 2 (was 3) to reduce idle cost.
-cpu request: 200m, limit: 500m.
-HPA target: 70% CPU.
-owner: @platform-team · ticket: PLAT-891
+> **This file is intentionally a stub.** It used to contain decisions
+> copy-pasted from a different project (payments-api / order-processor /
+> nginx-ingress rate limits — none of which exist in this repo). KubeWatcher
+> reads `DECISION_LOG.md` at runtime via `KUBEWATCHER_DECISION_LOG` and
+> surfaces relevant entries to Argus during AI-assisted diagnostics.
+> Feeding it the wrong project's history made the AI cite phantom services.
+>
+> Add real entries here as load-bearing infra/config changes happen.
 
-# 2026-04-22
-prometheus retention reduced from 30d to 15d on worker-node-09 due to disk constraints.
-WAL compaction scheduled nightly at 03:00 UTC.
-PVC size: 22GB — expansion request pending approval.
-owner: @observability-team · ticket: OBS-203
+## Format
 
-# 2026-04-18
-redis-cluster upgraded to 7.2.4. Connection pooling parameters unchanged.
-payments-api and order-processor both depend on redis for session cache.
-No issues observed post-upgrade.
+Use ATX headings dated `YYYY-MM-DD` followed by free-form prose.
+Argus parses headings to scope retrieval, so keep the date format
+consistent.
 
-# 2026-04-15
-nginx-ingress rate limiting enabled: 100 req/s per client IP.
-Affects payments flow during flash sales — monitor order-processor queue depth.
-owner: @sre-team · ticket: SRE-398
+```
+# 2026-05-15
+Reduced kubewatcher-agent CPU request from 200m → 100m after week of
+flat usage. Owner: @sre-team · ticket: KW-42
+```
 
-# 2026-04-10
-metrics-server resource limits set to 100m CPU / 256Mi memory.
-Running on worker-node-09 (same node as prometheus).
-If node pressure occurs, metrics-server may be evicted — this would break HPA for all namespaces.
-owner: @platform-team · ticket: PLAT-867
+## Entries
+
+<!-- Add new entries below in reverse-chronological order. -->

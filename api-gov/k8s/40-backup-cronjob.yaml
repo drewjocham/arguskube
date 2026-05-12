@@ -1,0 +1,53 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pg-backup
+  namespace: api-gov
+spec:
+  schedule: "*/5 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pgbackrest
+              image: pgbackrest/pgbackrest:2.53
+              env:
+                - name: PGBACKREST_STANZA
+                  value: api-gov
+                - name: PGBACKREST_PG1_PATH
+                  value: /var/lib/postgresql/data
+                - name: PGBACKREST_REPO1_S3_BUCKET
+                  value: api-gov-backups
+                - name: PGBACKREST_REPO1_S3_REGION
+                  value: us-east-1
+                - name: PGBACKREST_REPO1_TYPE
+                  value: s3
+              command:
+                - pgbackrest
+                - --stanza=api-gov
+                - --type=incr
+                - backup
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: redis-cleanup
+  namespace: api-gov
+spec:
+  schedule: "0 */6 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: redis-cleanup
+              image: redis:7-alpine
+              command:
+                - sh
+                - -c
+                - |
+                  redis-cli -h redis-svc --rdb /tmp/dump.rdb
+                  aws s3 cp /tmp/dump.rdb s3://api-gov-backups/redis/

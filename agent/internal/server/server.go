@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/argues/kube-watcher/agent/internal/k8s"
+	"github.com/argues/argus/agent/internal/k8s"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
@@ -95,19 +95,19 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	_, _ = w.Write([]byte("OK"))
 }
 
 func (s *Server) handleGetPods(w http.ResponseWriter, r *http.Request) {
 	pods := s.k8sClient.GetPods()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(pods)
+	_ = json.NewEncoder(w).Encode(pods)
 }
 
 func (s *Server) handleGetNodes(w http.ResponseWriter, r *http.Request) {
 	nodes := s.k8sClient.GetNodes()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(nodes)
+	_ = json.NewEncoder(w).Encode(nodes)
 }
 
 func (s *Server) handleGetAnomalies(w http.ResponseWriter, r *http.Request) {
@@ -116,25 +116,25 @@ func (s *Server) handleGetAnomalies(w http.ResponseWriter, r *http.Request) {
 		{Timestamp: time.Now().Add(-1 * time.Hour), Score: 88.2, Target: "ingress/traefik", Rule: "High Error Rate"},
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(anomalies)
+	_ = json.NewEncoder(w).Encode(anomalies)
 }
 
 func (s *Server) handleGetEvents(w http.ResponseWriter, r *http.Request) {
 	events := s.k8sClient.GetEvents()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(events)
+	_ = json.NewEncoder(w).Encode(events)
 }
 
 func (s *Server) handleGetDeployments(w http.ResponseWriter, r *http.Request) {
 	deployments := s.k8sClient.GetDeployments()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(deployments)
+	_ = json.NewEncoder(w).Encode(deployments)
 }
 
 func (s *Server) handleGetServices(w http.ResponseWriter, r *http.Request) {
 	services := s.k8sClient.GetServices()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(services)
+	_ = json.NewEncoder(w).Encode(services)
 }
 
 func (s *Server) handleGetTopology(w http.ResponseWriter, r *http.Request) {
@@ -217,7 +217,7 @@ func (s *Server) handleGetTopology(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(graph)
+	_ = json.NewEncoder(w).Encode(graph)
 }
 
 func (s *Server) handleStreamMetrics(w http.ResponseWriter, r *http.Request) {

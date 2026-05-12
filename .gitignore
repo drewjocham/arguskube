@@ -1,7 +1,12 @@
 # Build
 build/
-view/dist/
-view/node_modules/
+**/view/dist/
+**/node_modules/
+
+# Terraform
+**/*.tfstate
+**/*.tfstate.backup
+
 
 # IDE
 .idea/
@@ -20,7 +25,15 @@ Thumbs.db
 *.dylib
 
 # Wails
-view/src/wailsjs/
+kube/view/src/wailsjs/
+
+# Terraform local state + provider downloads. The provider binaries are
+# multi-hundred-MB and trip GitHub's 100MB-per-file ceiling.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform.lock.hcl
 
 # Env
 .env
@@ -63,8 +76,18 @@ go.work.sum
 # env file
 .env
 
--e 
+-e
 # Tests
-view/test-results/
-view/e2e/playwright-report/
-node_modules/.vite/
+**/view/test-results/
+**/view/e2e/playwright-report/
+**/node_modules/.vite/
+
+# Infra — keep examples, ignore real config / state
+infra/vastai/config.yaml
+infra/vastai/.venv/
+infra/vastai/__pycache__/
+infra/gcp/terraform.tfvars
+infra/gcp/.terraform/
+infra/gcp/.terraform.lock.hcl
+infra/gcp/terraform.tfstate
+infra/gcp/terraform.tfstate.backup

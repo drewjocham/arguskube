@@ -1,0 +1,458 @@
+package ai
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/argues/argus/internal/alerts"
+)
+
+// AgentEvent is a tracked observation the agent logs for pattern recognition.
+type AgentEvent struct {
+	Timestamp time.Time `json:"timestamp"`
+	Type      string    `json:"type"` // "alert", "resolution", "pattern", "investigation"
+	Summary   string    `json:"summary"`
+	AlertID   string    `json:"alertId,omitempty"`
+	Namespace string    `json:"namespace,omitempty"`
+	Severity  string    `json:"severity,omitempty"`
+}
+
+// ChatEntry is one message in a conversation thread.
+type ChatEntry struct {
+	Role      string    `json:"role"` // "user", "assistant", "system"
+	Content   string    `json:"content"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// DiagnosticContext is the enriched context bundle passed to the AI agent.
+// It includes everything the agent needs to reason about the cluster state.
+type DiagnosticContext struct {
+	Metrics          *alerts.ClusterMetrics `json:"metrics,omitempty"`
+	RecentEvents     []string               `json:"recentEvents,omitempty"`     // Last 20 K8s warning events
+	CascadeAlerts    []alerts.Alert         `json:"cascadeAlerts,omitempty"`    // Correlated alerts
+	NamespaceSummary map[string]int         `json:"namespaceSummary,omitempty"` // ns → pod count
+	TopRestarters    []string               `json:"topRestarters,omitempty"`    // Pods with high restarts
+	RecentPatterns   []string               `json:"recentPatterns,omitempty"`   // Agent event log
+}
+
+// AutoSummary is the agent's automatic investigation result for an alert.
+type AutoSummary struct {
+	AlertID    string    `json:"alertId"`
+	Summary    string    `json:"summary"`
+	Severity   string    `json:"severity"`
+	Timestamp  time.Time `json:"timestamp"`
+	Confidence float64   `json:"confidence"`
+}
+
+// Agent manages conversations, auto-investigation, and pattern tracking.
+type Agent struct {
+	client *DeepSeekClient
+	logger *slog.Logger
+
+	mu            sync.RWMutex
+	conversations map[string][]ChatEntry  // keyed by alertID or "global"
+	autoSummaries map[string]*AutoSummary // keyed by alertID
+	eventLog      []AgentEvent            // rolling event log for pattern tracking
+}
+
+// NewAgent creates a new AI agent.
+func NewAgent(client *DeepSeekClient, logger *slog.Logger) *Agent {
+	return &Agent{
+		client:        client,
+		logger:        logger,
+		conversations: make(map[string][]ChatEntry),
+		autoSummaries: make(map[string]*AutoSummary),
+	}
+}
+
+// SetClient swaps the DeepSeek client backing this agent. Used when the user
+// updates their API key at runtime — conversation history is preserved, but
+// subsequent requests go through the new client. Pass nil to disable LLM calls
+// (e.g. when the user clears the key).
+func (a *Agent) SetClient(client *DeepSeekClient) {
+	a.mu.Lock()
+	a.client = client
+	a.mu.Unlock()
+}
+
+// HasClient reports whether the agent currently has a DeepSeek client wired up.
+func (a *Agent) HasClient() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.client != nil
+}
+
+// currentClient returns a stable reference to the client under a read lock, so
+// callers can issue an HTTP request without holding the agent mutex. Returns
+// nil when the agent has no client (no API key configured).
+func (a *Agent) currentClient() *DeepSeekClient {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.client
+}
+
+// AutoInvestigate is called when a new alert arrives. It builds context and
+// sends the alert to DeepSeek for automatic analysis. Non-blocking — runs
+// in a goroutine and stores the result.
+func (a *Agent) AutoInvestigate(ctx context.Context, alert alerts.Alert, metrics *alerts.ClusterMetrics, relatedAlerts []alerts.Alert) {
+	go func() {
+		summary, err := a.investigate(ctx, alert, metrics, relatedAlerts)
+		if err != nil {
+			a.logger.WarnContext(ctx, "auto-investigation failed",
+				slog.String("alertId", alert.ID),
+				slog.String("error", err.Error()),
+			)
+			return
+		}
+
+		a.mu.Lock()
+		a.autoSummaries[alert.ID] = summary
+		a.eventLog = append(a.eventLog, AgentEvent{
+			Timestamp: time.Now(),
+			Type:      "investigation",
+			Summary:   fmt.Sprintf("Auto-investigated %s: %s", alert.Name, truncate(summary.Summary, 120)),
+			AlertID:   alert.ID,
+			Namespace: alert.Namespace,
+			Severity:  string(alert.Severity),
+		})
+		// Keep event log bounded.
+		if len(a.eventLog) > 500 {
+			a.eventLog = a.eventLog[len(a.eventLog)-500:]
+		}
+		a.mu.Unlock()
+
+		a.logger.InfoContext(ctx, "auto-investigation complete",
+			slog.String("alertId", alert.ID),
+			slog.Float64("confidence", summary.Confidence),
+		)
+	}()
+}
+
+func (a *Agent) investigate(ctx context.Context, alert alerts.Alert, metrics *alerts.ClusterMetrics, related []alerts.Alert) (*AutoSummary, error) {
+	systemPrompt := a.buildSystemPrompt(metrics)
+
+	alertContext := formatAlertForAgent(alert)
+	if len(related) > 0 {
+		alertContext += "\n\nRelated alerts:\n"
+		for _, r := range related {
+			alertContext += fmt.Sprintf("- %s (%s) in %s\n", r.Name, r.Severity, r.Namespace)
+		}
+	}
+
+	// Include recent patterns from event log.
+	a.mu.RLock()
+	recentPatterns := a.getRecentPatterns(alert.Namespace)
+	a.mu.RUnlock()
+	if recentPatterns != "" {
+		alertContext += "\n\nRecent patterns observed:\n" + recentPatterns
+	}
+
+	client := a.currentClient()
+	if client == nil {
+		return nil, fmt.Errorf("AI agent not configured — set the DeepSeek API key in Settings → AI & Integrations")
+	}
+
+	messages := []Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: fmt.Sprintf(
+			"A new alert has fired. Investigate and provide a concise summary of the likely root cause, "+
+				"impact, and recommended immediate action.\n\n%s", alertContext,
+		)},
+	}
+
+	response, err := client.Chat(ctx, messages)
+	if err != nil {
+		return nil, err
+	}
+
+	// Seed the conversation history with the auto-investigation.
+	a.mu.Lock()
+	a.conversations[alert.ID] = []ChatEntry{
+		{Role: "system", Content: systemPrompt, Timestamp: time.Now()},
+		{Role: "assistant", Content: response, Timestamp: time.Now()},
+	}
+	a.mu.Unlock()
+
+	return &AutoSummary{
+		AlertID:    alert.ID,
+		Summary:    response,
+		Severity:   string(alert.Severity),
+		Timestamp:  time.Now(),
+		Confidence: 0.8,
+	}, nil
+}
+
+// SendMessage sends a user message in the context of an alert and returns the response.
+func (a *Agent) SendMessage(ctx context.Context, alertID string, userMessage string, alert *alerts.Alert, diagCtx *DiagnosticContext) (string, error) {
+	a.mu.Lock()
+	history, ok := a.conversations[alertID]
+	if !ok {
+		// Start a new conversation with full diagnostic context.
+		var metrics *alerts.ClusterMetrics
+		if diagCtx != nil {
+			metrics = diagCtx.Metrics
+		}
+		systemPrompt := a.buildSystemPrompt(metrics)
+		history = []ChatEntry{
+			{Role: "system", Content: systemPrompt, Timestamp: time.Now()},
+		}
+		if alert != nil {
+			contextMsg := "Context for this conversation:\n" + formatAlertForAgent(*alert)
+
+			// Enrich with diagnostic context if available.
+			if diagCtx != nil {
+				contextMsg += a.formatDiagnosticContext(diagCtx)
+			}
+
+			history = append(history, ChatEntry{
+				Role:      "user",
+				Content:   contextMsg,
+				Timestamp: time.Now(),
+			})
+		} else if diagCtx != nil {
+			// Global chat without specific alert — still provide cluster context.
+			contextMsg := "Current cluster context:\n" + a.formatDiagnosticContext(diagCtx)
+			history = append(history, ChatEntry{
+				Role:      "user",
+				Content:   contextMsg,
+				Timestamp: time.Now(),
+			})
+		}
+	}
+
+	// Append user message.
+	history = append(history, ChatEntry{
+		Role:      "user",
+		Content:   userMessage,
+		Timestamp: time.Now(),
+	})
+	a.conversations[alertID] = history
+	a.mu.Unlock()
+
+	// Build messages for the API (keep last 20 messages to stay within token limits).
+	messages := historyToMessages(history, 20)
+
+	client := a.currentClient()
+	if client == nil {
+		return "", fmt.Errorf("AI agent not configured — set the DeepSeek API key in Settings → AI & Integrations")
+	}
+
+	response, err := client.Chat(ctx, messages)
+	if err != nil {
+		return "", err
+	}
+
+	// Append assistant response.
+	a.mu.Lock()
+	a.conversations[alertID] = append(a.conversations[alertID], ChatEntry{
+		Role:      "assistant",
+		Content:   response,
+		Timestamp: time.Now(),
+	})
+	a.mu.Unlock()
+
+	return response, nil
+}
+
+// GetChatHistory returns the conversation history for an alert.
+func (a *Agent) GetChatHistory(alertID string) []ChatEntry {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.conversations[alertID]
+}
+
+// GetAutoSummary returns the auto-investigation summary for an alert.
+func (a *Agent) GetAutoSummary(alertID string) *AutoSummary {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.autoSummaries[alertID]
+}
+
+// GetEventLog returns the agent's event log.
+func (a *Agent) GetEventLog() []AgentEvent {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	result := make([]AgentEvent, len(a.eventLog))
+	copy(result, a.eventLog)
+	return result
+}
+
+// TrackEvent logs an observation for pattern recognition.
+func (a *Agent) TrackEvent(event AgentEvent) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	event.Timestamp = time.Now()
+	a.eventLog = append(a.eventLog, event)
+	if len(a.eventLog) > 500 {
+		a.eventLog = a.eventLog[len(a.eventLog)-500:]
+	}
+}
+
+// --- internal helpers ---
+
+func (a *Agent) buildSystemPrompt(metrics *alerts.ClusterMetrics) string {
+	var sb strings.Builder
+	sb.WriteString(`You are the Argus SRE AI Agent — an expert Kubernetes diagnostician embedded in a desktop SRE console. You have deep knowledge of Kubernetes internals, pod lifecycle, resource management, networking, and common failure modes.
+
+Your responsibilities:
+1. Investigate alerts automatically when they fire — identify root cause, assess blast radius, and recommend actions.
+2. Answer follow-up questions from SREs about alerts, cluster state, and remediation.
+3. Track patterns across alerts to identify systemic issues (e.g., recurring OOMs in the same namespace, cascading failures).
+4. Provide ready-to-paste kubectl commands when suggesting actions.
+5. Reference the DECISION_LOG when past decisions are relevant.
+
+Be concise but thorough. Use structured output with clear sections. Severity-appropriate urgency: critical alerts get immediate actionable steps, warnings get monitoring guidance.
+`)
+
+	if metrics != nil {
+		sb.WriteString(fmt.Sprintf(`
+Current cluster state:
+- Pod health: %.1f%% (%d/%d running, %d pending, %d failed)
+- Error rate: %.2f%%
+- Restart count: %d (top: %s)
+- Warning events (30m): %d
+- SLO status: %s
+`,
+			metrics.PodHealthPct, metrics.PodsRunning, metrics.PodsTotal,
+			metrics.PodsPending, metrics.PodsFailed,
+			metrics.ErrorRate, metrics.RestartCount, metrics.RestartTop,
+			metrics.WarningEvents, metrics.SLOStatus,
+		))
+	}
+
+	return sb.String()
+}
+
+// formatDiagnosticContext builds a human-readable context block from the diagnostic bundle.
+func (a *Agent) formatDiagnosticContext(dc *DiagnosticContext) string {
+	var sb strings.Builder
+
+	if len(dc.RecentEvents) > 0 {
+		sb.WriteString("\n\nRecent warning events:\n")
+		for _, e := range dc.RecentEvents {
+			sb.WriteString("- " + e + "\n")
+		}
+	}
+
+	if len(dc.CascadeAlerts) > 0 {
+		sb.WriteString("\nCorrelated alerts (possible cascade):\n")
+		for _, ca := range dc.CascadeAlerts {
+			sb.WriteString(fmt.Sprintf("- [%s] %s in %s/%s\n", ca.Severity, ca.Name, ca.Namespace, ca.PodName))
+		}
+	}
+
+	if len(dc.TopRestarters) > 0 {
+		sb.WriteString("\nPods with high restart counts:\n")
+		for _, r := range dc.TopRestarters {
+			sb.WriteString("- " + r + "\n")
+		}
+	}
+
+	if len(dc.NamespaceSummary) > 0 {
+		sb.WriteString("\nNamespace pod counts:\n")
+		for ns, count := range dc.NamespaceSummary {
+			sb.WriteString(fmt.Sprintf("- %s: %d pods\n", ns, count))
+		}
+	}
+
+	if len(dc.RecentPatterns) > 0 {
+		sb.WriteString("\nAgent pattern log (last 2h):\n")
+		for _, p := range dc.RecentPatterns {
+			sb.WriteString("- " + p + "\n")
+		}
+	}
+
+	return sb.String()
+}
+
+func (a *Agent) getRecentPatterns(namespace string) string {
+	var patterns []string
+	cutoff := time.Now().Add(-2 * time.Hour)
+
+	for _, event := range a.eventLog {
+		if event.Timestamp.Before(cutoff) {
+			continue
+		}
+		if namespace != "" && event.Namespace != "" && event.Namespace != namespace {
+			continue
+		}
+		patterns = append(patterns, fmt.Sprintf("[%s] %s: %s",
+			event.Timestamp.Format("15:04"), event.Type, event.Summary,
+		))
+	}
+
+	if len(patterns) > 10 {
+		patterns = patterns[len(patterns)-10:]
+	}
+	return strings.Join(patterns, "\n")
+}
+
+func formatAlertForAgent(a alerts.Alert) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Alert: %s\n", a.Name))
+	sb.WriteString(fmt.Sprintf("Severity: %s\n", a.Severity))
+	sb.WriteString(fmt.Sprintf("Namespace: %s\n", a.Namespace))
+	sb.WriteString(fmt.Sprintf("Description: %s\n", a.Description))
+
+	if a.PodName != "" {
+		sb.WriteString(fmt.Sprintf("Pod: %s (phase: %s, restarts: %d)\n", a.PodName, a.PodPhase, a.RestartCount))
+	}
+	if a.MemoryLimit != "" {
+		sb.WriteString(fmt.Sprintf("Memory: limit=%s request=%s\n", a.MemoryLimit, a.MemoryRequest))
+	}
+	if a.CPULimit != "" {
+		sb.WriteString(fmt.Sprintf("CPU: limit=%s request=%s throttle=%.0f%%\n", a.CPULimit, a.CPURequest, a.CPUThrottle))
+	}
+	if a.NodeName != "" {
+		sb.WriteString(fmt.Sprintf("Node: %s\n", a.NodeName))
+	}
+	if a.ImageTag != "" {
+		sb.WriteString(fmt.Sprintf("Image: %s\n", a.ImageTag))
+	}
+	if !a.DeployTime.IsZero() {
+		sb.WriteString(fmt.Sprintf("Last deploy: %s\n", a.DeployTime.Format(time.RFC3339)))
+	}
+	if len(a.Tags) > 0 {
+		var tags []string
+		for _, t := range a.Tags {
+			tags = append(tags, t.Label)
+		}
+		sb.WriteString(fmt.Sprintf("Tags: %s\n", strings.Join(tags, ", ")))
+	}
+	return sb.String()
+}
+
+func historyToMessages(history []ChatEntry, maxMessages int) []Message {
+	start := 0
+	if len(history) > maxMessages {
+		// Always keep the system message (first entry).
+		start = len(history) - maxMessages
+		if history[0].Role == "system" {
+			messages := []Message{{Role: history[0].Role, Content: history[0].Content}}
+			for _, entry := range history[start:] {
+				if entry.Role == "system" {
+					continue
+				}
+				messages = append(messages, Message{Role: entry.Role, Content: entry.Content})
+			}
+			return messages
+		}
+	}
+
+	messages := make([]Message, 0, len(history)-start)
+	for _, entry := range history[start:] {
+		messages = append(messages, Message{Role: entry.Role, Content: entry.Content})
+	}
+	return messages
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
