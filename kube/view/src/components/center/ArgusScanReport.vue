@@ -1,15 +1,15 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useToast } from '../../composables/useToast'
 import { useBackgroundTasks } from '../../composables/useBackgroundTasks'
-import { useChat } from '../../composables/useWails'
 import { useUIPrefsStore } from '../../stores/uiPrefs'
 import { useArgusContextStore } from '../../stores/argusContext'
 import { watch } from 'vue'
 
-const { sendMessage } = useChat()
 const uiPrefs = useUIPrefsStore()
 const argusContext = useArgusContextStore()
+const { investigating: agentInvestigating, investigatingLabel: agentInvestigatingLabel } = storeToRefs(argusContext)
 
 const props = defineProps({
   report: { type: Object, default: null },
@@ -154,29 +154,40 @@ watch(selectedFinding, (finding) => {
   })
 }, { immediate: true })
 
-async function fixWithAgent(finding) {
-  // The "Ask Argus" button always sends an explicit "diagnose this" message
-  // for the finding so the user sees an answer immediately. The shared
-  // argusContext store guarantees the right context is attached even if a
-  // race or user error triggered this without a select event firing first.
+function fixWithAgent(finding) {
+  // Route through the chat panel via argusContext.enqueuePrompt — that
+  // way ArgusAIChat owns the single send-path. The user sees the question
+  // appear in the conversation, the typing indicator pulse, and the reply
+  // all in the same panel. Previously this fired sendMessage('global', …)
+  // from a separate useChat() instance while the visible chat panel was
+  // bound to its own active session, so the user saw a toast but the chat
+  // panel stayed empty.
   const body = buildFindingContext(finding)
+  const label = `${finding.severity?.toUpperCase() || 'finding'}: ${finding.name}`
   argusContext.setContext({
     kind: 'config-audit-finding',
-    label: `${finding.severity?.toUpperCase() || 'finding'}: ${finding.name}`,
+    label,
     body,
     sourceId: finding.id,
   })
   uiPrefs.openChatPopOut()
   addToast(`Asked Argus about "${finding.name}"…`, 3000)
-  try {
-    // consumeForSend() pulls the body and clears it so follow-up messages
-    // from the user don't re-prepend the whole finding context every time.
-    const ctx = argusContext.consumeForSend()
-    await sendMessage('global', ctx || body)
-  } catch (e) {
-    addToast(`Argus chat error: ${e?.message || e}`, 6000)
-  }
+  argusContext.enqueuePrompt({
+    body,
+    label: finding.name || label,
+    sourceId: finding.id,
+  })
 }
+
+// True when the agent is busy specifically on this finding. Used to keep
+// the pulse local — we don't want every Ask Argus button on the page
+// pulsing when the user asked about a different finding.
+const investigatingThis = computed(() =>
+  agentInvestigating.value &&
+  selectedFinding.value &&
+  agentInvestigatingLabel.value &&
+  agentInvestigatingLabel.value.includes(selectedFinding.value.name || '')
+)
 </script>
 
 <template>
@@ -353,9 +364,18 @@ async function fixWithAgent(finding) {
             </div>
             <pre class="ask-preview-body">{{ buildFindingContext(selectedFinding) }}</pre>
           </div>
-          <button class="agent-fix-btn" @click="fixWithAgent(selectedFinding)">
-            Ask Argus
+          <button
+            class="agent-fix-btn"
+            :class="{ investigating: investigatingThis }"
+            :disabled="investigatingThis"
+            @click="fixWithAgent(selectedFinding)"
+          >
+            <span v-if="investigatingThis" class="agent-busy-dot" aria-hidden="true"></span>
+            {{ investigatingThis ? 'Argus investigating…' : 'Ask Argus' }}
           </button>
+          <div v-if="investigatingThis" class="agent-busy-hint">
+            Question sent — see live progress in the chat panel.
+          </div>
         </div>
       </div>
 
@@ -570,6 +590,41 @@ async function fixWithAgent(finding) {
 .agent-fix-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(139, 92, 246, 0.4);
+}
+.agent-fix-btn.investigating {
+  cursor: progress;
+  animation: agent-pulse 1.6s ease-in-out infinite;
+}
+.agent-fix-btn.investigating:hover {
+  /* Suppress hover lift while the agent is busy so the pulse reads as a
+     status indicator rather than an invitation to click again. */
+  transform: none;
+}
+.agent-fix-btn:disabled { opacity: 0.85; }
+.agent-busy-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  margin-right: 8px;
+  animation: agent-dot-blink 0.9s ease-in-out infinite;
+}
+.agent-busy-hint {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 6px;
+}
+@keyframes agent-pulse {
+  0%, 100% {
+    box-shadow: 0 2px 4px rgba(139, 92, 246, 0.2);
+  }
+  50% {
+    box-shadow: 0 2px 4px rgba(139, 92, 246, 0.2), 0 0 0 5px rgba(167, 139, 250, 0.18);
+  }
+}
+@keyframes agent-dot-blink {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50%      { opacity: 1;   transform: scale(1); }
 }
 .ask-preview {
   background: var(--bg2);

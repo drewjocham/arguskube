@@ -9,7 +9,7 @@ import { useChatSessionsStore } from '../../stores/chatSessions'
 import CodeBlock from './CodeBlock.vue'
 
 const argusContext = useArgusContextStore()
-const { pending: pendingContext } = storeToRefs(argusContext)
+const { pending: pendingContext, pendingPrompt, investigatingLabel } = storeToRefs(argusContext)
 
 // Multi-session chat: each session is its own backend history thread
 // keyed by id. The store keeps frontend metadata (title, last activity,
@@ -85,13 +85,49 @@ async function onSend() {
   // Auto-name the session from the first user message. Subsequent
   // messages don't change the title.
   sessions.autoTitleFromFirstMessage(activeId.value, val)
+  await dispatchSend(payload, val)
+}
+
+// dispatchSend is the single send path used by both the composer and the
+// pendingPrompt queue. It pushes an optimistic user message into history so
+// the user immediately sees what was asked, flips the investigating flag so
+// pulse animations elsewhere in the UI know work is in flight, and clears
+// everything on the finally branch.
+async function dispatchSend(payload, displayLabel) {
+  const optimistic = {
+    role: 'user',
+    content: payload,
+    timestamp: new Date().toISOString(),
+    optimistic: true,
+  }
+  const before = history.value || []
+  history.value = [...before, optimistic]
+  argusContext.setInvestigating(displayLabel || payload.slice(0, 80))
   try {
     await sendMessage(activeId.value, payload)
     sessions.recordMessage(activeId.value)
   } catch (e) {
+    // Roll the optimistic message back so the user isn't confused about
+    // whether the question got through.
+    history.value = before
     errorMessage.value = e?.message || String(e)
+  } finally {
+    argusContext.clearInvestigating()
   }
 }
+
+// When another view (Config Audit, Network Policies, etc.) queues a prompt
+// via argusContext.enqueuePrompt(), surface it as the next user message in
+// the active session. Watching the store keeps a single send-path in the
+// chat panel so the user always sees the question, the typing indicator,
+// and the reply in the same place.
+watch(pendingPrompt, async (next) => {
+  if (!next || sending.value) return
+  const queued = argusContext.consumePendingPrompt()
+  if (!queued) return
+  sessions.autoTitleFromFirstMessage(activeId.value, queued.label || queued.body)
+  await dispatchSend(queued.body, queued.label)
+}, { immediate: true })
 
 function onKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -204,7 +240,7 @@ function formatTime(ts) {
               <span class="message-author">{{ msg.role === 'assistant' ? 'Argus AI' : 'You' }}</span>
               <span class="message-time">{{ formatTime(msg.timestamp) }}</span>
             </div>
-            <div class="message-body">
+            <div class="message-body" :class="{ optimistic: msg.optimistic }">
               <template v-for="(seg, segIdx) in parseCodeBlocks(msg.content)" :key="segIdx">
                 <div
                   v-if="seg.type === 'text'"
@@ -223,6 +259,9 @@ function formatTime(ts) {
           <div v-if="sending" class="message assistant typing">
             <div class="message-meta">
               <span class="message-author">Argus AI</span>
+              <span v-if="investigatingLabel" class="investigating-label" :title="investigatingLabel">
+                investigating {{ investigatingLabel }}
+              </span>
             </div>
             <div class="message-body">
               <span class="dot"></span><span class="dot"></span><span class="dot"></span>
@@ -503,6 +542,8 @@ function formatTime(ts) {
 .message.typing .message-body {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 14px;
+  position: relative;
+  animation: pulse-glow 1.8s ease-in-out infinite;
 }
 .message.typing .dot {
   width: 6px; height: 6px;
@@ -516,6 +557,26 @@ function formatTime(ts) {
   0%, 80%, 100% { opacity: 0.25; }
   40% { opacity: 1; }
 }
+/* Subtle outer glow on the typing bubble so the agent feels alive even
+   before the first reply chunk lands. Capped to 0.6 opacity peak so it
+   doesn't bleed into the rest of the panel. */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(167, 139, 250, 0); }
+  50%      { box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.18); }
+}
+
+.investigating-label {
+  font-size: 10.5px; font-family: var(--mono); color: #c4b3fd;
+  background: rgba(167, 139, 250, 0.12);
+  padding: 1px 6px; border-radius: 3px;
+  max-width: 260px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Optimistic user message — shown immediately on send so the user sees
+   their question without waiting for the backend round-trip. Slight
+   transparency hint that it isn't yet acknowledged by the server. */
+.message.user .message-body.optimistic { opacity: 0.85; }
 
 .error-banner {
   display: flex; align-items: center; gap: 10px;

@@ -62,4 +62,42 @@ describe('argusContext store', () => {
     const s = useArgusContextStore()
     expect(s.consumeForSend()).toBe('')
   })
+
+  it('enqueuePrompt stores a non-empty body for later consumption', () => {
+    const s = useArgusContextStore()
+    s.enqueuePrompt({ body: 'diagnose finding-1', label: 'Finding 1', sourceId: 'f-1' })
+    expect(s.pendingPrompt).not.toBeNull()
+    expect(s.pendingPrompt.body).toBe('diagnose finding-1')
+    expect(s.pendingPrompt.label).toBe('Finding 1')
+    expect(s.pendingPrompt.sourceId).toBe('f-1')
+    expect(typeof s.pendingPrompt.queuedAt).toBe('string')
+  })
+
+  it('enqueuePrompt ignores empty bodies', () => {
+    const s = useArgusContextStore()
+    s.enqueuePrompt({ body: '   ' })
+    expect(s.pendingPrompt).toBeNull()
+    s.enqueuePrompt({})
+    expect(s.pendingPrompt).toBeNull()
+  })
+
+  it('consumePendingPrompt drains the queued prompt', () => {
+    const s = useArgusContextStore()
+    s.enqueuePrompt({ body: 'go', label: 'L' })
+    const taken = s.consumePendingPrompt()
+    expect(taken.body).toBe('go')
+    expect(s.pendingPrompt).toBeNull()
+    expect(s.consumePendingPrompt()).toBeNull()
+  })
+
+  it('setInvestigating / clearInvestigating drive the busy flag', () => {
+    const s = useArgusContextStore()
+    expect(s.investigating).toBe(false)
+    s.setInvestigating('Finding 1')
+    expect(s.investigating).toBe(true)
+    expect(s.investigatingLabel).toBe('Finding 1')
+    s.clearInvestigating()
+    expect(s.investigating).toBe(false)
+    expect(s.investigatingLabel).toBe('')
+  })
 })

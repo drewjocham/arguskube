@@ -1,9 +1,13 @@
 <script setup>
 import { onMounted, onUnmounted } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useUIPrefsStore } from '../../stores/uiPrefs'
+import { useArgusContextStore } from '../../stores/argusContext'
 import ArgusAIChat from './ArgusAIChat.vue'
 
 const uiPrefs = useUIPrefsStore()
+const argusContext = useArgusContextStore()
+const { investigating, investigatingLabel } = storeToRefs(argusContext)
 
 function close() {
   uiPrefs.closeChatPopOut()
@@ -24,15 +28,20 @@ onUnmounted(() => {
 <template>
   <div class="chat-popout-overlay" @click.self="close">
     <div class="chat-popout-window">
-      <div class="chat-popout-titlebar">
+      <div class="chat-popout-titlebar" :class="{ investigating }">
         <div class="chat-popout-title">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="9"/>
-            <path d="M9 11h.01"/>
-            <path d="M15 11h.01"/>
-            <path d="M9 15c1 1 2 1.5 3 1.5s2-.5 3-1.5"/>
-          </svg>
+          <span class="chat-popout-icon" :class="{ pulsing: investigating }">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M9 11h.01"/>
+              <path d="M15 11h.01"/>
+              <path d="M9 15c1 1 2 1.5 3 1.5s2-.5 3-1.5"/>
+            </svg>
+          </span>
           Argus AI
+          <span v-if="investigating" class="chat-popout-status" :title="investigatingLabel">
+            · investigating<span v-if="investigatingLabel"> {{ investigatingLabel }}</span>
+          </span>
         </div>
         <button class="chat-popout-close" @click="close" title="Close (Esc)">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
@@ -92,6 +101,32 @@ onUnmounted(() => {
   color: #e8eaec;
 }
 .chat-popout-title svg { color: #a78bfa; }
+.chat-popout-icon { display: inline-flex; align-items: center; line-height: 0; }
+/* Subtle ring pulse when the agent is investigating — visible enough that
+   the user sees activity, soft enough that it doesn't compete with the
+   composer once a reply is being typed. Animation stops when the
+   investigating flag clears. */
+.chat-popout-icon.pulsing {
+  border-radius: 50%;
+  animation: chat-popout-ring 1.6s ease-in-out infinite;
+}
+.chat-popout-titlebar.investigating {
+  border-bottom-color: rgba(167, 139, 250, 0.35);
+}
+.chat-popout-status {
+  font-weight: 400;
+  font-size: 11.5px;
+  color: #c4b3fd;
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+@keyframes chat-popout-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(167, 139, 250, 0); }
+  50%      { box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.22); }
+}
 
 .chat-popout-close {
   background: none;
