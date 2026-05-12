@@ -1,0 +1,213 @@
+name: Release
+
+# Triggered by pushing a SemVer tag (e.g. `git tag v0.1.0 && git push --tags`).
+# Builds the Wails desktop app for macOS (universal: arm64 + x86_64), ad-hoc
+# signs it, zips the .app bundle, uploads it to a GitHub Release, and — if a
+# Homebrew tap is configured — pushes an updated cask there.
+#
+# Required to publish to a tap (optional):
+#   vars.HOMEBREW_TAP_REPO     e.g. "drewjocham/homebrew-tap"
+#   secrets.HOMEBREW_TAP_TOKEN PAT with `contents: write` on the tap repo
+#
+# Without those set, the release is still created and users can install via
+#   brew install --cask https://github.com/<owner>/<repo>/releases/download/<tag>/argus.rb
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to (re-)release (e.g. v0.1.0). Must already exist as a git tag.'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  WAILS_VERSION: v2.12.0
+  NODE_VERSION: '22'
+
+jobs:
+  build-macos:
+    name: Build macOS universal .app
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      sha256: ${{ steps.package.outputs.sha256 }}
+      asset_name: ${{ steps.package.outputs.asset_name }}
+    steps:
+      - name: Resolve tag and version
+        id: meta
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.*)?$ ]]; then
+            echo "::error::Tag '$tag' is not SemVer (vMAJOR.MINOR.PATCH[-pre])"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: kube/backend/go.mod
+          cache-dependency-path: kube/backend/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: kube/view/package-lock.json
+
+      - name: Install Wails CLI
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+          echo "${HOME}/go/bin" >> "$GITHUB_PATH"
+
+      - name: Build universal macOS app
+        working-directory: kube/backend
+        run: |
+          wails build \
+            -platform darwin/universal \
+            -clean \
+            -trimpath \
+            -ldflags="-s -w -X main.version=${{ steps.meta.outputs.version }}" \
+            2>&1 | grep -v "codesign failed" || true
+          test -d build/bin/argus.app || { echo "::error::Wails build did not produce build/bin/argus.app"; ls -la build/bin || true; exit 1; }
+
+      - name: Ad-hoc sign and zip
+        id: package
+        working-directory: kube/backend
+        run: |
+          set -euo pipefail
+          version='${{ steps.meta.outputs.version }}'
+          asset_name="Argus-${version}-universal.zip"
+
+          # Strip stray quarantine attrs from cross-compilation, then ad-hoc sign.
+          xattr -cr build/bin/argus.app
+          codesign --force --deep --sign - build/bin/argus.app
+          codesign --verify --deep --strict --verbose=2 build/bin/argus.app
+
+          # ditto preserves Mach-O headers, symlinks, and resource forks; plain
+          # `zip` would corrupt the .app on extraction.
+          ditto -c -k --keepParent build/bin/argus.app "build/bin/${asset_name}"
+
+          sha256=$(shasum -a 256 "build/bin/${asset_name}" | awk '{print $1}')
+          echo "asset_name=${asset_name}" >> "$GITHUB_OUTPUT"
+          echo "sha256=${sha256}" >> "$GITHUB_OUTPUT"
+          echo "${sha256}  ${asset_name}" > "build/bin/${asset_name}.sha256"
+
+      - name: Render Homebrew cask
+        working-directory: kube/backend
+        run: |
+          set -euo pipefail
+          version='${{ steps.meta.outputs.version }}'
+          tag='${{ steps.meta.outputs.tag }}'
+          sha256='${{ steps.package.outputs.sha256 }}'
+          asset_name='${{ steps.package.outputs.asset_name }}'
+          repo='${{ github.repository }}'
+
+          # Render the template into the artifact location.
+          sed \
+            -e "s|__VERSION__|${version}|g" \
+            -e "s|__TAG__|${tag}|g" \
+            -e "s|__SHA256__|${sha256}|g" \
+            -e "s|__ASSET__|${asset_name}|g" \
+            -e "s|__REPO__|${repo}|g" \
+            ../../homebrew/argus.rb.tmpl > build/bin/argus.rb
+
+          echo "::group::Rendered cask"
+          cat build/bin/argus.rb
+          echo "::endgroup::"
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            kube/backend/build/bin/Argus-*-universal.zip
+            kube/backend/build/bin/Argus-*-universal.zip.sha256
+            kube/backend/build/bin/argus.rb
+
+  update-tap:
+    name: Update Homebrew tap
+    needs: build-macos
+    runs-on: ubuntu-latest
+    # Skip silently if the tap isn't configured — the release itself is enough
+    # to install via a direct URL.
+    if: vars.HOMEBREW_TAP_REPO != ''
+    steps:
+      - name: Check out tap
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.HOMEBREW_TAP_REPO }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+          persist-credentials: true
+
+      - name: Write cask
+        env:
+          VERSION: ${{ needs.build-macos.outputs.version }}
+          TAG: ${{ needs.build-macos.outputs.tag }}
+          SHA256: ${{ needs.build-macos.outputs.sha256 }}
+          ASSET: ${{ needs.build-macos.outputs.asset_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p tap/Casks
+          cat > tap/Casks/argus.rb <<EOF
+          cask "argus" do
+            version "${VERSION}"
+            sha256 "${SHA256}"
+
+            url "https://github.com/${REPO}/releases/download/${TAG}/${ASSET}",
+                verified: "github.com/${REPO}/"
+            name "Argus"
+            desc "Kubernetes SRE console"
+            homepage "https://github.com/${REPO}"
+
+            # Ad-hoc signed; without a Developer ID, Gatekeeper needs the
+            # quarantine bit cleared before first launch.
+            app "argus.app"
+            postflight do
+              system_command "/usr/bin/xattr",
+                             args: ["-cr", "#{appdir}/argus.app"],
+                             sudo: false
+            end
+
+            zap trash: [
+              "~/Library/Application Support/Argus",
+              "~/Library/Caches/com.djocham.argus",
+              "~/Library/Preferences/com.djocham.argus.plist",
+              "~/Library/Saved Application State/com.djocham.argus.savedState",
+            ]
+          end
+          EOF
+
+      - name: Commit and push cask
+        working-directory: tap
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/argus.rb
+          if git diff --cached --quiet; then
+            echo "Cask already at the requested version — nothing to push."
+            exit 0
+          fi
+          git commit -m "argus ${{ needs.build-macos.outputs.version }}"
+          git push
