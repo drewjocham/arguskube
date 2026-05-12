@@ -122,6 +122,57 @@ Argus includes an automated development pipeline at `.argus/hooks/kube-pipeline.
 
 See [.context.md](.context.md) for architectural decisions and known debt.
 
+## Releasing
+
+Argus ships to macOS via a Homebrew cask. A push of a SemVer tag triggers
+`.github/workflows/release.yml`, which builds a universal (arm64 + x86_64)
+`.app` bundle, ad-hoc signs it, zips it with `ditto`, and publishes the
+archive together with a rendered `argus.rb` cask file as GitHub Release
+assets.
+
+```bash
+# From main, with a clean tree:
+git tag v0.1.0
+git push origin v0.1.0
+# Wait for the Release workflow to finish, then verify the assets at:
+#   https://github.com/drewjocham/arguskube/releases/tag/v0.1.0
+```
+
+### Install from a Homebrew tap
+
+If `vars.HOMEBREW_TAP_REPO` and `secrets.HOMEBREW_TAP_TOKEN` are configured
+on this repo, the release job also pushes the updated cask to that tap.
+End users can then:
+
+```bash
+brew tap drewjocham/tap
+brew install --cask argus
+```
+
+### Install directly from a Release
+
+Without a tap, the cask file is still uploaded to the Release. Install with:
+
+```bash
+brew install --cask https://github.com/drewjocham/arguskube/releases/download/v0.1.0/argus.rb
+```
+
+### Setting up the tap (one-time)
+
+1. Create a public repo named `homebrew-tap` (the prefix is mandatory).
+2. On this repo: set `HOMEBREW_TAP_REPO` (Variables) to `<owner>/homebrew-tap`
+   and `HOMEBREW_TAP_TOKEN` (Secret) to a fine-grained PAT with
+   `contents: write` on the tap repo.
+3. Next tag push will populate `Casks/argus.rb` in the tap automatically.
+
+### Signing
+
+The release uses ad-hoc signing (no Apple Developer ID). Gatekeeper accepts
+ad-hoc signed apps when launched via `brew install --cask` because the
+cask's `postflight` clears the quarantine attribute. To upgrade to a notarized
+build, add an Apple Developer cert + notarytool step before the `codesign`
+call in the workflow.
+
 ## License
 
 © 2026 Argus Infrastructure

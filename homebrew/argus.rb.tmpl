@@ -1,0 +1,30 @@
+# Cask template — rendered by .github/workflows/release.yml.
+# The release job substitutes __VERSION__, __TAG__, __SHA256__, __ASSET__,
+# and __REPO__ before publishing this file as a release artifact and (if
+# configured) pushing it into the Homebrew tap.
+
+cask "argus" do
+  version "__VERSION__"
+  sha256 "__SHA256__"
+
+  url "https://github.com/__REPO__/releases/download/__TAG__/__ASSET__",
+      verified: "github.com/__REPO__/"
+  name "Argus"
+  desc "Kubernetes SRE console"
+  homepage "https://github.com/__REPO__"
+
+  # Ad-hoc signed; clear the quarantine bit so Gatekeeper allows first launch.
+  app "argus.app"
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args: ["-cr", "#{appdir}/argus.app"],
+                   sudo: false
+  end
+
+  zap trash: [
+    "~/Library/Application Support/Argus",
+    "~/Library/Caches/com.djocham.argus",
+    "~/Library/Preferences/com.djocham.argus.plist",
+    "~/Library/Saved Application State/com.djocham.argus.savedState",
+  ]
+end
