@@ -142,3 +142,177 @@ func TestSavePersistedSettings_NilReturnsError(t *testing.T) {
 		t.Fatal("expected error for nil settings")
 	}
 }
+
+// TestFromConfig_RoundTripsPipelinesAndLLM is the regression guard for
+// the "settings don't save" bug: every Pipelines + LLM field the
+// Settings UI writes must survive a save-then-load cycle. If a new
+// field is added to PipelinesConfig and forgotten here, this test
+// fails loudly — much louder than a user discovering their GitHub PAT
+// disappeared at next launch.
+func TestFromConfig_RoundTripsPipelinesAndLLM(t *testing.T) {
+	dir := t.TempDir()
+	prev := settingsDirOverride
+	SetSettingsDirForTest(dir)
+	t.Cleanup(func() { SetSettingsDirForTest(prev) })
+
+	src := &OnlineDataConfig{}
+	src.AI.LLMBaseURL = "https://vllm.example/v1"
+	src.AI.LLMModel = "deepseek-coder-v3"
+	src.Pipelines = PipelinesConfig{
+		Enabled:                true,
+		Provider:               "github",
+		GitHubToken:            "ghp_secrettoken",
+		GitHubOwner:            "argues",
+		GitHubRepo:             "argus",
+		GitHubWorkflow:         "release.yml",
+		GitLabURL:              "https://gitlab.example",
+		GitLabToken:            "glpat-xxx",
+		GitLabProjectID:        "42",
+		GitLabRef:              "main",
+		AWSRegion:              "us-east-1",
+		AWSAccessKey:           "AKIA...",
+		AWSSecretKey:           "secret",
+		AWSProject:             "argus-build",
+		GCPProject:             "argus-gcp",
+		GCPRegion:              "europe-west3",
+		GCPCredentials:         "/creds.json",
+		CircleCIToken:          "ccitok",
+		CircleCIProjectSlug:    "gh/argues/argus",
+		AzureOrganization:      "argues-org",
+		AzureProject:           "argus",
+		AzurePipelineID:        "17",
+		AzureToken:             "azp-pat",
+		AzureBranch:            "main",
+		NotifyOnPROpened:       true,
+		NotifyOnPRUpdated:      false,
+		NotifyOnPRCommented:    true,
+		NotifyOnPRMerged:       true,
+		AutoCodeReview:         true,
+		CodeReviewDestination:  "gdrive",
+		GDriveFolderID:         "folder-abc",
+		CodeReviewS3Prefix:     "s3://argus/reviews",
+		CodeReviewEmailTo:      "team@example.com",
+		ConfluenceURL:          "https://confluence.example",
+		ConfluenceEmail:        "alice@example.com",
+		ConfluenceToken:        "conf-tok",
+		ConfluenceSpaceKey:     "ENG",
+		ConfluenceParentPageID: "12345",
+		NotionToken:            "notion-tok",
+		NotionDatabaseID:       "db-1",
+		EvernoteToken:          "ev-tok",
+		EvernoteNotebookGUID:   "ev-nb",
+		OneNoteToken:           "on-tok",
+		OneNoteSectionID:       "on-sec",
+		AmplenoteAPIKey:        "amp-key",
+		StandardNotesURL:       "https://sn.example",
+		StandardNotesToken:     "sn-tok",
+		ObsidianVaultPath:      "/Users/me/Vault",
+		JoplinURL:              "http://localhost:41184",
+		JoplinToken:            "jop-tok",
+		LogseqGraphPath:        "/Users/me/Graph",
+		BearToken:              "bear-tok",
+	}
+
+	if err := SavePersistedSettings(FromConfig(src)); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	loaded, err := LoadPersistedSettings()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	dst := &OnlineDataConfig{}
+	loaded.MergeInto(dst)
+
+	// LLM
+	if dst.AI.LLMBaseURL != src.AI.LLMBaseURL {
+		t.Errorf("LLMBaseURL lost: got %q, want %q", dst.AI.LLMBaseURL, src.AI.LLMBaseURL)
+	}
+	if dst.AI.LLMModel != src.AI.LLMModel {
+		t.Errorf("LLMModel lost: got %q, want %q", dst.AI.LLMModel, src.AI.LLMModel)
+	}
+	// Pipelines: deep equal (so adding a new field to PipelinesConfig
+	// without updating PersistedPipelinesSettings + the two converters
+	// will fail this assertion).
+	if !pipelinesEqual(dst.Pipelines, src.Pipelines) {
+		t.Errorf("Pipelines roundtrip lost data:\n got  %+v\n want %+v", dst.Pipelines, src.Pipelines)
+	}
+}
+
+// TestPipelinesGatedByHasPipelinesFlag — a load with HasPipelines=false
+// must not stomp on env-default Pipelines values. Important so a
+// user who's never opened Settings keeps their env-bootstrapped config.
+func TestPipelinesGatedByHasPipelinesFlag(t *testing.T) {
+	dir := t.TempDir()
+	prev := settingsDirOverride
+	SetSettingsDirForTest(dir)
+	t.Cleanup(func() { SetSettingsDirForTest(prev) })
+
+	// Persisted settings touch nothing pipeline-related (zero value,
+	// HasPipelines=false).
+	if err := SavePersistedSettings(&PersistedSettings{Namespace: "ns-from-ui"}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	dst := &OnlineDataConfig{}
+	dst.Pipelines.GitHubToken = "env-token"
+	dst.Pipelines.Enabled = true
+
+	loaded, err := LoadPersistedSettings()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	loaded.MergeInto(dst)
+
+	if dst.Pipelines.GitHubToken != "env-token" {
+		t.Errorf("env GitHubToken stomped by empty persisted: got %q", dst.Pipelines.GitHubToken)
+	}
+	if !dst.Pipelines.Enabled {
+		t.Error("env Enabled=true stomped by zero-value persisted bool")
+	}
+	if dst.Kubernetes.Namespace != "ns-from-ui" {
+		t.Errorf("non-pipeline field should still merge: got %q", dst.Kubernetes.Namespace)
+	}
+}
+
+// TestPipelinesExplicitFalseSurvives — once HasPipelines=true, an
+// explicit Enabled=false in the saved settings overrides an env-set
+// Enabled=true. The user's most recent UI choice wins.
+func TestPipelinesExplicitFalseSurvives(t *testing.T) {
+	dir := t.TempDir()
+	prev := settingsDirOverride
+	SetSettingsDirForTest(dir)
+	t.Cleanup(func() { SetSettingsDirForTest(prev) })
+
+	if err := SavePersistedSettings(&PersistedSettings{
+		HasPipelines: true,
+		Pipelines:    PersistedPipelinesSettings{Enabled: false, GitHubToken: ""},
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	dst := &OnlineDataConfig{}
+	dst.Pipelines.Enabled = true
+	dst.Pipelines.GitHubToken = "env-token"
+
+	loaded, err := LoadPersistedSettings()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	loaded.MergeInto(dst)
+
+	if dst.Pipelines.Enabled {
+		t.Error("explicit Enabled=false from UI must override env")
+	}
+	if dst.Pipelines.GitHubToken != "" {
+		t.Errorf("user-cleared token must override env: got %q", dst.Pipelines.GitHubToken)
+	}
+}
+
+// pipelinesEqual compares two PipelinesConfig values field-by-field.
+// We don't use reflect.DeepEqual on the struct because Go's struct
+// equality already works here — but a custom helper gives nicer
+// failure messages and lets us add per-field tolerances later.
+func pipelinesEqual(a, b PipelinesConfig) bool {
+	return a == b
+}

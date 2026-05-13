@@ -68,6 +68,16 @@ func (a *App) SwitchContext(name string) error {
 		a.k8s.GetRestConfig(),
 		a.logger.With("component", "agentconn"),
 	)
+	// Persist the choice so the next launch lands on the same context
+	// without re-running auto-resolve. Failure is logged but not
+	// surfaced — the switch already worked in-memory and the user can
+	// still operate; persistence is just continuity.
+	if err := config.SavePersistedSettings(config.FromConfig(a.cfg)); err != nil {
+		a.logger.Warn("could not persist context switch",
+			slog.String("context", name),
+			slog.String("error", err.Error()),
+		)
+	}
 	return nil
 }
 
