@@ -9,6 +9,8 @@ import { useUIPrefsStore } from './stores/uiPrefs'
 import { useNotificationsStore } from './stores/notifications'
 import { useAuthStore } from './stores/auth'
 import { useAppNavStore } from './stores/appNav'
+import { useSectionTabsStore } from './stores/sectionTabs'
+import { SECTIONS, sectionForTab } from './lib/sectionTabs'
 import { useCredentialMonitor } from './composables/useCredentialMonitor'
 import { useWatcherEngine } from './composables/useWatcherEngine'
 import { useArgusAlertContext } from './composables/useArgusAlertContext'
@@ -58,7 +60,28 @@ const { mode } = useAppMode()
 
 const logLines = ref([])
 const selectedAlert = ref(null)
-const activeNav = ref('alerts')
+// activeNav is now a SECTION id (one of the 9 SECTIONS keys). The
+// Sidebar emits section ids; CenterPanel routes by section. Legacy
+// callers that hand in tab ids (e.g. 'pods') are translated below.
+const activeNav = ref('monitoring')
+
+// Translate any incoming nav target into a (section, tab) pair. Returns
+// the section id to set on activeNav; if the incoming id was a tab,
+// also writes the tab into the sectionTabs store so CenterPanel opens
+// directly on that tab.
+const sectionTabsStore = useSectionTabsStore()
+function navigateTo(navId) {
+  if (!navId) return
+  if (navId in SECTIONS) {
+    activeNav.value = navId
+    return
+  }
+  const sectionId = sectionForTab(navId)
+  if (sectionId) {
+    sectionTabsStore.setTab(sectionId, navId)
+    activeNav.value = sectionId
+  }
+}
 
 // appNav lets components deep inside the center panel push the user to a
 // different sidebar nav (e.g. a "settings" link in a tooltip jumps to
@@ -66,9 +89,8 @@ const activeNav = ref('alerts')
 // pending record on its own onMounted.
 const appNav = useAppNavStore()
 watch(() => appNav.pending, (req) => {
-  if (req && req.navId && req.navId !== activeNav.value) {
-    activeNav.value = req.navId
-  }
+  if (!req || !req.navId) return
+  navigateTo(req.navId)
 }, { immediate: false })
 
 // One global tick drives every registered watcher (credentials today,
@@ -238,7 +260,7 @@ useWailsEvent('argus:notification', (data) => {
         :clusterInfo="clusterInfo"
         :alerts="alerts"
         :activeNav="activeNav"
-        @update:activeNav="activeNav = $event"
+        @update:activeNav="navigateTo($event)"
         @context-switched="onContextSwitched"
       />
       <div class="center-area">

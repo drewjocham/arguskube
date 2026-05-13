@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, reactive, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import MetricsRow from './MetricsRow.vue'
 import AlertList from './AlertList.vue'
 import LogStream from './LogStream.vue'
@@ -8,7 +9,6 @@ import ResourceDetail from '../resources/ResourceDetail.vue'
 import RunbooksView from '../operations/RunbooksView.vue'
 import IncidentLog from '../operations/IncidentLog.vue'
 import ConfigAudit from '../operations/ConfigAudit.vue'
-// WorkflowEditor deprecated — duplicates Argo Workflows.
 import ArgusCDList from '../operations/ArgusCDList.vue'
 import PipelinesView from '../operations/PipelinesView.vue'
 import LogExplorer from './LogExplorer.vue'
@@ -35,14 +35,31 @@ import FinOpsView from './FinOpsView.vue'
 import SetupPanel from '../setup/SetupPanel.vue'
 import SettingsPanel from '../setup/SettingsPanel.vue'
 import ArgusAIChat from '../ai/ArgusAIChat.vue'
+import SectionTabs from '../shared/SectionTabs.vue'
 import { useArgusScan } from '../../composables/useWails'
 import { useBackgroundTasks } from '../../composables/useBackgroundTasks'
 import { useAppNavStore } from '../../stores/appNav'
+import { useSectionTabsStore } from '../../stores/sectionTabs'
+import { SECTIONS } from '../../lib/sectionTabs'
+
+// CenterPanel — section-based router. Receives `activeNav` (a section
+// id) and renders a <SectionTabs> bar at the top plus the matching
+// content based on the section's saved active tab.
+//
+// The section dispatcher is a single v-if/v-else-if chain on
+// `activeNav`. Inside each section the per-tab dispatch is its own
+// v-if chain on `sectionTabs.activeTab(sectionId)`. This is the same
+// shape as before — only the OUTER grouping (5 wide buckets →
+// 9 sections) and the new tab bar are new.
+//
+// The "Alerts" tab inside Monitoring keeps its OWN inner sub-tabs
+// (Cluster Alerts vs Manage Alerts) because that's two distinct
+// dashboards over the same data and adding them as siblings of the
+// other Monitoring tabs would confuse the model. One layer of
+// nesting is OK; we just don't do more.
 
 const { report: argusScanReport, loading: argusScanLoading, error: argusScanError, runScan: runArgusScanReal } = useArgusScan()
 const { startTask, completeTask, failTask, getTask } = useBackgroundTasks()
-
-// Persist the last Argus scan result across navigation.
 const ARGUS_SCAN_KEY = 'argus-scan'
 
 const props = defineProps({
@@ -50,7 +67,8 @@ const props = defineProps({
   alerts: { type: Array, default: () => [] },
   selectedAlert: { type: Object, default: null },
   logLines: { type: Array, default: () => [] },
-  activeNav: { type: String, default: 'alerts' },
+  // activeNav is now a SECTION id (monitoring | cluster | workloads | …).
+  activeNav: { type: String, default: 'monitoring' },
 })
 
 const emit = defineEmits(['select-alert'])
@@ -58,145 +76,113 @@ const emit = defineEmits(['select-alert'])
 const criticalCount = computed(() => props.alerts.filter(a => a.severity === 'critical').length)
 const warningCount = computed(() => props.alerts.filter(a => a.severity === 'warning').length)
 
+const sectionTabsStore = useSectionTabsStore()
+const { tabs: sectionTabValues } = storeToRefs(sectionTabsStore)
+
+// Helper: which tab is active for the current section?
+const currentTab = computed(() => sectionTabValues.value[props.activeNav] || '')
+
+function setTab(sectionId, tabId) {
+  sectionTabsStore.setTab(sectionId, tabId)
+}
+
+// Resource detail side panel (used by the generic-table fallback for
+// storage classes and any future kinds not covered by a dedicated list).
 const selectedResource = ref(null)
+function onResourceSelect(resource) { selectedResource.value = resource }
+function closeDetail() { selectedResource.value = null }
 
-function onResourceSelect(resource) {
-  selectedResource.value = resource
-}
-
-function closeDetail() {
-  selectedResource.value = null
-}
-
-// Customizable layout state
+// Customizable Alerts dashboard layout.
 const editMode = ref(false)
 const widgetOrder = ref(['metrics', 'alerts', 'logs'])
-
 function moveUp(index) {
   if (index > 0) {
-    const temp = widgetOrder.value[index]
+    const tmp = widgetOrder.value[index]
     widgetOrder.value[index] = widgetOrder.value[index - 1]
-    widgetOrder.value[index - 1] = temp
+    widgetOrder.value[index - 1] = tmp
   }
 }
-
 function moveDown(index) {
   if (index < widgetOrder.value.length - 1) {
-    const temp = widgetOrder.value[index]
+    const tmp = widgetOrder.value[index]
     widgetOrder.value[index] = widgetOrder.value[index + 1]
-    widgetOrder.value[index + 1] = temp
+    widgetOrder.value[index + 1] = tmp
   }
 }
-
-// Monitoring views.
-const monitoringViews = ['metrics', 'alerts', 'logs', 'anomalies', 'analysis', 'vulnerabilities', 'finops', 'argusai']
-
-// Resource browser views — these use the generic ResourceTable.
-const resourceViews = [
-  'pods', 'deployments', 'statefulsets', 'daemonsets', 'replicasets', 'jobs', 'cronjobs',
-  'services', 'endpoints', 'ingresses', 'networkpolicies',
-  'configmaps', 'secrets', 'hpas',
-  'pvcs', 'pvs', 'storageclasses',
-  'nodes', 'namespaces', 'events',
-]
-
-// Operations views.
-const operationViews = ['runbooks', 'incidents', 'audit', 'arguscd', 'pipelines']
-
-// Knowledge views.
-const knowledgeViews = ['notebooks', 'documents']
-
-// Admin views.
-const adminViews = ['setup', 'settings']
-
-const isMonitoring = computed(() => monitoringViews.includes(props.activeNav))
-const isResource = computed(() => resourceViews.includes(props.activeNav))
-const isOperations = computed(() => operationViews.includes(props.activeNav))
-const isKnowledge = computed(() => knowledgeViews.includes(props.activeNav))
-const isAdmin = computed(() => adminViews.includes(props.activeNav))
-
-const OPS_TITLES = {
-  runbooks: 'Runbooks',
-  incidents: 'Incident Log',
-  audit: 'Config Audit',
-  arguscd: 'ArgusCD',
-  pipelines: 'Pipelines',
-}
-const opsTitle = computed(() => OPS_TITLES[props.activeNav] || '')
-
-// Argus Scan logic — real backend only, persisted across navigation.
-const reportData = computed(() => {
-  // Always use the freshest backend response first.
-  if (argusScanReport.value) return argusScanReport.value
-  // Fallback: try restoring from the persistence store (navigation survived).
-  const stored = getTask(ARGUS_SCAN_KEY)
-  return stored?.status === 'completed' ? stored.result : null
-})
-const loadingReport = computed(() => argusScanLoading.value)
 
 async function runArgusScan() {
   startTask(ARGUS_SCAN_KEY)
   try {
     await runArgusScanReal()
-    if (argusScanReport.value) {
-      completeTask(ARGUS_SCAN_KEY, argusScanReport.value)
-    }
+    if (argusScanReport.value) completeTask(ARGUS_SCAN_KEY, argusScanReport.value)
   } catch (e) {
     failTask(ARGUS_SCAN_KEY, e?.message || String(e))
   }
 }
 
-// Alerts route has two sub-tabs:
-//   • cluster   — the legacy widget overview (metrics + AlertList)
-//   • watchers  — the AlertsView for managed alerts (silences + watchers + history)
-//
-// We default to "watchers" so the user sees managed alerts first.
+const reportData = computed(() => {
+  if (argusScanReport.value) return argusScanReport.value
+  const stored = getTask(ARGUS_SCAN_KEY)
+  return stored?.status === 'completed' ? stored.result : null
+})
+const loadingReport = computed(() => argusScanLoading.value)
+
+// "Alerts" tab → two sub-tabs. Default to watchers (managed alerts) so
+// the first thing users see is what's been silenced/escalating, not the
+// raw cluster overview.
 const alertsTab = ref('watchers')
 const appNav = useAppNavStore()
-
-// Watch incoming nav requests; if the destination is "alerts" with an
-// anchor pointing at a silence/watcher row, switch to the watchers tab.
-// We don't consume the pending — AlertsView consumes it on its own mount
-// to handle the scroll/flash.
 watch(() => appNav.pending, (req) => {
-  if (!req || req.navId !== 'alerts') return
-  if (req.anchor && (req.anchor.startsWith('silence:') || req.anchor.startsWith('watcher:'))) {
-    alertsTab.value = 'watchers'
+  // External requests pointing at an alerts silence/watcher anchor
+  // should also switch the Monitoring section's active tab to alerts.
+  if (!req) return
+  if (req.navId === 'alerts' || (req.anchor && (req.anchor.startsWith('silence:') || req.anchor.startsWith('watcher:')))) {
+    if (props.activeNav === 'monitoring') {
+      sectionTabsStore.setTab('monitoring', 'alerts')
+    }
+    if (req.anchor && (req.anchor.startsWith('silence:') || req.anchor.startsWith('watcher:'))) {
+      alertsTab.value = 'watchers'
+    }
   }
 }, { immediate: true })
+
+// --- Section-tab helpers exposed to the template
+const monitoringTabs = SECTIONS.monitoring.tabs
+const clusterTabs = SECTIONS.cluster.tabs
+const workloadsTabs = SECTIONS.workloads.tabs
+const configTabs = SECTIONS.config.tabs
+const networkTabs = SECTIONS.network.tabs
+const storageTabs = SECTIONS.storage.tabs
+const operationsTabs = SECTIONS.operations.tabs
+const knowledgeTabs = SECTIONS.knowledge.tabs
+const adminTabs = SECTIONS.admin.tabs
 </script>
 
 <template>
   <div class="content">
-    <!-- Monitoring: Alerts overview -->
-    <template v-if="isMonitoring">
-      <template v-if="activeNav === 'argusai'">
-        <ArgusAIChat />
-      </template>
-      <template v-else-if="activeNav === 'metrics'">
-        <MetricsExplorer />
-      </template>
-      <template v-else-if="activeNav === 'vulnerabilities'">
-        <VulnerabilityList />
-      </template>
-      <template v-else-if="activeNav === 'logs'">
-        <LogExplorer />
-      </template>
-      <template v-else-if="activeNav === 'anomalies'">
-        <AnomalyDetection />
-      </template>
-      <template v-else-if="activeNav === 'analysis'">
-        <ArgusScanReport :report="reportData" :loading="loadingReport" :error="argusScanError" @run-scan="runArgusScan" />
-      </template>
-      <template v-else-if="activeNav === 'finops'">
-        <FinOpsView />
-      </template>
-      <template v-else>
-        <!-- Alerts route: two sub-tabs. Cluster Alerts = legacy widget
-             dashboard (metrics, AlertList). Watchers & Silences
-             = the AlertsView for managing managed alerts
-             (silences, registered watchers, recent alerts history). -->
-        <div class="tabs">
+    <!-- ============ MONITORING ============ -->
+    <template v-if="activeNav === 'monitoring'">
+      <SectionTabs
+        :tabs="monitoringTabs"
+        :active-tab="currentTab"
+        @update:active-tab="setTab('monitoring', $event)"
+      />
+      <ArgusAIChat v-if="currentTab === 'argusai'" />
+      <MetricsExplorer v-else-if="currentTab === 'metrics'" />
+      <VulnerabilityList v-else-if="currentTab === 'vulnerabilities'" />
+      <LogExplorer v-else-if="currentTab === 'logs'" />
+      <AnomalyDetection v-else-if="currentTab === 'anomalies'" />
+      <ArgusScanReport
+        v-else-if="currentTab === 'analysis'"
+        :report="reportData"
+        :loading="loadingReport"
+        :error="argusScanError"
+        @run-scan="runArgusScan"
+      />
+      <FinOpsView v-else-if="currentTab === 'finops'" />
+      <!-- Alerts tab → sub-tabs (cluster overview vs managed watchers) -->
+      <template v-else-if="currentTab === 'alerts'">
+        <div class="tabs sub-tabs">
           <div class="tab" :class="{ active: alertsTab === 'cluster' }" @click="alertsTab = 'cluster'">
             Cluster Alerts
           </div>
@@ -214,13 +200,16 @@ watch(() => appNav.pending, (req) => {
               {{ warningCount }} warning
             </div>
             <div class="toolbar-btn">30m</div>
-            <div class="toolbar-btn" :class="{ primary: editMode }" @click="editMode = !editMode">
+            <div
+              class="toolbar-btn"
+              :class="{ primary: editMode }"
+              @click="editMode = !editMode"
+            >
               {{ editMode ? 'Done Editing' : 'Customize' }}
             </div>
             <div class="toolbar-btn primary">Diagnose All</div>
           </template>
         </div>
-
         <template v-if="alertsTab === 'cluster'">
           <div class="ctx-strip">
             <div class="ctx-label">Context</div>
@@ -228,10 +217,8 @@ watch(() => appNav.pending, (req) => {
             <div class="ctx-chip"><div class="ctx-dot" style="background: var(--amber);"></div>{{ alerts.length }} alerts</div>
             <div class="ctx-chip"><div class="ctx-dot" style="background: var(--accent);"></div>DECISION_LOG.md</div>
           </div>
-
           <div class="scroll" :class="{ 'is-editing': editMode }">
             <div v-for="(widget, index) in widgetOrder" :key="widget" class="widget-wrapper">
-
               <div v-if="editMode" class="widget-controls">
                 <span class="widget-name">{{ widget.toUpperCase() }}</span>
                 <div class="widget-actions">
@@ -239,85 +226,164 @@ watch(() => appNav.pending, (req) => {
                   <button class="ctrl-btn" @click="moveDown(index)" :disabled="index === widgetOrder.length - 1">↓</button>
                 </div>
               </div>
-
               <div class="widget-content" :class="{ 'editing-dim': editMode }">
                 <MetricsRow v-if="widget === 'metrics'" :metrics="metrics" />
-                <AlertList v-else-if="widget === 'alerts'" :alerts="alerts" :selectedAlert="selectedAlert" @select="emit('select-alert', $event)" />
-                <LogStream v-else-if="widget === 'logs'" :alerts="alerts" :externalLines="logLines" />
+                <AlertList
+                  v-else-if="widget === 'alerts'"
+                  :alerts="alerts"
+                  :selectedAlert="selectedAlert"
+                  @select="emit('select-alert', $event)"
+                />
+                <LogStream
+                  v-else-if="widget === 'logs'"
+                  :alerts="alerts"
+                  :externalLines="logLines"
+                />
               </div>
             </div>
           </div>
         </template>
-
         <template v-else-if="alertsTab === 'watchers'">
           <AlertsView />
         </template>
       </template>
     </template>
 
-    <!-- Resource browser -->
-    <template v-else-if="isResource">
+    <!-- ============ CLUSTER ============ -->
+    <template v-else-if="activeNav === 'cluster'">
+      <SectionTabs
+        :tabs="clusterTabs"
+        :active-tab="currentTab"
+        @update:active-tab="setTab('cluster', $event)"
+      />
       <div class="resource-scroll-area">
-      <NodeList v-if="activeNav === 'nodes'" />
-      <NamespaceList v-else-if="activeNav === 'namespaces'" />
-      <EventStream v-else-if="activeNav === 'events'" />
-      <PodList v-else-if="activeNav === 'pods'" />
-      <DeploymentList v-else-if="activeNav === 'deployments'" />
-      <JobCronJobList v-else-if="activeNav === 'jobs' || activeNav === 'cronjobs'" :type="activeNav" />
-      <StatefulDaemonSetList v-else-if="activeNav === 'statefulsets' || activeNav === 'daemonsets' || activeNav === 'replicasets'" :type="activeNav" />
-      
-      <ConfigMapList v-else-if="activeNav === 'configmaps' || activeNav === 'secrets'" :type="activeNav" />
-      <HpaList v-else-if="activeNav === 'hpas'" />
-      
-      <ServiceList v-else-if="activeNav === 'services' || activeNav === 'ingresses'" :type="activeNav" />
-      <NetworkPolicyList v-else-if="activeNav === 'networkpolicies' || activeNav === 'endpoints'" :type="activeNav" />
-      
-      <VolumeList v-else-if="activeNav === 'pvcs' || activeNav === 'pvs'" :type="activeNav" />
-      
-      <div v-else class="resource-layout">
-        <ResourceTable
-          :resourceKind="activeNav"
-          @select="onResourceSelect"
-        />
-        <ResourceDetail
-          v-if="selectedResource"
-          :kind="selectedResource.kind"
-          :namespace="selectedResource.namespace"
-          :name="selectedResource.name"
-          @close="closeDetail"
-        />
-      </div>
+        <NodeList v-if="currentTab === 'nodes'" />
+        <NamespaceList v-else-if="currentTab === 'namespaces'" />
+        <EventStream v-else-if="currentTab === 'events'" />
       </div>
     </template>
 
-    <!-- Operations views -->
-    <template v-else-if="isOperations">
-      <div class="ops-header">
-        <div class="ops-title">
-          {{ opsTitle }}
+    <!-- ============ WORKLOADS ============ -->
+    <template v-else-if="activeNav === 'workloads'">
+      <SectionTabs
+        :tabs="workloadsTabs"
+        :active-tab="currentTab"
+        @update:active-tab="setTab('workloads', $event)"
+      />
+      <div class="resource-scroll-area">
+        <PodList v-if="currentTab === 'pods'" />
+        <DeploymentList v-else-if="currentTab === 'deployments'" />
+        <StatefulDaemonSetList
+          v-else-if="currentTab === 'statefulsets' || currentTab === 'daemonsets' || currentTab === 'replicasets'"
+          :type="currentTab"
+        />
+        <JobCronJobList
+          v-else-if="currentTab === 'jobs' || currentTab === 'cronjobs'"
+          :type="currentTab"
+        />
+      </div>
+    </template>
+
+    <!-- ============ CONFIG ============ -->
+    <template v-else-if="activeNav === 'config'">
+      <SectionTabs
+        :tabs="configTabs"
+        :active-tab="currentTab"
+        @update:active-tab="setTab('config', $event)"
+      />
+      <div class="resource-scroll-area">
+        <ConfigMapList
+          v-if="currentTab === 'configmaps' || currentTab === 'secrets'"
+          :type="currentTab"
+        />
+        <HpaList v-else-if="currentTab === 'hpas'" />
+      </div>
+    </template>
+
+    <!-- ============ NETWORK ============ -->
+    <template v-else-if="activeNav === 'network'">
+      <SectionTabs
+        :tabs="networkTabs"
+        :active-tab="currentTab"
+        @update:active-tab="setTab('network', $event)"
+      />
+      <div class="resource-scroll-area">
+        <ServiceList
+          v-if="currentTab === 'services' || currentTab === 'ingresses'"
+          :type="currentTab"
+        />
+        <NetworkPolicyList
+          v-else-if="currentTab === 'networkpolicies' || currentTab === 'endpoints'"
+          :type="currentTab"
+        />
+      </div>
+    </template>
+
+    <!-- ============ STORAGE ============ -->
+    <template v-else-if="activeNav === 'storage'">
+      <SectionTabs
+        :tabs="storageTabs"
+        :active-tab="currentTab"
+        @update:active-tab="setTab('storage', $event)"
+      />
+      <div class="resource-scroll-area">
+        <VolumeList
+          v-if="currentTab === 'pvcs' || currentTab === 'pvs'"
+          :type="currentTab"
+        />
+        <div v-else-if="currentTab === 'storageclasses'" class="resource-layout">
+          <ResourceTable
+            resource-kind="storageclasses"
+            @select="onResourceSelect"
+          />
+          <ResourceDetail
+            v-if="selectedResource"
+            :kind="selectedResource.kind"
+            :namespace="selectedResource.namespace"
+            :name="selectedResource.name"
+            @close="closeDetail"
+          />
         </div>
       </div>
+    </template>
 
+    <!-- ============ OPERATIONS ============ -->
+    <template v-else-if="activeNav === 'operations'">
+      <SectionTabs
+        :tabs="operationsTabs"
+        :active-tab="currentTab"
+        @update:active-tab="setTab('operations', $event)"
+      />
       <div class="scroll ops-scroll">
-        <RunbooksView v-if="activeNav === 'runbooks'" />
-        <IncidentLog v-if="activeNav === 'incidents'" />
-        <ConfigAudit v-if="activeNav === 'audit'" />
-        <ArgusCDList v-if="activeNav === 'arguscd'" />
-        <PipelinesView v-if="activeNav === 'pipelines'" />
+        <RunbooksView v-if="currentTab === 'runbooks'" />
+        <IncidentLog v-else-if="currentTab === 'incidents'" />
+        <ConfigAudit v-else-if="currentTab === 'audit'" />
+        <ArgusCDList v-else-if="currentTab === 'arguscd'" />
+        <PipelinesView v-else-if="currentTab === 'pipelines'" />
       </div>
     </template>
 
-    <!-- Knowledge / S3 views -->
-    <template v-else-if="isKnowledge">
-      <S3Notebook v-if="activeNav === 'notebooks'" />
-      <DocumentsView v-else-if="activeNav === 'documents'" />
+    <!-- ============ KNOWLEDGE ============ -->
+    <template v-else-if="activeNav === 'knowledge'">
+      <SectionTabs
+        :tabs="knowledgeTabs"
+        :active-tab="currentTab"
+        @update:active-tab="setTab('knowledge', $event)"
+      />
+      <S3Notebook v-if="currentTab === 'notebooks'" />
+      <DocumentsView v-else-if="currentTab === 'documents'" />
     </template>
 
-    <!-- Admin views -->
-    <template v-else-if="isAdmin">
+    <!-- ============ ADMIN ============ -->
+    <template v-else-if="activeNav === 'admin'">
+      <SectionTabs
+        :tabs="adminTabs"
+        :active-tab="currentTab"
+        @update:active-tab="setTab('admin', $event)"
+      />
       <div class="admin-scroll">
-        <SetupPanel v-if="activeNav === 'setup'" />
-        <SettingsPanel v-if="activeNav === 'settings'" />
+        <SetupPanel v-if="currentTab === 'setup'" />
+        <SettingsPanel v-else-if="currentTab === 'settings'" />
       </div>
     </template>
   </div>
@@ -326,20 +392,22 @@ watch(() => appNav.pending, (req) => {
 <style scoped>
 .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
-.tabs {
+/* Sub-tabs row used inside the Monitoring → Alerts tab. Same metrics
+   as the SectionTabs bar so the visual rhythm matches. */
+.tabs.sub-tabs {
   display: flex; align-items: center; height: 38px;
   border-bottom: 1px solid var(--border); background: var(--bg2);
   padding: 0 16px; gap: 2px; flex-shrink: 0;
 }
-.tab {
+.tabs.sub-tabs .tab {
   padding: 5px 12px; font-size: 12.5px; font-weight: 400; color: var(--text2);
   cursor: pointer; border-radius: 6px; transition: all 0.1s; white-space: nowrap;
 }
-.tab:hover { background: var(--bg3); color: var(--text); }
-.tab.active { background: rgba(79,142,247,0.12); color: var(--accent2); font-weight: 500; }
-.tab-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin-right: 5px; vertical-align: middle; position: relative; top: -1px; }
-.tab-spacer { flex: 1; }
-.tab-meta {
+.tabs.sub-tabs .tab:hover { background: var(--bg3); color: var(--text); }
+.tabs.sub-tabs .tab.active { background: rgba(79,142,247,0.12); color: var(--accent2); font-weight: 500; }
+.tabs.sub-tabs .tab-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin-right: 5px; vertical-align: middle; position: relative; top: -1px; }
+.tabs.sub-tabs .tab-spacer { flex: 1; }
+.tabs.sub-tabs .tab-meta {
   display: flex; align-items: center;
   font-size: 11px; color: var(--text3);
   margin: 0 6px;
@@ -370,7 +438,6 @@ watch(() => appNav.pending, (req) => {
 
 .scroll { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 
-/* Customization Mode */
 .widget-wrapper { position: relative; display: flex; flex-direction: column; gap: 6px; }
 .widget-controls {
   display: flex; align-items: center; justify-content: space-between;
@@ -387,26 +454,11 @@ watch(() => appNav.pending, (req) => {
 .ctrl-btn:hover:not(:disabled) { background: var(--accent); color: white; border-color: var(--accent); }
 .ctrl-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-/* Admin scroll wrapper */
 .admin-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
 .editing-dim { opacity: 0.6; pointer-events: none; border: 1px dashed var(--border); border-radius: var(--r); }
 
-/* Resource layout — table + optional detail panel */
 .resource-scroll-area { flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; }
-
-.resource-layout {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
-/* Operations */
-.ops-header {
-  height: 38px; display: flex; align-items: center; padding: 0 16px;
-  border-bottom: 1px solid var(--border); background: var(--bg2); flex-shrink: 0;
-}
-.ops-title { font-size: 13px; font-weight: 500; color: var(--text); }
+.resource-layout { flex: 1; display: flex; overflow: hidden; }
 
 .ops-scroll { flex: 1; overflow-y: auto; padding: 14px; }
-
 </style>
