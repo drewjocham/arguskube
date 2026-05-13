@@ -45,6 +45,7 @@ vi.mock('../../components/workloads/DeploymentList.vue', () => stub('deployment-
 vi.mock('../../components/workloads/JobCronJobList.vue', () => stub('job-cronjob-list'))
 vi.mock('../../components/workloads/StatefulDaemonSetList.vue', () => stub('stateful-daemonset-list'))
 vi.mock('../../components/config/ConfigMapList.vue', () => stub('configmap-list'))
+vi.mock('../../components/config/SecretsView.vue', () => stub('secrets-view'))
 vi.mock('../../components/config/HpaList.vue', () => stub('hpa-list'))
 vi.mock('../../components/network/ServiceList.vue', () => stub('service-list'))
 vi.mock('../../components/network/NetworkPolicyList.vue', () => stub('network-policy-list'))
@@ -203,9 +204,9 @@ describe('CenterPanel.vue — section + tab routing', () => {
     const { wrapper } = mountSection('config', 'configmaps')
     expect(wrapper.find('.mock-configmap-list').exists()).toBe(true)
   })
-  it('config/secrets renders ConfigMapList', () => {
+  it('config/secrets renders SecretsView', () => {
     const { wrapper } = mountSection('config', 'secrets')
-    expect(wrapper.find('.mock-configmap-list').exists()).toBe(true)
+    expect(wrapper.find('.mock-secrets-view').exists()).toBe(true)
   })
   it('config/hpas renders HpaList', () => {
     const { wrapper } = mountSection('config', 'hpas')
