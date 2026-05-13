@@ -12,6 +12,7 @@ import IncidentLog from '../operations/IncidentLog.vue'
 import ConfigAudit from '../operations/ConfigAudit.vue'
 import ArgusCDList from '../operations/ArgusCDList.vue'
 import PipelinesView from '../operations/PipelinesView.vue'
+import LoadTestPanel from '../operations/LoadTestPanel.vue'
 import LogExplorer from './LogExplorer.vue'
 import AnomalyDetection from './AnomalyDetection.vue'
 import MetricsExplorer from './MetricsExplorer.vue'
@@ -446,6 +447,7 @@ const adminTabs = SECTIONS.admin.tabs
         <ConfigAudit v-else-if="currentTab === 'audit'" />
         <ArgusCDList v-else-if="currentTab === 'arguscd'" />
         <PipelinesView v-else-if="currentTab === 'pipelines'" />
+        <LoadTestPanel v-else-if="currentTab === 'loadtest'" />
       </div>
     </template>
 
