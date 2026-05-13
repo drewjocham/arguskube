@@ -88,6 +88,15 @@ class APIGovConfig(BaseModel):
     max_body_bytes: int = 1 * 1024 * 1024  # 1 MiB — anything larger is dropped
     queue_size: int = _DEFAULT_QUEUE_SIZE
     http_timeout_seconds: float = 10.0
+    # Batching: the ingest worker collects up to ``batch_max_size`` samples
+    # OR waits up to ``batch_max_wait_ms`` past the first queued sample
+    # before flushing them in a single POST to /api/v1/traffic/batch.
+    # Both bounds protect different failure modes:
+    #   * batch_max_size keeps memory + payload predictable under burst
+    #   * batch_max_wait_ms keeps the per-sample latency bounded under
+    #     low traffic (a single rare sample shouldn't sit forever)
+    batch_max_size: int = 50
+    batch_max_wait_ms: int = 500
 
     @classmethod
     def from_env(cls) -> "APIGovConfig":
@@ -98,6 +107,8 @@ class APIGovConfig(BaseModel):
             api_key=os.getenv("API_GOV_API_KEY", ""),
             sample_rate=float(os.getenv("API_GOV_SAMPLE_RATE", "1.0")),
             max_body_bytes=int(os.getenv("API_GOV_MAX_BODY_BYTES", str(1024 * 1024))),
+            batch_max_size=int(os.getenv("API_GOV_BATCH_MAX_SIZE", "50")),
+            batch_max_wait_ms=int(os.getenv("API_GOV_BATCH_MAX_WAIT_MS", "500")),
         )
 
 
@@ -169,7 +180,27 @@ class APIGovMiddleware(BaseHTTPMiddleware):
         self._worker_task = asyncio.create_task(self._ingest_worker(), name="api-gov-ingest")
 
     async def _shutdown(self) -> None:
-        """Drain the queue and close the http client (when we own it)."""
+        """Drain any remaining samples, then close the http client.
+
+        We give the worker a short, bounded window to flush its queue
+        before cancelling — otherwise samples already in flight from
+        the user's last requests would be dropped at process exit. The
+        cap is intentionally small so a hung backend can't stall app
+        shutdown for the full ``http_timeout_seconds``.
+        """
+        if self._queue is not None and self._worker_task is not None:
+            drain_budget = max(
+                0.25,
+                (self.config.batch_max_wait_ms / 1000.0) * 2.0,
+            )
+            try:
+                await asyncio.wait_for(self._queue.join(), timeout=drain_budget)
+            except asyncio.TimeoutError:
+                logger.info(
+                    "api-gov: shutdown drain timed out; %d samples may be dropped",
+                    self._queue.qsize(),
+                )
+
         if self._worker_task is not None:
             self._worker_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -347,47 +378,110 @@ class APIGovMiddleware(BaseHTTPMiddleware):
                 )
 
     async def _ingest_worker(self) -> None:
-        """Background coroutine that POSTs queued samples to the backend.
+        """Background coroutine that BATCHES queued samples and POSTs them to
+        the backend in a single request.
 
-        Failures are logged but do not propagate — the worker keeps running so
-        a transient network blip doesn't permanently disable traffic capture.
+        Loop shape:
+          1. Block on the first sample (so an idle worker doesn't burn CPU).
+          2. Drain additional samples up to ``batch_max_size`` OR until
+             ``batch_max_wait_ms`` has elapsed since the first sample landed,
+             whichever comes first.
+          3. POST the whole batch to /api/v1/traffic/batch.
+          4. Mark every sample done so :meth:`_drain` (used in shutdown +
+             tests) can wait for completion via ``Queue.join()``.
+
+        Failures are logged but never propagate — a transient network blip
+        must not permanently disable traffic capture, and we must never
+        leave queue items un-task_done'd (which would deadlock shutdown).
         """
         assert self._queue is not None
         while True:
-            sample = await self._queue.get()
-            with tracer.start_as_current_span("middleware.ingest_traffic") as span:
-                span.set_attribute("method", sample["method"])
-                span.set_attribute("path", sample["path"])
-                span.set_attribute("status", sample["status_code"])
+            # Step 1: block until we have something to send.
+            try:
+                first = await self._queue.get()
+            except asyncio.CancelledError:
+                raise
+            batch: list[dict[str, Any]] = [first]
+
+            # Step 2: greedy drain bounded by size + wall-clock budget.
+            deadline = asyncio.get_event_loop().time() + self.config.batch_max_wait_ms / 1000.0
+            while len(batch) < self.config.batch_max_size:
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    break
                 try:
-                    payload = {
-                        "spec_id": self.config.spec_id,
-                        "method": sample["method"],
-                        "path": sample["path"],
-                        "status_code": sample["status_code"],
-                        "request": sample["request_body"],
-                        "response": {"status_code": sample["status_code"]},
-                        "headers": sample["headers"],
-                    }
-                    resp = await self._client.post(
-                        "/api/v1/traffic",
-                        json=payload,
-                        headers=self._auth_headers(),
+                    sample = await asyncio.wait_for(self._queue.get(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    break
+                except asyncio.CancelledError:
+                    # Mark the first sample done before propagating so
+                    # shutdown's queue.join() doesn't hang on it.
+                    self._queue.task_done()
+                    for _ in batch[1:]:
+                        self._queue.task_done()
+                    raise
+                batch.append(sample)
+
+            # Step 3: flush the batch.
+            try:
+                await self._flush_batch(batch)
+            finally:
+                # Step 4: always mark every item done so the queue stays
+                # consistent even if the POST raised an unexpected error.
+                for _ in batch:
+                    self._queue.task_done()
+
+    async def _flush_batch(self, batch: list[dict[str, Any]]) -> None:
+        """POST a list of samples to /api/v1/traffic/batch. Logs and
+        suppresses errors so the worker loop keeps running."""
+        if not batch:
+            return
+        with tracer.start_as_current_span("middleware.ingest_traffic_batch") as span:
+            span.set_attribute("batch.size", len(batch))
+            try:
+                payload = {
+                    "spec_id": self.config.spec_id,
+                    "samples": [self._sample_to_wire(s) for s in batch],
+                }
+                resp = await self._client.post(
+                    "/api/v1/traffic/batch",
+                    json=payload,
+                    headers=self._auth_headers(),
+                )
+                if not resp.is_success:
+                    logger.warning(
+                        "api-gov traffic batch ingest: HTTP %d for %d samples",
+                        resp.status_code,
+                        len(batch),
                     )
-                    if not resp.is_success:
-                        logger.warning(
-                            "api-gov traffic ingest: HTTP %d for %s %s",
-                            resp.status_code,
-                            sample["method"],
-                            sample["path"],
-                        )
-                except httpx.RequestError as e:
-                    span.record_exception(e)
-                    logger.warning("api-gov traffic ingest network error: %s", e)
-                except Exception as e:  # pragma: no cover - defensive
-                    span.record_exception(e)
-                    logger.exception("api-gov traffic ingest unexpected error: %s", e)
-            self._queue.task_done()
+            except httpx.RequestError as e:
+                span.record_exception(e)
+                logger.warning(
+                    "api-gov traffic batch ingest network error (%d samples): %s",
+                    len(batch),
+                    e,
+                )
+            except Exception as e:  # pragma: no cover - defensive
+                span.record_exception(e)
+                logger.exception(
+                    "api-gov traffic batch ingest unexpected error (%d samples): %s",
+                    len(batch),
+                    e,
+                )
+
+    @staticmethod
+    def _sample_to_wire(sample: dict[str, Any]) -> dict[str, Any]:
+        """Project an in-memory sample onto the on-the-wire shape the
+        backend expects. Keeping this as a small, pure helper makes the
+        worker loop trivially testable."""
+        return {
+            "method": sample["method"],
+            "path": sample["path"],
+            "status_code": sample["status_code"],
+            "request": sample["request_body"],
+            "response": {"status_code": sample["status_code"]},
+            "headers": sample["headers"],
+        }
 
     # ------------------------------------------------------------------
     # Helpers.

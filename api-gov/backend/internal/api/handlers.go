@@ -348,6 +348,95 @@ func (a *API) handleIngestTraffic(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// trafficBatchMaxSamples caps how many samples the batch endpoint will
+// accept in a single request. The middleware default is 50; we accept
+// a generous multiple so a client that bumped its config doesn't get
+// silently truncated by a stale server.
+const trafficBatchMaxSamples = 500
+
+// handleIngestTrafficBatch accepts a list of traffic samples in one
+// request, reducing per-sample HTTP overhead for high-volume clients.
+//
+// Wire shape (kept tight on purpose):
+//
+//	{
+//	  "spec_id": "spec-...",
+//	  "samples": [
+//	    {"method": "GET", "path": "/x", "status_code": 200,
+//	     "request": {...}, "response": {...}, "headers": {...}},
+//	    ...
+//	  ]
+//	}
+//
+// Each sample is dispatched through the same agentCli.IngestTraffic path
+// the single-sample handler uses, so downstream analytics stay
+// unchanged. We respond with the count of accepted samples so the
+// caller can detect server-side truncation.
+func (a *API) handleIngestTrafficBatch(w http.ResponseWriter, r *http.Request) {
+	a.execute(w, r, "api.ingestTrafficBatch", func(ctx context.Context) error {
+		var req struct {
+			SpecID  string `json:"spec_id"`
+			Samples []struct {
+				Method   string            `json:"method"`
+				Path     string            `json:"path"`
+				Status   int               `json:"status_code"`
+				Request  map[string]any    `json:"request,omitempty"`
+				Response map[string]any    `json:"response,omitempty"`
+				Headers  map[string]string `json:"headers,omitempty"`
+			} `json:"samples"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			return apperrors.Mark(apperrors.ErrValidation, apperrors.BadRequest)
+		}
+		if req.SpecID == "" {
+			return apperrors.Mark(apperrors.ErrValidation, apperrors.BadRequest)
+		}
+		if len(req.Samples) == 0 {
+			// Empty batch is a successful no-op — easier for the
+			// middleware to handle than treating it as an error.
+			writeJSON(w, http.StatusAccepted, map[string]any{
+				"status":   "ingested",
+				"accepted": 0,
+			})
+			return nil
+		}
+		if len(req.Samples) > trafficBatchMaxSamples {
+			// Reject oversize batches loudly so the client can either
+			// tighten its config or back off. Server-side silent
+			// truncation would mask real ingestion gaps.
+			return apperrors.Mark(apperrors.ErrValidation, apperrors.BadRequest)
+		}
+
+		accepted := 0
+		for _, s := range req.Samples {
+			observed := &models.ObservedData{
+				Method:     s.Method,
+				Path:       s.Path,
+				StatusCode: s.Status,
+				Request:    s.Request,
+				Response:   s.Response,
+				Headers:    s.Headers,
+			}
+			// Same fire-and-forget dispatch as the single-sample handler
+			// — agentCli queues internally. We don't await each one
+			// because that would re-introduce the serial latency the
+			// batch endpoint is here to eliminate.
+			go a.agentCli.IngestTraffic(ctx, req.SpecID, observed)
+			accepted++
+		}
+
+		a.Logger.LogAttrs(ctx, slog.LevelInfo, logMsgTrafficIngested,
+			slog.String(logKeySpecID, req.SpecID),
+			slog.Int("batch_size", accepted),
+		)
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"status":   "ingested",
+			"accepted": accepted,
+		})
+		return nil
+	})
+}
+
 // ── Agent Integration ──────────────────────────────────────────
 
 func (a *API) handleAgentAnalyze(w http.ResponseWriter, r *http.Request) {
