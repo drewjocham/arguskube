@@ -53,6 +53,13 @@ type Hub struct {
 	logger     *slog.Logger
 	mu         sync.RWMutex
 	tlsCfg     *tls.Config // When set, hub requires mTLS for agent connections.
+
+	// done is closed when Run() exits. Pump goroutines watch this so the
+	// `h.unregister <- client` send in their defer can never deadlock if
+	// the Run loop has already returned — previously, a pump that hit
+	// its read/write deadline after shutdown would block forever on that
+	// send and leak the goroutine plus the underlying socket.
+	done chan struct{}
 }
 
 // NewHub creates a new WebSocket Hub.
@@ -62,6 +69,7 @@ func NewHub(logger *slog.Logger) *Hub {
 		register:   make(chan *AgentConnection),
 		unregister: make(chan *AgentConnection),
 		logger:     logger,
+		done:       make(chan struct{}),
 	}
 }
 
@@ -77,11 +85,21 @@ func (h *Hub) TLSConfig() *tls.Config {
 	return h.tlsCfg
 }
 
-// Run starts the hub's main event loop.
+// Run starts the hub's main event loop. Closes h.done when ctx fires
+// so any in-flight pump goroutines can break their unregister send
+// instead of blocking forever on a channel nothing is reading from.
 func (h *Hub) Run(ctx context.Context) {
+	defer close(h.done)
 	for {
 		select {
 		case <-ctx.Done():
+			// Close every still-open conn so read/writePump exit their
+			// loops promptly instead of waiting on the 60s read deadline.
+			h.mu.Lock()
+			for _, c := range h.clients {
+				_ = c.Conn.Close()
+			}
+			h.mu.Unlock()
 			return
 		case client := <-h.register:
 			h.mu.Lock()
@@ -149,9 +167,20 @@ func (h *Hub) HandleTunnel(w http.ResponseWriter, r *http.Request) {
 	go h.readPump(client)
 }
 
+// unregisterClient is the safe send used by pump defers. Once Run() has
+// exited, h.done is closed and the unregister channel has no receiver;
+// blocking on it would leak this goroutine. The select bails out in
+// that case and just closes the conn locally.
+func (h *Hub) unregisterClient(client *AgentConnection) {
+	select {
+	case h.unregister <- client:
+	case <-h.done:
+	}
+}
+
 func (h *Hub) readPump(client *AgentConnection) {
 	defer func() {
-		h.unregister <- client
+		h.unregisterClient(client)
 		client.Conn.Close()
 	}()
 

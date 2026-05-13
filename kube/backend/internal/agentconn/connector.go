@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -129,6 +130,16 @@ func (c *Connector) portForwardAndCall(ctx context.Context, namespace, path stri
 	stopCh := make(chan struct{})
 	readyCh := make(chan struct{})
 
+	// stopCh has three would-be closers (timeout branch, defer, future
+	// ctx-cancel paths) and closing a closed channel panics. Wrap the
+	// close in a sync.Once so any reachable branch is safe — and add an
+	// unconditional defer so error paths can't leak the ForwardPorts
+	// goroutine the way the old code did when the error branch returned
+	// without closing stopCh at all.
+	var stopOnce sync.Once
+	closeStop := func() { stopOnce.Do(func() { close(stopCh) }) }
+	defer closeStop()
+
 	ports := []string{fmt.Sprintf("%d:%d", localPort, agentContainerPort)}
 	fw, err := portforward.New(dialer, ports, stopCh, readyCh, io.Discard, io.Discard)
 	if err != nil {
@@ -145,12 +156,11 @@ func (c *Connector) portForwardAndCall(ctx context.Context, namespace, path stri
 	case <-readyCh:
 	case err := <-errCh:
 		return nil, fmt.Errorf("port-forward failed: %w", err)
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	case <-time.After(10 * time.Second):
-		close(stopCh)
 		return nil, fmt.Errorf("port-forward timed out")
 	}
-
-	defer close(stopCh)
 
 	// Make the HTTP call through the forwarded port.
 	url := fmt.Sprintf("http://127.0.0.1:%d%s", localPort, path)

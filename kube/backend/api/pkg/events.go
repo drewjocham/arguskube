@@ -151,8 +151,16 @@ func (a *App) pollMetrics(ctx context.Context) {
 }
 
 // EmitLogLine allows manual log injection (for testing/demo).
+//
+// Uses context.Background() rather than a.ctx because EmitLogLine is a
+// Wails binding callable from the frontend before Startup has finished
+// writing a.ctx — reading the field from a goroutine concurrent with
+// that write is a data race the runtime detector will flag. Wails's
+// EventsEmit only uses the context for tracing/log metadata, not for
+// cancellation, so a Background context is functionally equivalent
+// here and removes the race entirely.
 func (a *App) EmitLogLine(line alerts.LogLine) {
-	runtime.EventsEmit(a.ctx, EventLogLine, line)
+	runtime.EventsEmit(context.Background(), EventLogLine, line)
 }
 
 func (a *App) pollLogs(ctx context.Context) {
@@ -225,34 +233,45 @@ func (a *App) emitRecentLogs(ctx context.Context, seed bool) {
 				continue
 			}
 
-			scanner := bufio.NewScanner(stream)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if len(line) == 0 {
-					continue
-				}
+			// Wrap the per-stream work in a closure so `defer stream.Close()`
+			// fires deterministically — even if scanning panics or the
+			// EventsEmit path returns unexpectedly. The old explicit Close
+			// after the scanner loop leaked the stream on any panic
+			// between open and close, which over time exhausted the K8s
+			// API server's connection pool.
+			func() {
+				defer stream.Close()
+				scanner := bufio.NewScanner(stream)
+				for scanner.Scan() {
+					line := scanner.Text()
+					if len(line) == 0 {
+						continue
+					}
 
-				lowerMsg := strings.ToLower(line)
-				level := "info"
-				if strings.Contains(lowerMsg, "error") || strings.Contains(lowerMsg, "fail") || strings.Contains(lowerMsg, "fatal") {
-					level = "error"
-				} else if strings.Contains(lowerMsg, "warn") {
-					level = "warn"
-				}
+					lowerMsg := strings.ToLower(line)
+					level := "info"
+					if strings.Contains(lowerMsg, "error") || strings.Contains(lowerMsg, "fail") || strings.Contains(lowerMsg, "fatal") {
+						level = "error"
+					} else if strings.Contains(lowerMsg, "warn") {
+						level = "warn"
+					}
 
-				entry := alerts.LogLine{
-					Timestamp: now,
-					Source:    "[" + p.Name + "]",
-					Level:     level,
-					Message:   line,
+					entry := alerts.LogLine{
+						Timestamp: now,
+						Source:    "[" + p.Name + "]",
+						Level:     level,
+						Message:   line,
+					}
+					runtime.EventsEmit(ctx, EventLogLine, entry)
+					emitted++
+					if emitted >= maxLines {
+						return
+					}
 				}
-				runtime.EventsEmit(ctx, EventLogLine, entry)
-				emitted++
-				if emitted >= maxLines {
-					break
-				}
+			}()
+			if emitted >= maxLines {
+				break
 			}
-			stream.Close()
 		}
 	}
 }
