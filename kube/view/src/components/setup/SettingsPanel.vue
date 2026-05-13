@@ -14,6 +14,7 @@ import { useNotificationGuardStore } from '../../stores/notificationGuard'
 import { useWatcherRegistryStore } from '../../stores/watcherRegistry'
 import { runDueNow as watcherRunDueNow, runWatcherById } from '../../composables/useWatcherEngine'
 import SecretsToolProbeRow from './SecretsToolProbeRow.vue'
+import { useNavVisibilityStore } from '../../stores/navVisibility'
 
 const credentialAlerts = useCredentialAlertsStore()
 const esStore = useExternalSecretsStore()
@@ -363,7 +364,13 @@ async function saveAgentProfile() {
 }
 
 const appearance = useAppearanceStore()
-const { theme: appTheme, brightness, contrast, opacity, blur, saturation, density } = storeToRefs(appearance)
+const { theme: appTheme, brightness, contrast, opacity, blur, saturation, density, fontSize } = storeToRefs(appearance)
+const fontSizeRange = appearance.ranges.fontSize
+
+// Navigation visibility — which sidebar sections show. Read once and
+// destructure the reactive `sections` getter for the toggle UI.
+const navVisibility = useNavVisibilityStore()
+const navSections = computed(() => navVisibility.sections)
 const ranges = appearance.ranges
 
 const notifStore = useNotificationsStore()
@@ -1234,7 +1241,66 @@ onMounted(async () => {
           </div>
         </div>
 
+        <div class="field">
+          <div class="slider-head">
+            <label class="label">Font size</label>
+            <span class="slider-val">{{ fontSize }}px</span>
+          </div>
+          <input
+            type="range"
+            class="slider"
+            :min="fontSizeRange[0]"
+            :max="fontSizeRange[1]"
+            :value="fontSize"
+            data-testid="appearance-font-size"
+            @input="appearance.setFontSize(Number($event.target.value))"
+          />
+        </div>
+
         <button class="text-btn" @click="appearance.reset()">Reset to defaults</button>
+      </div>
+
+      <!-- Navigation visibility — which sidebar sections show. Core
+           sections are always present; optional ones reveal when their
+           matching subsystem is detected, or via the toggles here. -->
+      <div class="section" data-testid="settings-navigation">
+        <h2 class="section-title">Navigation</h2>
+        <p class="hint">
+          Choose which sections appear in the sidebar. Core sections stay
+          visible; optional ones can be toggled at any time.
+        </p>
+        <div class="nav-toggle-grid">
+          <div
+            v-for="sec in navSections"
+            :key="sec.id"
+            class="nav-toggle-row"
+            :class="{ core: sec.core }"
+            :data-testid="`nav-toggle-${sec.id}`"
+          >
+            <div class="nav-toggle-info">
+              <div class="nav-toggle-label">
+                {{ sec.label }}
+                <span v-if="sec.core" class="core-badge">Core</span>
+              </div>
+              <div v-if="sec.hint" class="nav-toggle-hint">{{ sec.hint }}</div>
+            </div>
+            <label class="toggle">
+              <input
+                type="checkbox"
+                :checked="navVisibility.isVisible(sec.id)"
+                :data-testid="`nav-toggle-input-${sec.id}`"
+                @change="navVisibility.toggle(sec.id)"
+                class="toggle-input"
+              />
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            </label>
+          </div>
+        </div>
+        <button
+          class="text-btn"
+          data-testid="nav-toggle-reset"
+          @click="navVisibility.resetToDefaults()"
+        >Reset to defaults</button>
       </div>
 
       <div class="section">
@@ -2253,6 +2319,91 @@ onMounted(async () => {
   cursor: pointer;
   padding: 0;
   font-family: inherit;
+}
+
+/* Navigation visibility toggle list (§C2) */
+.nav-toggle-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+.nav-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg2, #1a1a1a);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 6px;
+}
+.nav-toggle-info { flex: 1; min-width: 0; }
+.nav-toggle-label {
+  font-size: 13px;
+  color: var(--text, #e5e5e5);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nav-toggle-hint {
+  font-size: 11px;
+  color: var(--text2, #b0b0b0);
+  margin-top: 2px;
+}
+.core-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg3, #222);
+  color: var(--text3, #5a5a5a);
+}
+.toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.toggle-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  margin: 0;
+}
+.toggle-track {
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+  background: var(--bg3, #222);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 9px;
+  position: relative;
+  transition: background 0.15s, border-color 0.15s;
+}
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: var(--text2, #b0b0b0);
+  border-radius: 50%;
+  transition: transform 0.15s, background 0.15s;
+}
+.toggle-input:checked + .toggle-track {
+  background: var(--accent2, #4a9eff);
+  border-color: var(--accent2, #4a9eff);
+}
+.toggle-input:checked + .toggle-track .toggle-thumb {
+  transform: translateX(14px);
+  background: #fff;
+}
+.toggle-input:focus-visible + .toggle-track {
+  outline: 1px solid var(--accent2, #4a9eff);
+  outline-offset: 2px;
 }
 
 .text-btn:hover {

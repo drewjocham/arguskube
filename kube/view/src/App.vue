@@ -11,6 +11,7 @@ import { useAuthStore } from './stores/auth'
 import { useAppNavStore } from './stores/appNav'
 import { useSectionTabsStore } from './stores/sectionTabs'
 import { SECTIONS, sectionForTab } from './lib/sectionTabs'
+import { useNavVisibilityProbes } from './composables/useNavVisibilityProbes'
 import { useCredentialMonitor } from './composables/useCredentialMonitor'
 import { useWatcherEngine } from './composables/useWatcherEngine'
 import { useArgusAlertContext } from './composables/useArgusAlertContext'
@@ -31,6 +32,12 @@ import ProDesktopApp from './components/desktop/ProDesktopApp.vue'
 // dev), isAuthenticated flips to true and the dashboard renders.
 const auth = useAuthStore()
 const authReady = ref(false)
+// Smart-defaults probes — reveal optional sidebar sections when their
+// matching subsystem is configured (S3 bucket → Knowledge, cluster
+// has PVCs → Storage). Fire-and-forget: a slow probe never blocks
+// auth from settling, and the UI starts with the 5 core sections.
+const navProbes = useNavVisibilityProbes()
+
 onMounted(async () => {
   // /auth/providers tells us whether dev-mode bypass is on, in parallel
   // with restoring any persisted token. Both have to land before we
@@ -40,6 +47,9 @@ onMounted(async () => {
   if (auth.token) tasks.push(auth.restoreSession())
   await Promise.all(tasks)
   authReady.value = true
+  // Kick off the probes after auth has settled so they don't fight
+  // for the bridge with the auth restore call.
+  navProbes.run()
 })
 
 // /api/* fetches dispatch this when they get a 401 — the bridge clears

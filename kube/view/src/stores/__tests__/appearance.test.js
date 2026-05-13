@@ -183,4 +183,47 @@ describe('appearance store', () => {
     const filter = root.style.getPropertyValue('--ui-filter')
     expect(filter).toContain('brightness')
   })
+
+  // --- §C5 font-size zoom ---
+
+  it('defaults fontSize to 13px and applies --ui-font-base', () => {
+    const s = fresh()
+    expect(s.fontSize).toBe(13)
+    expect(document.documentElement.style.getPropertyValue('--ui-font-base')).toBe('13px')
+  })
+
+  it('setFontSize clamps to the configured range', () => {
+    const s = fresh()
+    s.setFontSize(50)
+    expect(s.fontSize).toBe(17) // clamped to max
+    s.setFontSize(-5)
+    expect(s.fontSize).toBe(11) // clamped to min
+    s.setFontSize(14)
+    expect(s.fontSize).toBe(14)
+  })
+
+  it('setFontSize updates --ui-font-base on the root', () => {
+    const s = fresh()
+    s.setFontSize(16)
+    expect(document.documentElement.style.getPropertyValue('--ui-font-base')).toBe('16px')
+  })
+
+  it('setFontSize persists across reload', () => {
+    const s = fresh()
+    s.setFontSize(15)
+    const s2 = fresh()
+    expect(s2.fontSize).toBe(15)
+  })
+
+  it('reset() restores fontSize to the default', () => {
+    const s = fresh()
+    s.setFontSize(16)
+    s.reset()
+    expect(s.fontSize).toBe(13)
+  })
+
+  it('exposes the fontSize range in ranges', () => {
+    const s = fresh()
+    expect(s.ranges.fontSize).toEqual([11, 17])
+  })
 })

@@ -4,7 +4,10 @@ import { useContexts } from '../../composables/useWails'
 import { useNavSearchStore } from '../../stores/navSearch'
 import { useSectionTabsStore } from '../../stores/sectionTabs'
 import { useNavVisibilityStore } from '../../stores/navVisibility'
+import { useAppearanceStore } from '../../stores/appearance'
+import { useAppNavStore } from '../../stores/appNav'
 import { SECTIONS, SECTION_ORDER } from '../../lib/sectionTabs'
+import ContextMenu from '../shared/ContextMenu.vue'
 
 // Sidebar — section-level navigation. Each row is one of the 9 SECTIONS
 // from lib/sectionTabs.js. Sub-items (Pods, Deployments, …) live inside
@@ -25,6 +28,8 @@ import { SECTIONS, SECTION_ORDER } from '../../lib/sectionTabs'
 const navSearch = useNavSearchStore()
 const sectionTabs = useSectionTabsStore()
 const navVisibility = useNavVisibilityStore()
+const appearance = useAppearanceStore()
+const appNav = useAppNavStore()
 
 const props = defineProps({
   clusterInfo: { type: Object, default: null },
@@ -170,6 +175,42 @@ function onPopoverTabClick(sectionId, tabId) {
   emit('update:activeNav', sectionId)
   popoverSection.value = null
 }
+
+// --- §C3 Right-click quick-toggle menu on section headers
+const ctxMenu = ref(null)
+
+function openSectionMenu(event, sectionId) {
+  const items = []
+  // Hide is only meaningful for optional sections — hiding a core
+  // one would corner the user; the Settings panel handles edge cases.
+  const sec = navVisibility.sections.find((s) => s.id === sectionId)
+  if (sec && !sec.core) {
+    items.push({ id: 'hide', label: `Hide ${sec.label}` })
+  }
+  items.push({ id: 'show-all', label: 'Show all sections' })
+  items.push({ id: 'open-settings', label: 'Open navigation settings' })
+  ctxMenu.value = { x: event.clientX, y: event.clientY, sectionId, items }
+}
+
+function onMenuSelect(id) {
+  const sectionId = ctxMenu.value?.sectionId
+  if (id === 'hide' && sectionId) {
+    navVisibility.hide(sectionId)
+  } else if (id === 'show-all') {
+    for (const s of navVisibility.sections) {
+      if (!navVisibility.isVisible(s.id)) navVisibility.show(s.id)
+    }
+  } else if (id === 'open-settings') {
+    // Reveal Admin so the user can find the Settings panel even if it
+    // wasn't visible before. Then jump to admin/settings.
+    navVisibility.show('admin')
+    sectionTabs.setTab('admin', 'settings')
+    appNav.requestNav({ navId: 'settings' })
+    emit('update:activeNav', 'admin')
+  }
+}
+
+function closeMenu() { ctxMenu.value = null }
 </script>
 
 <template>
@@ -247,6 +288,7 @@ function onPopoverTabClick(sectionId, tabId) {
           :class="{ active: activeNav === section.id }"
           :data-testid="`sidebar-section-${section.id}`"
           @click="onSectionClick(section)"
+          @contextmenu.prevent="openSectionMenu($event, section.id)"
         >
           <svg class="section-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path :d="section.icon" />
@@ -343,6 +385,42 @@ function onPopoverTabClick(sectionId, tabId) {
         PRO: Attach runbook
       </div>
     </div>
+
+    <!-- §C4 Density quick-pick in the sidebar footer. One-click access
+         so users don't have to open Settings just to tighten spacing. -->
+    <div
+      class="sidebar-footer"
+      v-if="!sidebarCollapsed"
+      data-testid="sidebar-footer"
+    >
+      <div class="density-selector" :title="`UI density: ${appearance.density}`">
+        <button
+          v-for="d in ['compact', 'normal', 'comfortable']"
+          :key="d"
+          type="button"
+          class="density-btn"
+          :class="{ active: appearance.density === d }"
+          :title="`${d.charAt(0).toUpperCase() + d.slice(1)} density`"
+          :data-testid="`density-${d}`"
+          @click="appearance.setDensity(d)"
+        >
+          <span v-if="d === 'compact'">⇕</span>
+          <span v-else-if="d === 'normal'">⊞</span>
+          <span v-else>⊟</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- §C3 Right-click context menu on section headers -->
+    <ContextMenu
+      v-if="ctxMenu"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :items="ctxMenu.items"
+      test-id="sidebar-section-menu"
+      @select="onMenuSelect"
+      @close="closeMenu"
+    />
   </div>
 </template>
 
@@ -676,4 +754,40 @@ function onPopoverTabClick(sectionId, tabId) {
   cursor: pointer;
 }
 .ai-context-action.pro-label { color: var(--amber, #d4a256); cursor: default; }
+
+/* §C4 — density picker pinned to the bottom of the sidebar */
+.sidebar-footer {
+  padding: 6px 10px 10px;
+  border-top: 1px solid var(--border, #2a2a2a);
+  display: flex;
+  justify-content: center;
+}
+.density-selector {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg3, #222);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 6px;
+}
+.density-btn {
+  background: none;
+  border: none;
+  color: var(--text3, #5a5a5a);
+  cursor: pointer;
+  width: 26px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  border-radius: 4px;
+  transition: background 0.1s, color 0.1s;
+  font-family: inherit;
+}
+.density-btn:hover { background: var(--bg4, #2a2a2a); color: var(--text, #e5e5e5); }
+.density-btn.active {
+  background: rgba(79, 142, 247, 0.16);
+  color: var(--accent2, #4a9eff);
+}
 </style>
