@@ -1296,10 +1296,11 @@ onMounted(async () => {
               </div>
               <div v-if="sec.hint" class="nav-toggle-hint">{{ sec.hint }}</div>
             </div>
-            <label class="toggle">
+            <label class="toggle" :title="sec.core ? 'Core sections are always visible' : ''">
               <input
                 type="checkbox"
                 :checked="navVisibility.isVisible(sec.id)"
+                :disabled="sec.core"
                 :data-testid="`nav-toggle-input-${sec.id}`"
                 @change="navVisibility.toggle(sec.id)"
                 class="toggle-input"

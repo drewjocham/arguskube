@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useTimeSeriesMetrics, callGo } from '../../composables/useWails'
 
 const { queryMetrics } = useTimeSeriesMetrics()
@@ -7,6 +7,74 @@ const { queryMetrics } = useTimeSeriesMetrics()
 const timeRange = ref('Last 1 hour')
 const isLive = ref(false)
 let liveInterval = null
+
+// ── Cluster Overview persistence ─────────────────────────────────
+// Panel layout + custom panels survive reload. Without this every
+// "Add Panel" the user creates was thrown away on the next launch,
+// and editing a panel's PromQL was a transient session-only change.
+const PERSIST_KEY = 'argus.metricsExplorer.v1'
+
+// Namespace + timeRange selections are part of the persisted state so
+// switching between dashboards (or reloading) preserves the user's
+// scope. namespace='' = "All namespaces".
+const selectedNamespace = ref('')
+const availableNamespaces = ref([])
+const namespacesLoading = ref(false)
+const namespacesError = ref('')
+
+function loadPersistedState() {
+  try {
+    const raw = localStorage.getItem(PERSIST_KEY)
+    if (!raw) return null
+    const p = JSON.parse(raw)
+    if (!p || typeof p !== 'object') return null
+    return p
+  } catch { return null }
+}
+function persistState() {
+  try {
+    localStorage.setItem(PERSIST_KEY, JSON.stringify({
+      timeRange: timeRange.value,
+      namespace: selectedNamespace.value,
+      // Strip volatile per-panel state (data arrays, loading, error)
+      // — keep only the user-authored definition fields. Reloading
+      // refetches data anyway.
+      panels: panels.value.map(p => ({
+        id: p.id,
+        type: p.type,
+        title: p.title,
+        query: p.query,
+        color: p.color,
+        bg: p.bg,
+        span: p.span,
+      })),
+    }))
+  } catch { /* best-effort */ }
+}
+
+// Load the cluster's real namespaces so the selector reflects what
+// the user actually has — not the previous hard-coded list of
+// kube-system/default/all.
+async function loadNamespaces() {
+  namespacesLoading.value = true
+  namespacesError.value = ''
+  try {
+    const res = await callGo('ListAllNamespaces')
+    if (Array.isArray(res)) {
+      availableNamespaces.value = res
+        .map(ns => typeof ns === 'string' ? ns : (ns?.name || ''))
+        .filter(Boolean)
+        .sort()
+    } else {
+      availableNamespaces.value = []
+    }
+  } catch (e) {
+    namespacesError.value = e?.message || String(e)
+    availableNamespaces.value = []
+  } finally {
+    namespacesLoading.value = false
+  }
+}
 
 function toggleLive() {
   isLive.value = !isLive.value
@@ -56,45 +124,76 @@ function fmtRate(data) {
   return `${avg.toFixed(0)} Mbps`
 }
 
-const panels = ref([
+const DEFAULT_PANELS = [
   {
     id: 1, type: 'area', title: 'CPU Utilization',
     query: 'cpu',
     color: 'var(--accent)', bg: 'rgba(79, 142, 247, 0.15)',
-    data: [], editing: false, span: 1, loading: true, error: null
+    span: 1,
   },
   {
     id: 2, type: 'area', title: 'Memory Usage',
     query: 'memory',
     color: 'var(--purple)', bg: 'rgba(167, 139, 250, 0.15)',
-    data: [], editing: false, span: 1, loading: true, error: null
+    span: 1,
   },
   {
     id: 3, type: 'network', title: 'Network I/O',
     query: 'network_receive',
-    rxData: [], txData: [],
-    editing: false, span: 2, loading: true, error: null
+    span: 2,
   },
   {
     id: 4, type: 'stat', title: 'Cluster Health',
     query: 'cluster_health',
-    reads: '—', writes: '—',
-    editing: false, span: 1, loading: true, error: null
+    span: 1,
   },
   {
     id: 5, type: 'gauge', title: 'Active Pods',
     query: 'count(kube_pod_info)',
-    val: '—', limit: '—', gaugePct: 0,
-    editing: false, span: 1, loading: true, error: null
+    span: 1,
+  },
+]
+
+function buildPanel(seed) {
+  return {
+    ...seed,
+    data: [],
+    rxData: [],
+    txData: [],
+    val: '—',
+    limit: '—',
+    gaugePct: 0,
+    reads: '—',
+    writes: '—',
+    editing: false,
+    loading: true,
+    error: null,
   }
-])
+}
+
+function initialPanels() {
+  const persisted = loadPersistedState()
+  const seeds = (persisted?.panels && Array.isArray(persisted.panels) && persisted.panels.length)
+    ? persisted.panels
+    : DEFAULT_PANELS
+  return seeds.map(buildPanel)
+}
+
+const panels = ref(initialPanels())
+
+// Apply persisted timeRange + namespace on boot.
+{
+  const persisted = loadPersistedState()
+  if (persisted?.timeRange) timeRange.value = persisted.timeRange
+  if (persisted?.namespace) selectedNamespace.value = persisted.namespace
+}
 
 async function refreshPanelData(p, isBackground = false) {
   if (!isBackground) p.loading = true
   p.error = null
   try {
     if (p.type === 'area' || p.type === 'line' || p.type === 'bar') {
-      const data = await queryMetrics(p.query, timeRange.value)
+      const data = await queryMetrics(p.query, timeRange.value, selectedNamespace.value)
       if (data && data.length) {
         p.data = data
         // Compute display value from real data.
@@ -109,8 +208,8 @@ async function refreshPanelData(p, isBackground = false) {
         p.error = 'No data available'
       }
     } else if (p.type === 'network') {
-      const rx = await queryMetrics(p.query, timeRange.value)
-      const tx = await queryMetrics('network_transmit', timeRange.value)
+      const rx = await queryMetrics(p.query, timeRange.value, selectedNamespace.value)
+      const tx = await queryMetrics('network_transmit', timeRange.value, selectedNamespace.value)
       p.rxData = rx && rx.length ? rx : []
       p.txData = tx && tx.length ? tx : []
       if (!p.rxData.length && !p.txData.length) {
@@ -150,6 +249,7 @@ async function refreshAll(isBackground = false) {
 }
 
 onMounted(() => {
+  loadNamespaces()
   refreshAll()
 })
 
@@ -157,9 +257,20 @@ onUnmounted(() => {
   if (liveInterval) clearInterval(liveInterval)
 })
 
-watch(timeRange, () => {
-  refreshAll()
-})
+// timeRange + namespace persist + drive a refetch on change so the
+// graphs match the visible parameters.
+watch(timeRange, () => { persistState(); refreshAll() })
+watch(selectedNamespace, () => { persistState(); refreshAll() })
+
+// Persist whenever a panel's *user-authored* fields change. Use
+// flush:'post' so we batch frequent edits (slider drags, typing).
+// We deep-watch so changes inside individual panels (rename, query
+// edit, span change, reorder) survive reload.
+watch(
+  panels,
+  () => { persistState() },
+  { deep: true, flush: 'post' },
+)
 
 function addPanel() {
   panels.value.push({
@@ -338,18 +449,33 @@ function onResizeEnd() {
           </svg>
           Add Panel
         </button>
+        <!-- Namespace selector — populated from the live cluster
+             (ListAllNamespaces). Loading + error states are visible so
+             users don't think the dropdown is just empty. -->
         <div class="db-select-wrapper ml-1">
-          <select class="db-select">
-            <option>All Namespaces</option>
-            <option>kube-system</option>
-            <option>default</option>
+          <select
+            v-model="selectedNamespace"
+            class="db-select"
+            :title="namespacesError ? 'Failed to load namespaces: ' + namespacesError : 'Filter metrics by namespace'"
+            :disabled="namespacesLoading"
+          >
+            <option value="">
+              {{ namespacesLoading ? 'Loading namespaces…' : 'All Namespaces' }}
+            </option>
+            <option
+              v-for="ns in availableNamespaces"
+              :key="ns"
+              :value="ns"
+            >{{ ns }}</option>
           </select>
         </div>
         <div class="db-select-wrapper">
           <select v-model="timeRange" class="db-select">
             <option>Last 15 minutes</option>
             <option>Last 1 hour</option>
+            <option>Last 6 hours</option>
             <option>Last 24 hours</option>
+            <option>Last 7 days</option>
           </select>
         </div>
         <button class="db-btn primary">

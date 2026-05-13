@@ -93,7 +93,7 @@ describe('useNavVisibilityProbes — wired probes', () => {
     expect(vis.isVisible('knowledge')).toBe(true)
   })
 
-  it('does not auto-reveal config or admin (those are opt-in)', async () => {
+  it('does not auto-reveal config (admin is core, config is opt-in)', async () => {
     stubFetch({
       ListResources: [],
       GetSettings: { s3Bucket: '' },
@@ -102,7 +102,8 @@ describe('useNavVisibilityProbes — wired probes', () => {
     await run()
     const vis = useNavVisibilityStore()
     expect(vis.isVisible('config')).toBe(false)
-    expect(vis.isVisible('admin')).toBe(false)
+    // admin is core — always visible, not gated by probes
+    expect(vis.isVisible('admin')).toBe(true)
   })
 
   it('run() is idempotent — second call is a no-op', async () => {

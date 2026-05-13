@@ -51,9 +51,12 @@ export function useMetrics(intervalMs = 5000) {
  * Composable for time-series metric queries (no polling, on-demand only).
  */
 export function useTimeSeriesMetrics() {
-  async function queryMetrics(query, timeRange) {
+  // namespace is optional. The backend currently ignores it but the
+  // shape is here so a namespace-aware QueryTimeSeriesMetrics on the
+  // Go side is a drop-in upgrade — no UI change needed.
+  async function queryMetrics(query, timeRange, namespace = '') {
     try {
-      return await callGo('QueryTimeSeriesMetrics', query, timeRange)
+      return await callGo('QueryTimeSeriesMetrics', query, timeRange, namespace || '')
     } catch (e) {
       console.error('[metrics] queryTimeSeries:', e)
       return null

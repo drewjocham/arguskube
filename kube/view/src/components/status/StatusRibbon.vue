@@ -131,11 +131,38 @@ function onKeydown(e) {
   }
 }
 
-// When ribbon events come in, persist them into the notifications store
-// too so the panel's scroll-back is comprehensive. We only mirror the
-// item that was just pushed, not the whole feed, to avoid duplicates.
+// Mirror ribbon events into the bell panel for scroll-back — BUT only
+// the ones worth a notification. Info-level events (especially the
+// periodic envprobe sweeps that fire every 60s) used to spam the
+// panel; now they live on the ribbon only. Warn and error events
+// still mirror, with a 10-minute dedupe on (source, body) so the same
+// "TLS chain to API server" doesn't add a fresh entry every sweep.
+const NOTIF_DEDUPE_WINDOW_MS = 10 * 60 * 1000
+const recentNotifKeys = new Map() // (source|body) -> last-added ms
+
 watch(latest, (e) => {
   if (!e) return
+  // Info / running events live on the ribbon only — never a
+  // notification. The ribbon is the right place for "looking at
+  // it" feedback; the bell is for things the user should
+  // *eventually* notice.
+  if (e.severity !== 'warn' && e.severity !== 'error') return
+
+  const key = `${e.source}|${e.message}`
+  const now = Date.now()
+  const last = recentNotifKeys.get(key)
+  if (last && now - last < NOTIF_DEDUPE_WINDOW_MS) return
+  recentNotifKeys.set(key, now)
+
+  // Periodically prune the dedupe map so it doesn't grow without
+  // bound across long sessions. Cheap because Map preserves order.
+  if (recentNotifKeys.size > 200) {
+    const cutoff = now - NOTIF_DEDUPE_WINDOW_MS
+    for (const [k, t] of recentNotifKeys) {
+      if (t < cutoff) recentNotifKeys.delete(k)
+    }
+  }
+
   notifications.add({
     kind: 'status',
     title: e.source,

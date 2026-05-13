@@ -195,6 +195,16 @@ function onAlertSelect(alert) {
   }
 }
 
+// "Diagnose All" — CenterPanel emits this per-alert in a loop. We
+// fire each diagnosis without awaiting (the agent queue handles
+// concurrency) but DON'T flip selectedAlert, so the UI doesn't
+// rapidly switch right-rail context.
+function onDiagnoseAlert(alert) {
+  if (!alert || !alert.id) return
+  if (!isAllowed('ai_diagnostics')) return
+  diagnose(alert.id)
+}
+
 function onContextSwitched() {
   refreshClusterInfo()
   refreshMetrics()
@@ -340,6 +350,7 @@ useWailsEvent('argus:status', (data) => {
             :logLines="logLines"
             :activeNav="activeNav"
             @select-alert="onAlertSelect"
+            @diagnose-all="onDiagnoseAlert"
           />
           <div class="diag-collapse-bar" @click="toggleDiag" :title="diagCollapsed ? 'Show AI panel' : 'Hide AI panel'">
             <svg :class="{ flipped: diagCollapsed }" width="10" height="10" viewBox="0 0 10 10">
@@ -406,6 +417,11 @@ useWailsEvent('argus:status', (data) => {
 
 .center-area {
   flex: 1;
+  /* min-height: 0 lets this flex item shrink below its content's
+     intrinsic height. Without it, a tall child (e.g. Argus AI chat
+     with many messages) makes this row grow instead of clipping, and
+     the descendant scroll-region's overflow-y never engages. */
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -413,6 +429,9 @@ useWailsEvent('argus:status', (data) => {
 
 .center-content {
   flex: 1;
+  /* Same reason — see .center-area. The chat panel's scroll relies on
+     this constraint to propagate from the window all the way down. */
+  min-height: 0;
   display: flex;
   overflow: hidden;
 }

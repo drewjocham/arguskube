@@ -3,6 +3,7 @@ package pkg
 import (
 	"context"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,16 +78,48 @@ func (a *App) initEnvProbes() *envprobe.Runner {
 // upserts by id). The signed-images probe is added lazily once the K8s
 // client is bound (which happens after AutoResolveContext picks a
 // reachable context).
+// lastSummary tracks the previous sweep's summary so we only emit a
+// status-ribbon line when something actually changed. Without this
+// guard the 60s loop floods the ribbon with the same "Environment
+// looks good" message every minute, and StatusRibbon then mirrors
+// each into a notification.
+var (
+	lastSummaryMu sync.Mutex
+	lastSummary   = map[*App]string{}
+)
+
 func (a *App) RunEnvProbes() ([]envprobe.Result, error) {
 	runner := a.initEnvProbes()
 
-	a.emitStatus("envprobe", "info", "Checking environment…", "")
+	// We deliberately do NOT emit a "Checking environment…" status —
+	// it fired identically every sweep and added zero signal. The
+	// runner's per-probe events (only published when status is non-OK)
+	// already tell the user something interesting happened.
 	results := runner.RunAll(a.ctx)
 
 	for _, res := range results {
 		a.publishEnvProbeResult(res)
 	}
-	a.emitStatus("envprobe", "info", summarize(results), "")
+
+	// Summary is gated on change: emit only when the sweep produced a
+	// different one-line summary than last time. Same-state sweeps are
+	// silent.
+	summary := summarize(results)
+	lastSummaryMu.Lock()
+	prev := lastSummary[a]
+	if summary != prev {
+		lastSummary[a] = summary
+	}
+	lastSummaryMu.Unlock()
+	if summary != prev {
+		// Pick severity by content so "1 needs action" doesn't get
+		// flagged identically to "looks good".
+		sev := "info"
+		if strings.Contains(summary, "blocker") || strings.Contains(summary, "needs action") {
+			sev = "warn"
+		}
+		a.emitStatus("envprobe", sev, summary, "")
+	}
 	return results, nil
 }
 

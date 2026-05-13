@@ -71,7 +71,40 @@ const props = defineProps({
   activeNav: { type: String, default: 'monitoring' },
 })
 
-const emit = defineEmits(['select-alert'])
+const emit = defineEmits(['select-alert', 'diagnose-all'])
+
+// Alerts dashboard time window (was a hard-coded "30m" label).
+const alertsRange = ref('30m')
+
+// "Diagnose All" — fire-and-forget bulk diagnosis. The parent owns
+// the AI agent client; we just emit progress so the button is honest
+// about what's happening.
+const diagnosingAll = ref(false)
+const diagnoseProgress = ref('')
+
+async function onDiagnoseAll() {
+  if (!props.alerts?.length || diagnosingAll.value) return
+  diagnosingAll.value = true
+  diagnoseProgress.value = `0/${props.alerts.length}`
+  try {
+    // App.vue listens for this and awaits its diagnose flow per alert;
+    // we just expose progress via the prop callback shape the existing
+    // diagnose() supports. We don't await here — the parent's queue
+    // handles it, but we surface a count so the user has feedback.
+    let i = 0
+    for (const a of props.alerts) {
+      emit('diagnose-all', a)
+      i++
+      diagnoseProgress.value = `${i}/${props.alerts.length}`
+      // Tiny yield so the parent's diagnose loop can interleave + the
+      // UI updates the counter instead of locking.
+      await new Promise(r => setTimeout(r, 50))
+    }
+  } finally {
+    diagnosingAll.value = false
+    diagnoseProgress.value = ''
+  }
+}
 
 const criticalCount = computed(() => props.alerts.filter(a => a.severity === 'critical').length)
 const warningCount = computed(() => props.alerts.filter(a => a.severity === 'warning').length)
@@ -199,15 +232,37 @@ const adminTabs = SECTIONS.admin.tabs
               <span class="tab-dot" style="background: var(--amber);"></span>
               {{ warningCount }} warning
             </div>
-            <div class="toolbar-btn">30m</div>
-            <div
+            <!-- Time-range selector (was an inert "30m" label) -->
+            <select
+              class="toolbar-btn toolbar-select"
+              v-model="alertsRange"
+              :title="'Alerts time window'"
+            >
+              <option value="15m">15m</option>
+              <option value="30m">30m</option>
+              <option value="1h">1h</option>
+              <option value="6h">6h</option>
+              <option value="24h">24h</option>
+            </select>
+            <button
+              type="button"
               class="toolbar-btn"
               :class="{ primary: editMode }"
               @click="editMode = !editMode"
             >
               {{ editMode ? 'Done Editing' : 'Customize' }}
-            </div>
-            <div class="toolbar-btn primary">Diagnose All</div>
+            </button>
+            <!-- Diagnose All — emits up so App.vue can drive AI
+                 diagnosis across every visible alert. -->
+            <button
+              type="button"
+              class="toolbar-btn primary"
+              :disabled="!alerts.length || diagnosingAll"
+              :title="alerts.length ? 'Run AI diagnostics on every visible alert' : 'No alerts to diagnose'"
+              @click="onDiagnoseAll"
+            >
+              {{ diagnosingAll ? `Diagnosing… (${diagnoseProgress})` : 'Diagnose All' }}
+            </button>
           </template>
         </div>
         <template v-if="alertsTab === 'cluster'">
@@ -390,7 +445,10 @@ const adminTabs = SECTIONS.admin.tabs
 </template>
 
 <style scoped>
-.content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+/* min-height: 0 lets sections with internal scroll (ArgusAIChat, LogExplorer
+   etc.) actually scroll. Without it, a tall child stretches this column
+   and the descendant overflow-y never engages. */
+.content { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
 /* Sub-tabs row used inside the Monitoring → Alerts tab. Same metrics
    as the SectionTabs bar so the visual rhythm matches. */
@@ -423,6 +481,21 @@ const adminTabs = SECTIONS.admin.tabs
 .toolbar-btn:hover { background: var(--bg4); color: var(--text); }
 .toolbar-btn.primary { background: rgba(79,142,247,0.15); color: var(--accent2); border-color: rgba(79,142,247,0.3); }
 .toolbar-btn.primary:hover { background: rgba(79,142,247,0.25); }
+.toolbar-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.toolbar-btn:disabled:hover { background: var(--bg3); color: var(--text2); }
+/* When toolbar-btn is a <select>, it needs explicit appearance/font
+   inheritance so it visually matches the surrounding buttons. */
+.toolbar-btn.toolbar-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text3) 50%),
+                    linear-gradient(135deg, var(--text3) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 24px;
+  font: inherit;
+}
 
 .ctx-strip {
   padding: 6px 12px; border-bottom: 1px solid var(--border);

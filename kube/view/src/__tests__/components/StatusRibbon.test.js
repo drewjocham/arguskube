@@ -122,15 +122,33 @@ describe('StatusRibbon.vue', () => {
     expect(ribbon.attributes('aria-label')).toContain('Corp proxy detected')
   })
 
-  it('mirrors ribbon events into the notifications store for scroll-back', async () => {
+  it('mirrors warn/error ribbon events into notifications (info events stay ribbon-only)', async () => {
     mount(StatusRibbon)
     const feed = useStatusFeedStore()
     const notif = useNotificationsStore()
+
+    // Info-severity must NOT mirror — those are periodic-sweep noise
+    // (envprobe loops every 60s) that flooded the bell panel before.
     feed.info('k8s', 'Refreshing 12 pods')
+    await flushPromises()
+    expect(notif.items.length).toBe(0)
+
+    // Warn DOES mirror — it's signal worth surfacing in the bell.
+    feed.warn('envprobe', 'Corp proxy detected')
     await flushPromises()
     expect(notif.items.length).toBe(1)
     expect(notif.items[0].kind).toBe('status')
-    expect(notif.items[0].body).toBe('Refreshing 12 pods')
-    expect(notif.items[0].meta?.severity).toBe('info')
+    expect(notif.items[0].body).toBe('Corp proxy detected')
+    expect(notif.items[0].meta?.severity).toBe('warn')
+
+    // Same (source, body) within 10 min — dedupe, no second entry.
+    feed.warn('envprobe', 'Corp proxy detected')
+    await flushPromises()
+    expect(notif.items.length).toBe(1)
+
+    // Different body — new notification.
+    feed.error('agent', 'mTLS expired')
+    await flushPromises()
+    expect(notif.items.length).toBe(2)
   })
 })

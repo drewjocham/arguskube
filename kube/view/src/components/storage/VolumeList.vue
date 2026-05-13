@@ -439,7 +439,13 @@ function scrollExpandedIntoView() {
 </template>
 
 <style scoped>
-.vol-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; overflow-y: auto; flex: 1; min-height: 0; }
+/* Vol-view used to self-scroll (overflow-y:auto + flex:1 + min-height:0).
+   That collided with the outer .resource-scroll-area in CenterPanel which
+   ALSO has overflow-y:auto — two nested scroll containers, neither
+   actually engaging. The wrapper is the authoritative scroll surface for
+   resource lists; this component renders content at natural height and
+   lets the wrapper scroll. */
+.vol-view { padding: 24px; display: flex; flex-direction: column; gap: 24px; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
 

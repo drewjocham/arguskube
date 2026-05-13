@@ -101,13 +101,15 @@ describe('navVisibility store', () => {
       storage: () => Promise.resolve(true),
       knowledge: () => Promise.resolve(false),
       config: () => Promise.resolve(true),
-      admin: () => Promise.resolve(false),
+      // admin is no longer optional — it's a core section so the
+      // probe value is moot; visibility stays true.
     })
     expect(s.initialized).toBe(true)
     expect(s.visible.storage).toBe(true)
     expect(s.visible.config).toBe(true)
     expect(s.visible.knowledge).toBe(false)
-    expect(s.visible.admin).toBe(false)
+    // admin is core; always visible regardless of probes
+    expect(s.visible.admin).toBe(true)
   })
 
   it('initialize() does not hide sections — probes can only reveal', async () => {

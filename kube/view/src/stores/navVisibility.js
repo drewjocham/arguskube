@@ -24,12 +24,19 @@ const STORAGE_KEY = 'argus.navVisibility.v1'
 // Sections that should always show by default. The other 4 (config,
 // storage, knowledge, admin) are opt-in either via a probe or via the
 // Settings → Navigation panel.
+// Admin is core because it owns Setup + Settings — surfaces the user
+// needs to reach to configure ANY optional section. Hiding it by
+// default created a discovery dead-end where the only path to enable
+// other sections was the right-click menu or Cmd+K. The right fix is
+// to keep it visible; the right-click "Open settings" path is a
+// fallback for users who already navigated away from it.
 const CORE_SECTIONS = Object.freeze([
   'monitoring',
   'cluster',
   'workloads',
   'network',
   'operations',
+  'admin',
 ])
 
 const OPTIONAL_SECTIONS = Object.freeze(
@@ -85,6 +92,13 @@ function buildInitialVisibility() {
   for (const id of Object.keys(persisted.visible)) {
     if (SECTIONS[id]) out[id] = !!persisted.visible[id]
   }
+  // Core sections are ALWAYS visible. Earlier builds let users hide
+  // them (including admin, which owns Settings) and lock themselves
+  // out. Enforce visibility here so a stale persisted "admin: false"
+  // doesn't survive the next launch.
+  for (const id of CORE_SECTIONS) {
+    out[id] = true
+  }
   return out
 }
 
@@ -113,9 +127,14 @@ export const useNavVisibilityStore = defineStore('navVisibility', {
       return !!this.visible[sectionId]
     },
 
-    /** Toggle a section. The user's choice always wins. */
+    /** Toggle a section. Core sections cannot be hidden — they're
+     *  the surfaces every user needs (including Admin → Settings). */
     toggle(sectionId) {
       if (!SECTIONS[sectionId]) return
+      if (CORE_SECTIONS.includes(sectionId) && this.visible[sectionId]) {
+        // Toggling a visible core section off is suppressed.
+        return
+      }
       this.visible = { ...this.visible, [sectionId]: !this.visible[sectionId] }
       saveToStorage({ visible: this.visible })
     },
@@ -128,6 +147,7 @@ export const useNavVisibilityStore = defineStore('navVisibility', {
 
     hide(sectionId) {
       if (!SECTIONS[sectionId] || !this.visible[sectionId]) return
+      if (CORE_SECTIONS.includes(sectionId)) return // core can't be hidden
       this.visible = { ...this.visible, [sectionId]: false }
       saveToStorage({ visible: this.visible })
     },
