@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { nextTick, ref } from 'vue'
+import { nextTick } from 'vue'
+import { setActivePinia, createPinia } from 'pinia'
 import Sidebar from '../../components/sidebar/Sidebar.vue'
+import { useNavVisibilityStore } from '../../stores/navVisibility'
+import { useSectionTabsStore } from '../../stores/sectionTabs'
+import { SECTION_ORDER } from '../../lib/sectionTabs'
 
-// Mock the entire useWails barrel since Sidebar imports useContexts from it.
+// useContexts is mocked at the barrel level so the Sidebar's
+// onMounted(listContexts) doesn't try to hit Wails.
 vi.mock('../../composables/useWails', () => ({
   useContexts: vi.fn(() => ({
     contexts: [],
@@ -14,141 +19,233 @@ vi.mock('../../composables/useWails', () => ({
   })),
 }))
 
-// Provide isAllowed — must be a function that returns a boolean.
-const defaultProvide = {
-  isAllowed: () => true,
-}
+const defaultProvide = { isAllowed: () => true }
+
+// Memory-backed localStorage so each test gets a clean state for the
+// per-section tab store + navVisibility store.
+const memory = {}
+Object.defineProperty(window, 'localStorage', {
+  configurable: true,
+  value: {
+    getItem: (k) => (k in memory ? memory[k] : null),
+    setItem: (k, v) => { memory[k] = String(v) },
+    removeItem: (k) => { delete memory[k] },
+    clear: () => { for (const k of Object.keys(memory)) delete memory[k] },
+  },
+})
 
 function createWrapper(props = {}, provide = {}) {
   return mount(Sidebar, {
     props: {
       clusterInfo: null,
       alerts: [],
-      activeNav: 'alerts',
+      activeNav: 'monitoring',
       ...props,
     },
-    global: {
-      provide: { ...defaultProvide, ...provide },
-    },
+    global: { provide: { ...defaultProvide, ...provide } },
     attachTo: document.body,
   })
 }
 
-describe('Sidebar.vue — Integration', () => {
+describe('Sidebar.vue — section navigation model', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
+    for (const k of Object.keys(memory)) delete memory[k]
+    setActivePinia(createPinia())
   })
 
-  it('renders all navigation items (37 total)', () => {
+  it('renders one row per visible section (5 by default — core only)', () => {
     const wrapper = createWrapper()
-    // All items are in the expanded nav (sidebarCollapsed = false by default).
-    const navItems = wrapper.findAll('.nav-item')
-    expect(navItems.length).toBe(37)
+    const rows = wrapper.findAll('[data-testid^="sidebar-section-"]')
+    // Core sections per navVisibility defaults.
+    expect(rows.length).toBe(5)
   })
 
-  it('renders all 9 section headers', () => {
+  it('shows additional sections after the user enables them', async () => {
     const wrapper = createWrapper()
-    const sections = wrapper.findAll('.section-header')
-    expect(sections.length).toBe(9)
-  })
-
-  it('handles nav item click interaction', async () => {
-    // Vue 3 <script setup> inline emits (e.g. @click="emit('update:activeNav', id)")
-    // may not register in wrapper.emitted() with jsdom. This test verifies the
-    // component correctly renders all nav items with proper structure.
-    const wrapper = createWrapper({ activeNav: 'metrics' })
+    const vis = useNavVisibilityStore()
+    vis.show('storage')
+    vis.show('knowledge')
     await nextTick()
-
-    const navItems = wrapper.findAll('.nav-item')
-    const navLabels = wrapper.findAll('.nav-label')
-
-    // Verify nav items exist with labels
-    expect(navItems.length).toBe(37)
-    expect(navLabels.length).toBe(37)
+    const rows = wrapper.findAll('[data-testid^="sidebar-section-"]')
+    expect(rows.length).toBe(7)
+    expect(wrapper.find('[data-testid="sidebar-section-storage"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="sidebar-section-knowledge"]').exists()).toBe(true)
   })
 
-  it('shows badge with critical count on alerts item', () => {
+  it('emits update:activeNav with the section id when a row is clicked', async () => {
+    const wrapper = createWrapper()
+    await wrapper.find('[data-testid="sidebar-section-workloads"]').trigger('click')
+    const events = wrapper.emitted('update:activeNav')
+    expect(events).toBeTruthy()
+    expect(events[0]).toEqual(['workloads'])
+  })
+
+  it('marks the active section row', () => {
+    const wrapper = createWrapper({ activeNav: 'workloads' })
+    const active = wrapper.find('[data-testid="sidebar-section-workloads"]')
+    expect(active.classes()).toContain('active')
+    const inactive = wrapper.find('[data-testid="sidebar-section-monitoring"]')
+    expect(inactive.classes()).not.toContain('active')
+  })
+
+  it('renders the alert badge on the monitoring row (critical wins over warning)', () => {
     const wrapper = createWrapper({
       alerts: [
-        { severity: 'critical', message: 'crash' },
-        { severity: 'warning', message: 'slow' },
+        { severity: 'critical' },
+        { severity: 'warning' },
+        { severity: 'warning' },
       ],
     })
-    const alertsItem = wrapper.findAll('.nav-item').filter(
-      w => w.find('.nav-label').text() === 'Alerts'
-    )
-    expect(alertsItem.length).toBe(1)
-    const badge = alertsItem[0].find('.badge-red')
-    expect(badge.exists()).toBe(true)
-    expect(badge.text()).toBe('1')
+    const monitoring = wrapper.find('[data-testid="sidebar-section-monitoring"]')
+    const red = monitoring.find('.badge-red')
+    expect(red.exists()).toBe(true)
+    expect(red.text()).toBe('1')
   })
 
-  it('shows amber badge when only warnings (no critical)', () => {
+  it('renders amber badge when only warnings', () => {
     const wrapper = createWrapper({
       alerts: [
-        { severity: 'warning', message: 'high cpu' },
-        { severity: 'warning', message: 'disk full' },
+        { severity: 'warning' },
+        { severity: 'warning' },
       ],
     })
-    const alertsItem = wrapper.findAll('.nav-item').filter(
-      w => w.find('.nav-label').text() === 'Alerts'
-    )
-    expect(alertsItem.length).toBe(1)
-    const badgeAmber = alertsItem[0].find('.badge-amber')
-    expect(badgeAmber.exists()).toBe(true)
-    expect(badgeAmber.text()).toBe('2')
+    const amber = wrapper.find('[data-testid="sidebar-section-monitoring"] .badge-amber')
+    expect(amber.exists()).toBe(true)
+    expect(amber.text()).toBe('2')
   })
 
-  it('shows AI context card when expanded', () => {
-    const wrapper = createWrapper()
-    const aiCard = wrapper.find('.ai-context-card')
-    expect(aiCard.exists()).toBe(true)
-    expect(aiCard.text()).toContain('Argus Context')
+  it('no badge appears on non-monitoring sections', () => {
+    const wrapper = createWrapper({
+      alerts: [{ severity: 'critical' }],
+    })
+    expect(wrapper.find('[data-testid="sidebar-section-workloads"] .badge').exists()).toBe(false)
   })
 
-  it('shows cluster selector with placeholder info when no clusterInfo', () => {
-    const wrapper = createWrapper()
+  it('preserves the cluster selector', () => {
+    const wrapper = createWrapper({
+      clusterInfo: { name: 'prod', nodeCount: 12, k8sVersion: 'v1.29.5' },
+    })
     const selector = wrapper.find('.cluster-selector')
     expect(selector.exists()).toBe(true)
-    // cluster-info div shows em-dash when null.
-    expect(selector.text()).toContain('—')
+    expect(selector.text()).toContain('prod')
+    expect(selector.text()).toContain('12 nodes')
   })
 
-  it('shows cluster name and node count from clusterInfo prop', () => {
-    const wrapper = createWrapper({
-      clusterInfo: { name: 'prod-cluster', nodeCount: 5, k8sVersion: '1.28' },
-    })
-    const selector = wrapper.find('.cluster-selector')
-    expect(selector.text()).toContain('prod-cluster')
-    expect(selector.text()).toContain('5 nodes')
-    expect(selector.text()).toContain('1.28')
-  })
-
-  it('renders section-collapse chevrons in correct state', () => {
+  it('preserves the AI context card', () => {
     const wrapper = createWrapper()
-    const chevrons = wrapper.findAll('.section-chevron')
-    // Default all sections are expanded (not collapsed), so chevrons have .open class.
-    chevrons.forEach(c => {
-      expect(c.classes()).toContain('open')
-    })
+    expect(wrapper.find('.ai-context-card').exists()).toBe(true)
+    expect(wrapper.find('.ai-context-card').text()).toContain('Argus Context')
   })
 
-  it('collapses a section when its header is clicked', async () => {
+  it('clicking a search-result tab hit sets the section tab + emits the section', async () => {
     const wrapper = createWrapper()
-    const sections = wrapper.findAll('.section-header')
-    expect(sections.length).toBeGreaterThan(0)
-    // Click first section header to collapse it.
-    await sections[0].trigger('click')
+    // Programmatically activate the nav-search store; the actual search
+    // input lives in the titlebar, but the store is the single source of
+    // truth Sidebar reads from.
+    const { useNavSearchStore } = await import('../../stores/navSearch')
+    const search = useNavSearchStore()
+    search.setQuery('Pods')
     await nextTick()
-    // The chevron in that section should no longer have .open class.
-    const chevron = sections[0].find('.section-chevron')
-    expect(chevron.classes()).not.toContain('open')
+    const hit = wrapper.find('[data-testid="sidebar-hit-workloads-pods"]')
+    expect(hit.exists()).toBe(true)
+    await hit.trigger('click')
+
+    const tabs = useSectionTabsStore()
+    expect(tabs.activeTab('workloads')).toBe('pods')
+    expect(wrapper.emitted('update:activeNav')[0]).toEqual(['workloads'])
   })
 
-  it('highlights the active nav item', () => {
-    const wrapper = createWrapper({ activeNav: 'nodes' })
-    const activeItems = wrapper.findAll('.nav-item.active')
-    expect(activeItems.length).toBe(1)
-    expect(activeItems[0].find('.nav-label').text()).toBe('Nodes')
+  it('SECTION_ORDER is the source of truth for row order', async () => {
+    const vis = useNavVisibilityStore()
+    for (const id of SECTION_ORDER) vis.show(id)
+    const wrapper = createWrapper()
+    await nextTick()
+    const rows = wrapper.findAll('[data-testid^="sidebar-section-"]')
+    const renderedOrder = rows.map((r) => r.attributes('data-testid').replace('sidebar-section-', ''))
+    expect(renderedOrder).toEqual([...SECTION_ORDER])
+  })
+
+  // --- §C3 right-click quick-toggle menu ---
+
+  it('right-click on an optional section reveals Hide + Show all + Open settings', async () => {
+    const vis = useNavVisibilityStore()
+    vis.show('storage')
+    const wrapper = createWrapper()
+    await nextTick()
+    const row = wrapper.find('[data-testid="sidebar-section-storage"]')
+    await row.trigger('contextmenu', { clientX: 100, clientY: 200 })
+    expect(document.querySelector('[data-testid="sidebar-section-menu-hide"]')).toBeTruthy()
+    expect(document.querySelector('[data-testid="sidebar-section-menu-show-all"]')).toBeTruthy()
+    expect(document.querySelector('[data-testid="sidebar-section-menu-open-settings"]')).toBeTruthy()
+  })
+
+  it('right-click on a core section omits the Hide option', async () => {
+    const wrapper = createWrapper()
+    await wrapper.find('[data-testid="sidebar-section-monitoring"]').trigger('contextmenu')
+    expect(document.querySelector('[data-testid="sidebar-section-menu-hide"]')).toBeNull()
+    expect(document.querySelector('[data-testid="sidebar-section-menu-show-all"]')).toBeTruthy()
+  })
+
+  it('Hide menu item hides the section', async () => {
+    const vis = useNavVisibilityStore()
+    vis.show('storage')
+    const wrapper = createWrapper()
+    await nextTick()
+    await wrapper.find('[data-testid="sidebar-section-storage"]').trigger('contextmenu')
+    const hide = document.querySelector('[data-testid="sidebar-section-menu-hide"]')
+    hide.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(vis.isVisible('storage')).toBe(false)
+  })
+
+  it('Show all menu item reveals every section', async () => {
+    const wrapper = createWrapper()
+    await wrapper.find('[data-testid="sidebar-section-monitoring"]').trigger('contextmenu')
+    const showAll = document.querySelector('[data-testid="sidebar-section-menu-show-all"]')
+    showAll.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    const vis = useNavVisibilityStore()
+    for (const id of SECTION_ORDER) expect(vis.isVisible(id)).toBe(true)
+  })
+
+  it('Open settings menu item navigates to admin/settings + reveals admin', async () => {
+    const wrapper = createWrapper()
+    await wrapper.find('[data-testid="sidebar-section-monitoring"]').trigger('contextmenu')
+    const open = document.querySelector('[data-testid="sidebar-section-menu-open-settings"]')
+    open.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    const vis = useNavVisibilityStore()
+    expect(vis.isVisible('admin')).toBe(true)
+    const { useSectionTabsStore } = await import('../../stores/sectionTabs')
+    expect(useSectionTabsStore().activeTab('admin')).toBe('settings')
+    expect(wrapper.emitted('update:activeNav').at(-1)).toEqual(['admin'])
+  })
+
+  // --- §C4 Density quick-pick in the sidebar footer ---
+
+  it('density footer renders three buttons with the current selection marked active', () => {
+    const wrapper = createWrapper()
+    const compact = wrapper.find('[data-testid="density-compact"]')
+    const normal = wrapper.find('[data-testid="density-normal"]')
+    const comfortable = wrapper.find('[data-testid="density-comfortable"]')
+    expect(compact.exists()).toBe(true)
+    expect(normal.exists()).toBe(true)
+    expect(comfortable.exists()).toBe(true)
+    expect(normal.classes()).toContain('active')
+  })
+
+  it('clicking a density button updates the appearance store', async () => {
+    const wrapper = createWrapper()
+    const { useAppearanceStore } = await import('../../stores/appearance')
+    const app = useAppearanceStore()
+    await wrapper.find('[data-testid="density-compact"]').trigger('click')
+    expect(app.density).toBe('compact')
+  })
+
+  it('hides the density footer when the sidebar is collapsed', async () => {
+    const wrapper = createWrapper()
+    await wrapper.find('.collapse-toggle').trigger('click')
+    expect(wrapper.find('[data-testid="sidebar-footer"]').exists()).toBe(false)
   })
 })

@@ -9,6 +9,9 @@ import { useUIPrefsStore } from './stores/uiPrefs'
 import { useNotificationsStore } from './stores/notifications'
 import { useAuthStore } from './stores/auth'
 import { useAppNavStore } from './stores/appNav'
+import { useSectionTabsStore } from './stores/sectionTabs'
+import { SECTIONS, sectionForTab } from './lib/sectionTabs'
+import { useNavVisibilityProbes } from './composables/useNavVisibilityProbes'
 import { useCredentialMonitor } from './composables/useCredentialMonitor'
 import { useWatcherEngine } from './composables/useWatcherEngine'
 import { useArgusAlertContext } from './composables/useArgusAlertContext'
@@ -37,7 +40,15 @@ import { useStatusFeedStore } from './stores/statusFeed'
 // dev), isAuthenticated flips to true and the dashboard renders.
 const auth = useAuthStore()
 const authReady = ref(false)
+// macOS Keychain bridge — used by onMounted to migrate any pre-existing
+// localStorage session token onto the OS-native secret store.
 const secretStore = useSecretStore()
+
+// Smart-defaults probes — reveal optional sidebar sections when their
+// matching subsystem is configured (S3 bucket → Knowledge, cluster
+// has PVCs → Storage). Fire-and-forget: a slow probe never blocks
+// auth from settling, and the UI starts with the 5 core sections.
+const navProbes = useNavVisibilityProbes()
 onMounted(async () => {
   // /auth/providers tells us whether dev-mode bypass is on, in parallel
   // with restoring any persisted token. Both have to land before we
@@ -52,6 +63,9 @@ onMounted(async () => {
   if (auth.token) tasks.push(auth.restoreSession())
   await Promise.all(tasks)
   authReady.value = true
+  // Kick off the probes after auth has settled so they don't fight
+  // for the bridge with the auth restore call.
+  navProbes.run()
 })
 
 // /api/* fetches dispatch this when they get a 401 — the bridge clears
@@ -72,7 +86,28 @@ const { mode } = useAppMode()
 
 const logLines = ref([])
 const selectedAlert = ref(null)
-const activeNav = ref('alerts')
+// activeNav is now a SECTION id (one of the 9 SECTIONS keys). The
+// Sidebar emits section ids; CenterPanel routes by section. Legacy
+// callers that hand in tab ids (e.g. 'pods') are translated below.
+const activeNav = ref('monitoring')
+
+// Translate any incoming nav target into a (section, tab) pair. Returns
+// the section id to set on activeNav; if the incoming id was a tab,
+// also writes the tab into the sectionTabs store so CenterPanel opens
+// directly on that tab.
+const sectionTabsStore = useSectionTabsStore()
+function navigateTo(navId) {
+  if (!navId) return
+  if (navId in SECTIONS) {
+    activeNav.value = navId
+    return
+  }
+  const sectionId = sectionForTab(navId)
+  if (sectionId) {
+    sectionTabsStore.setTab(sectionId, navId)
+    activeNav.value = sectionId
+  }
+}
 
 // appNav lets components deep inside the center panel push the user to a
 // different sidebar nav (e.g. a "settings" link in a tooltip jumps to
@@ -80,9 +115,8 @@ const activeNav = ref('alerts')
 // pending record on its own onMounted.
 const appNav = useAppNavStore()
 watch(() => appNav.pending, (req) => {
-  if (req && req.navId && req.navId !== activeNav.value) {
-    activeNav.value = req.navId
-  }
+  if (!req || !req.navId) return
+  navigateTo(req.navId)
 }, { immediate: false })
 
 // One global tick drives every registered watcher (credentials today,
@@ -294,7 +328,7 @@ useWailsEvent('argus:status', (data) => {
         :clusterInfo="clusterInfo"
         :alerts="alerts"
         :activeNav="activeNav"
-        @update:activeNav="activeNav = $event"
+        @update:activeNav="navigateTo($event)"
         @context-switched="onContextSwitched"
       />
       <div class="center-area">

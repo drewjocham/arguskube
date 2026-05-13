@@ -1,11 +1,14 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { isWails } from '../../composables/useWails'
 import { useNotificationsStore } from '../../stores/notifications'
 import { useAuthStore } from '../../stores/auth'
 import { useNavSearchStore } from '../../stores/navSearch'
 import { useSpotCheck } from '../../composables/useSpotCheck'
+import { useSectionTabsStore } from '../../stores/sectionTabs'
+import { useAppNavStore } from '../../stores/appNav'
+import { ALL_NAV_ITEMS } from '../../lib/sectionTabs'
 import NotificationsPanel from '../notifications/NotificationsPanel.vue'
 import EnvironmentSelector from './EnvironmentSelector.vue'
 
@@ -51,6 +54,80 @@ async function signOut() {
   userMenuOpen.value = false
   await auth.logout()
 }
+
+// --- §D1 Palette: Cmd/Ctrl+K focuses the search; results live in a
+// keyboard-navigable popover below the input. Each result navigates
+// to (section, tab) via the same path the sidebar already uses.
+
+const searchInputRef = ref(null)
+const paletteOpen = ref(false)
+const paletteIndex = ref(0)
+const sectionTabs = useSectionTabsStore()
+const appNav = useAppNavStore()
+
+const paletteResults = computed(() => {
+  if (!navSearch.active) return []
+  // navSearch only exports `query` + `active` + `matches/highlight`;
+  // compute the lowercase form here so we don't depend on the store's
+  // internals.
+  const q = String(navSearch.query || '').trim().toLowerCase()
+  if (!q) return []
+  return ALL_NAV_ITEMS.filter((it) =>
+    it.tabLabel.toLowerCase().includes(q) ||
+    it.sectionLabel.toLowerCase().includes(q)
+  ).slice(0, 12)
+})
+
+function onPaletteShortcut(e) {
+  // Cmd+K on Mac, Ctrl+K elsewhere. Wails on macOS reports metaKey
+  // for ⌘; Linux/Windows webviews use ctrlKey.
+  const isPaletteKey = (e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')
+  if (!isPaletteKey) return
+  e.preventDefault()
+  searchInputRef.value?.focus()
+  searchInputRef.value?.select?.()
+  paletteOpen.value = true
+}
+
+function onInputKeydown(e) {
+  if (e.key === 'Escape') {
+    navSearch.clear()
+    paletteOpen.value = false
+    searchInputRef.value?.blur?.()
+    return
+  }
+  if (!paletteOpen.value) paletteOpen.value = true
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    paletteIndex.value = Math.min(paletteResults.value.length - 1, paletteIndex.value + 1)
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    paletteIndex.value = Math.max(0, paletteIndex.value - 1)
+  } else if (e.key === 'Enter') {
+    const hit = paletteResults.value[paletteIndex.value]
+    if (hit) selectPaletteResult(hit)
+  }
+}
+
+function selectPaletteResult(hit) {
+  sectionTabs.setTab(hit.sectionId, hit.tabId)
+  appNav.requestNav({ navId: hit.tabId })
+  navSearch.clear()
+  paletteOpen.value = false
+  searchInputRef.value?.blur?.()
+  paletteIndex.value = 0
+}
+
+function onInputFocus() {
+  paletteOpen.value = navSearch.active
+}
+function onInputBlur() {
+  // Defer so a click on a result has a chance to fire first.
+  setTimeout(() => { paletteOpen.value = false }, 120)
+}
+
+onMounted(() => document.addEventListener('keydown', onPaletteShortcut))
+onUnmounted(() => document.removeEventListener('keydown', onPaletteShortcut))
 </script>
 
 <template>
@@ -72,13 +149,17 @@ async function signOut() {
         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
       </svg>
       <input
+        ref="searchInputRef"
         type="text"
         class="nav-search-input"
         v-model="navQuery"
-        placeholder="Search menu…"
+        placeholder="Search menu… (⌘K)"
         spellcheck="false"
         autocomplete="off"
-        @keydown.escape="navSearch.clear()"
+        data-testid="titlebar-search"
+        @focus="onInputFocus"
+        @blur="onInputBlur"
+        @keydown="onInputKeydown"
       />
       <button
         v-if="navQuery"
@@ -86,6 +167,31 @@ async function signOut() {
         @click="navSearch.clear()"
         title="Clear (esc)"
       >×</button>
+      <!-- §D1 palette results — appears below the input when there are
+           matches. Mouse + keyboard navigation, dispatch via Enter or
+           click. Each row shows "Section › Tab" so the user always
+           knows where they're being sent. -->
+      <div
+        v-if="paletteOpen && paletteResults.length > 0"
+        class="palette-results"
+        data-testid="palette-results"
+      >
+        <button
+          v-for="(hit, i) in paletteResults"
+          :key="`${hit.sectionId}.${hit.tabId}`"
+          type="button"
+          class="palette-row"
+          :class="{ active: i === paletteIndex }"
+          :data-testid="`palette-row-${hit.sectionId}-${hit.tabId}`"
+          @mousedown.prevent="selectPaletteResult(hit)"
+          @mouseenter="paletteIndex = i"
+        >
+          <span class="palette-section">{{ hit.sectionLabel }}</span>
+          <span class="palette-arrow">›</span>
+          <span class="palette-tab">{{ hit.tabLabel }}</span>
+          <span v-if="hit.pro" class="palette-pro">PRO</span>
+        </button>
+      </div>
     </div>
 
     <div class="titlebar-title">
@@ -200,6 +306,7 @@ async function signOut() {
 }
 
 .nav-search {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -247,6 +354,55 @@ async function signOut() {
   padding: 0;
 }
 .nav-search-clear:hover { background: var(--bg4); color: var(--text); }
+
+/* §D1 palette popover */
+.palette-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg2, #1a1a1a);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  z-index: 150;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.palette-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text2, #b0b0b0);
+  padding: 5px 8px;
+  font-size: 12.5px;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+.palette-row.active,
+.palette-row:hover {
+  background: rgba(79, 142, 247, 0.12);
+  color: var(--text, #e5e5e5);
+}
+.palette-section { color: var(--text3, #5a5a5a); }
+.palette-arrow { color: var(--text3, #5a5a5a); opacity: 0.6; }
+.palette-tab { font-weight: 500; }
+.palette-pro {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(208, 156, 88, 0.16);
+  color: #d09c58;
+}
 
 .titlebar-title {
   flex: 1;

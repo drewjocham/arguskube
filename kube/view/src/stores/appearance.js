@@ -23,6 +23,7 @@ const DEFAULTS = {
   blur: 0,           // 0–30, only meaningful when opacity < 100
   density: 'normal', // compact | normal | comfortable
   saturation: 100,   // 0 = grayscale, 200 = vivid — the "shiny / dull" knob
+  fontSize: 13,      // base UI font size in px (CSS :root font-size driver)
 }
 
 const RANGES = {
@@ -31,6 +32,7 @@ const RANGES = {
   opacity:    [60, 100],
   blur:       [0, 30],
   saturation: [0, 200],
+  fontSize:   [11, 17],
 }
 
 const DENSITIES = {
@@ -79,6 +81,7 @@ export const useAppearanceStore = defineStore('appearance', () => {
   const blur = ref(clamp(persisted.blur ?? DEFAULTS.blur, RANGES.blur))
   const saturation = ref(clamp(persisted.saturation ?? DEFAULTS.saturation, RANGES.saturation))
   const density = ref(DENSITIES[persisted.density] ? persisted.density : DEFAULTS.density)
+  const fontSize = ref(clamp(persisted.fontSize ?? DEFAULTS.fontSize, RANGES.fontSize))
 
   const resolvedTheme = computed(() => resolveTheme(theme.value))
 
@@ -140,6 +143,12 @@ export const useAppearanceStore = defineStore('appearance', () => {
     root.style.setProperty('--ui-font-scale', String(d.fontScale))
     root.style.setProperty('--ui-pad-scale', String(d.padScale))
     root.style.setProperty('--ui-gap-scale', String(d.gap))
+
+    // Global UI base font size. Components that use rem units pick this
+    // up automatically; the rest (px-based) stay anchored at the
+    // designer's chosen size. Range 11-17px keeps the layout from
+    // breaking at the extremes.
+    root.style.setProperty('--ui-font-base', `${fontSize.value}px`)
   }
 
   function persist() {
@@ -151,13 +160,14 @@ export const useAppearanceStore = defineStore('appearance', () => {
       blur: blur.value,
       saturation: saturation.value,
       density: density.value,
+      fontSize: fontSize.value,
     })
   }
 
   // One watcher fires applyToDocument + persist on any change. Cheaper
-  // and less fragile than wiring six individual setters.
+  // and less fragile than wiring individual setters.
   watch(
-    [theme, brightness, contrast, opacity, blur, saturation, density],
+    [theme, brightness, contrast, opacity, blur, saturation, density, fontSize],
     () => {
       applyToDocument()
       persist()
@@ -192,6 +202,7 @@ export const useAppearanceStore = defineStore('appearance', () => {
   function setBlur(n)       { blur.value       = clamp(n, RANGES.blur);       applyToDocument(); persist() }
   function setSaturation(n) { saturation.value = clamp(n, RANGES.saturation); applyToDocument(); persist() }
   function setDensity(d)    { if (!DENSITIES[d]) return; density.value = d;   applyToDocument(); persist() }
+  function setFontSize(n)   { fontSize.value   = clamp(n, RANGES.fontSize);   applyToDocument(); persist() }
 
   function reset() {
     theme.value = DEFAULTS.theme
@@ -201,6 +212,7 @@ export const useAppearanceStore = defineStore('appearance', () => {
     blur.value = DEFAULTS.blur
     saturation.value = DEFAULTS.saturation
     density.value = DEFAULTS.density
+    fontSize.value = DEFAULTS.fontSize
   }
 
   // Always apply on store creation so a reload restores the look before
@@ -215,6 +227,7 @@ export const useAppearanceStore = defineStore('appearance', () => {
     blur,
     saturation,
     density,
+    fontSize,
     resolvedTheme,
     ranges: RANGES,
     densities: Object.keys(DENSITIES),
@@ -225,6 +238,7 @@ export const useAppearanceStore = defineStore('appearance', () => {
     setBlur,
     setSaturation,
     setDensity,
+    setFontSize,
     reset,
     applyToDocument,
   }
