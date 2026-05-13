@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useChat, useIncidents } from '../../composables/useWails'
+import Select from '../common/Select.vue'
 
 const { eventLog, fetchEventLog } = useChat()
 const { incidents, listIncidents, createIncident, updateIncident, deleteIncident } = useIncidents()
@@ -124,16 +125,8 @@ function typeLabel(type) {
     <!-- Create form -->
     <div v-if="showCreateForm" class="create-form">
       <input type="text" class="create-input" v-model="newTitle" placeholder="Incident title..." @keydown.enter="onCreateIncident" />
-      <select v-model="newSeverity" class="create-select">
-        <option value="critical">Critical</option>
-        <option value="warning">Warning</option>
-        <option value="info">Info</option>
-      </select>
-      <select v-model="newType" class="create-select">
-        <option value="alert">Alert</option>
-        <option value="investigation">Investigation</option>
-        <option value="pattern">Pattern</option>
-      </select>
+      <Select v-model="newSeverity" :options="[{value:'critical',label:'Critical'},{value:'warning',label:'Warning'},{value:'info',label:'Info'}]" size="sm" />
+      <Select v-model="newType" :options="[{value:'alert',label:'Alert'},{value:'investigation',label:'Investigation'},{value:'pattern',label:'Pattern'}]" size="sm" />
       <button class="create-btn" @click="onCreateIncident">Create</button>
     </div>
 
@@ -226,7 +219,6 @@ function typeLabel(type) {
 @keyframes slide-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 .create-input { flex: 1; padding: 5px 8px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 4px; color: var(--text); font-size: 12px; outline: none; font-family: var(--font); }
 .create-input:focus { border-color: var(--accent); }
-.create-select { padding: 5px 6px; background: var(--bg3); border: 1px solid var(--border2); border-radius: 4px; color: var(--text2); font-size: 11px; outline: none; cursor: pointer; }
 .create-btn { padding: 5px 12px; background: rgba(79,142,247,0.15); color: var(--accent2); border: 1px solid rgba(79,142,247,0.3); border-radius: 4px; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.1s; }
 .create-btn:hover { background: rgba(79,142,247,0.25); }
 

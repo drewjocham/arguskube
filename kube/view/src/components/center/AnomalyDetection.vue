@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { callGo, useAnomaly } from '../../composables/useWails'
+import Select from '../common/Select.vue'
 import { useBackgroundTasks } from '../../composables/useBackgroundTasks'
 
 const viewMode = ref('dashboard') // 'dashboard' or 'management'
@@ -503,17 +504,11 @@ function isAcknowledged(alertId) { return Boolean(incidentForAlert.value[alertId
               <div class="dropdown-row">
                 <div class="dd-group">
                   <label>Metric Type</label>
-                  <select v-model="metricType" class="custom-select">
-                    <option value="cpu">CPU Utilization</option>
-                    <option value="mem">Memory Usage</option>
-                  </select>
+                  <Select v-model="metricType" :options="[{value:'cpu',label:'CPU Utilization'},{value:'mem',label:'Memory Usage'}]" size="sm" />
                 </div>
                 <div class="dd-group">
                   <label>Algorithm</label>
-                  <select v-model="algorithm" class="custom-select">
-                    <option value="smart">Smart Baseline</option>
-                    <option value="fixed">Fixed Threshold</option>
-                  </select>
+                  <Select v-model="algorithm" :options="[{value:'smart',label:'Smart Baseline'},{value:'fixed',label:'Fixed Threshold'}]" size="sm" />
                 </div>
               </div>
             </div>
@@ -643,11 +638,7 @@ function isAcknowledged(alertId) { return Boolean(incidentForAlert.value[alertId
           </label>
           <label class="rule-field">
             <span>Severity</span>
-            <select v-model="ruleForm.severity" class="ctrl-input">
-              <option value="info">Info</option>
-              <option value="warning">Warning</option>
-              <option value="critical">Critical</option>
-            </select>
+            <Select v-model="ruleForm.severity" :options="[{value:'info',label:'Info'},{value:'warning',label:'Warning'},{value:'critical',label:'Critical'}]" size="sm" />
           </label>
           <label class="rule-field">
             <span>Condition (free-form)</span>
@@ -681,11 +672,7 @@ function isAcknowledged(alertId) { return Boolean(incidentForAlert.value[alertId
         <div class="config-controls">
           <div class="control-group">
             <label>Sensitivity</label>
-            <select v-model="sensitivitySelect" class="ctrl-input">
-              <option value="low">Low (Fewer False Positives)</option>
-              <option value="medium">Medium</option>
-              <option value="high">High (Maximum Detection)</option>
-            </select>
+            <Select v-model="sensitivitySelect" :options="[{value:'low',label:'Low (Fewer False Positives)'},{value:'medium',label:'Medium'},{value:'high',label:'High (Maximum Detection)'}]" size="sm" />
           </div>
           
           <div class="control-group">
@@ -695,10 +682,7 @@ function isAcknowledged(alertId) { return Boolean(incidentForAlert.value[alertId
           
           <div class="control-group">
             <label>Target Scope</label>
-            <select v-model="targetNamespace" class="ctrl-input">
-              <option value="all">All Namespaces</option>
-              <option v-for="ns in namespaces" :key="ns" :value="ns">{{ ns }}</option>
-            </select>
+            <Select v-model="targetNamespace" :options="[{value:'all',label:'All Namespaces'}, ...namespaces.map(ns => ({value: ns, label: ns}))]" size="sm" />
           </div>
 
           <button class="apply-btn" @click="applySettings">{{ settingsSaved ? '✓ Saved' : 'Apply Settings' }}</button>
@@ -910,7 +894,6 @@ function isAcknowledged(alertId) { return Boolean(incidentForAlert.value[alertId
 .dropdown-row { display: flex; gap: 12px; margin-top: auto; }
 .dd-group { flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .dd-group label { font-size: 11px; color: var(--text2); font-weight: 500; }
-.custom-select { background: var(--bg3); border: 1px solid var(--border); color: var(--text); padding: 6px; border-radius: 4px; font-size: 11px; outline: none; }
 
 /* Seasonality */
 .legend { display: flex; gap: 16px; justify-content: center; margin-bottom: 12px; }

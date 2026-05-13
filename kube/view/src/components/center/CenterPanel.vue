@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
+import Select from '../common/Select.vue'
 import MetricsRow from './MetricsRow.vue'
 import AlertList from './AlertList.vue'
 import LogStream from './LogStream.vue'
@@ -29,10 +30,21 @@ import ServiceList from '../network/ServiceList.vue'
 import VolumeList from '../storage/VolumeList.vue'
 import JobCronJobList from '../workloads/JobCronJobList.vue'
 import StatefulDaemonSetList from '../workloads/StatefulDaemonSetList.vue'
+import WorkloadBuilder from '../workloads/WorkloadBuilder.vue'
 import HpaList from '../config/HpaList.vue'
 import NetworkPolicyList from '../network/NetworkPolicyList.vue'
+import ExternalBridge from '../network/ExternalBridge.vue'
+import LabelMatcher from '../network/LabelMatcher.vue'
+import EndpointTopology from '../network/EndpointTopology.vue'
+import RouteTopologyGraph from '../gateway/RouteTopologyGraph.vue'
+import StatusDashboard from '../gateway/StatusDashboard.vue'
+import IngressMigration from '../gateway/IngressMigration.vue'
+import TrafficSplitter from '../gateway/TrafficSplitter.vue'
 import ArgusScanReport from './ArgusScanReport.vue'
 import FinOpsView from './FinOpsView.vue'
+import LogEventCorrelator from '../diagnostics/LogEventCorrelator.vue'
+import WasteHeatmap from './WasteHeatmap.vue'
+import RBACView from './RBACView.vue'
 import SetupPanel from '../setup/SetupPanel.vue'
 import SettingsPanel from '../setup/SettingsPanel.vue'
 import ArgusAIChat from '../ai/ArgusAIChat.vue'
@@ -186,6 +198,7 @@ const clusterTabs = SECTIONS.cluster.tabs
 const workloadsTabs = SECTIONS.workloads.tabs
 const configTabs = SECTIONS.config.tabs
 const networkTabs = SECTIONS.network.tabs
+const gatewayTabs = SECTIONS.gateway.tabs
 const storageTabs = SECTIONS.storage.tabs
 const operationsTabs = SECTIONS.operations.tabs
 const knowledgeTabs = SECTIONS.knowledge.tabs
@@ -214,6 +227,8 @@ const adminTabs = SECTIONS.admin.tabs
         @run-scan="runArgusScan"
       />
       <FinOpsView v-else-if="currentTab === 'finops'" />
+      <LogEventCorrelator v-else-if="currentTab === 'correlator'" />
+      <WasteHeatmap v-else-if="currentTab === 'waste'" />
       <!-- Alerts tab → sub-tabs (cluster overview vs managed watchers) -->
       <template v-else-if="currentTab === 'alerts'">
         <div class="tabs sub-tabs">
@@ -234,17 +249,12 @@ const adminTabs = SECTIONS.admin.tabs
               {{ warningCount }} warning
             </div>
             <!-- Time-range selector (was an inert "30m" label) -->
-            <select
-              class="toolbar-btn toolbar-select"
+            <Select
               v-model="alertsRange"
-              :title="'Alerts time window'"
-            >
-              <option value="15m">15m</option>
-              <option value="30m">30m</option>
-              <option value="1h">1h</option>
-              <option value="6h">6h</option>
-              <option value="24h">24h</option>
-            </select>
+              :options="[{value:'15m',label:'15m'},{value:'30m',label:'30m'},{value:'1h',label:'1h'},{value:'6h',label:'6h'},{value:'24h',label:'24h'}]"
+              size="sm"
+              aria-label="Alerts time window"
+            />
             <button
               type="button"
               class="toolbar-btn"
@@ -337,6 +347,7 @@ const adminTabs = SECTIONS.admin.tabs
           v-else-if="currentTab === 'jobs' || currentTab === 'cronjobs'"
           :type="currentTab"
         />
+        <WorkloadBuilder v-else-if="currentTab === 'builder'" />
       </div>
     </template>
 
@@ -373,6 +384,24 @@ const adminTabs = SECTIONS.admin.tabs
           v-else-if="currentTab === 'networkpolicies' || currentTab === 'endpoints'"
           :type="currentTab"
         />
+        <ExternalBridge v-else-if="currentTab === 'external-bridges'" />
+        <LabelMatcher v-else-if="currentTab === 'label-matcher'" />
+        <EndpointTopology v-else-if="currentTab === 'endpoint-topology'" />
+      </div>
+    </template>
+
+    <!-- ============ GATEWAY ============ -->
+    <template v-else-if="activeNav === 'gateway'">
+      <SectionTabs
+        :tabs="gatewayTabs"
+        :active-tab="currentTab"
+        @update:active-tab="setTab('gateway', $event)"
+      />
+      <div class="resource-scroll-area">
+        <RouteTopologyGraph v-if="currentTab === 'topology'" />
+        <StatusDashboard v-else-if="currentTab === 'status'" />
+        <IngressMigration v-else-if="currentTab === 'migration'" />
+        <TrafficSplitter v-else-if="currentTab === 'traffic'" />
       </div>
     </template>
 
@@ -441,6 +470,7 @@ const adminTabs = SECTIONS.admin.tabs
       <div class="admin-scroll">
         <SetupPanel v-if="currentTab === 'setup'" />
         <SettingsPanel v-else-if="currentTab === 'settings'" />
+        <RBACView v-else-if="currentTab === 'rbac'" />
       </div>
     </template>
   </div>
@@ -485,19 +515,6 @@ const adminTabs = SECTIONS.admin.tabs
 .toolbar-btn.primary:hover { background: rgba(79,142,247,0.25); }
 .toolbar-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .toolbar-btn:disabled:hover { background: var(--bg3); color: var(--text2); }
-/* When toolbar-btn is a <select>, it needs explicit appearance/font
-   inheritance so it visually matches the surrounding buttons. */
-.toolbar-btn.toolbar-select {
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--text3) 50%),
-                    linear-gradient(135deg, var(--text3) 50%, transparent 50%);
-  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
-  padding-right: 24px;
-  font: inherit;
-}
 
 .ctx-strip {
   padding: 6px 12px; border-bottom: 1px solid var(--border);

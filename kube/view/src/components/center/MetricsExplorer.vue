@@ -1,8 +1,25 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useTimeSeriesMetrics, callGo } from '../../composables/useWails'
+import Select from '../common/Select.vue'
 
 const { queryMetrics } = useTimeSeriesMetrics()
+
+function isPromQLQuery(q) {
+  if (!q || typeof q !== 'string') return false
+  return q.includes('{') || q.includes('[') || /^(rate|sum|avg|min|max|count|histogram|increase|delta|irate|idelta)\(/.test(q.trim())
+}
+
+function timeRangeToDuration(tr) {
+  if (!tr) return '1h'
+  const n = tr.toLowerCase()
+  if (n.includes('15')) return '15m'
+  if (n.includes('1 hour') || n.includes('1h')) return '1h'
+  if (n.includes('6')) return '6h'
+  if (n.includes('24') || n.includes('day')) return '24h'
+  if (n.includes('7 day') || n.includes('week')) return '168h'
+  return '1h'
+}
 
 const timeRange = ref('Last 1 hour')
 const isLive = ref(false)
@@ -193,7 +210,12 @@ async function refreshPanelData(p, isBackground = false) {
   p.error = null
   try {
     if (p.type === 'area' || p.type === 'line' || p.type === 'bar') {
-      const data = await queryMetrics(p.query, timeRange.value, selectedNamespace.value)
+      let data
+      if (isPromQLQuery(p.query)) {
+        data = await callGo('QueryPromQL', p.query, timeRangeToDuration(timeRange.value))
+      } else {
+        data = await queryMetrics(p.query, timeRange.value, selectedNamespace.value)
+      }
       if (data && data.length) {
         p.data = data
         // Compute display value from real data.
@@ -452,32 +474,19 @@ function onResizeEnd() {
         <!-- Namespace selector — populated from the live cluster
              (ListAllNamespaces). Loading + error states are visible so
              users don't think the dropdown is just empty. -->
-        <div class="db-select-wrapper ml-1">
-          <select
-            v-model="selectedNamespace"
-            class="db-select"
-            :title="namespacesError ? 'Failed to load namespaces: ' + namespacesError : 'Filter metrics by namespace'"
-            :disabled="namespacesLoading"
-          >
-            <option value="">
-              {{ namespacesLoading ? 'Loading namespaces…' : 'All Namespaces' }}
-            </option>
-            <option
-              v-for="ns in availableNamespaces"
-              :key="ns"
-              :value="ns"
-            >{{ ns }}</option>
-          </select>
-        </div>
-        <div class="db-select-wrapper">
-          <select v-model="timeRange" class="db-select">
-            <option>Last 15 minutes</option>
-            <option>Last 1 hour</option>
-            <option>Last 6 hours</option>
-            <option>Last 24 hours</option>
-            <option>Last 7 days</option>
-          </select>
-        </div>
+        <Select
+          v-model="selectedNamespace"
+          :options="[{value:'',label:namespacesLoading ? 'Loading namespaces…' : 'All Namespaces'}, ...availableNamespaces.map(ns => ({value:ns,label:ns}))]"
+          :disabled="namespacesLoading"
+          size="sm"
+          :aria-label="namespacesError ? 'Failed to load namespaces: ' + namespacesError : 'Filter metrics by namespace'"
+        />
+        <Select
+          v-model="timeRange"
+          :options="['Last 15 minutes','Last 1 hour','Last 6 hours','Last 24 hours','Last 7 days']"
+          size="sm"
+          aria-label="Time range"
+        />
         <button class="db-btn primary">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
@@ -528,27 +537,17 @@ function onResizeEnd() {
           </div>
           <div class="edit-group">
             <label>Graph Type</label>
-            <select v-model="p.type" class="edit-input">
-              <option value="area">Area Chart</option>
-              <option value="line">Line Chart</option>
-              <option value="bar">Bar Chart</option>
-              <option value="network">Network Dual-Axis</option>
-              <option value="stat">Stat Metric</option>
-              <option value="gauge">Gauge</option>
-            </select>
+            <Select v-model="p.type" :options="[{value:'area',label:'Area Chart'},{value:'line',label:'Line Chart'},{value:'bar',label:'Bar Chart'},{value:'network',label:'Network Dual-Axis'},{value:'stat',label:'Stat Metric'},{value:'gauge',label:'Gauge'}]" size="sm" />
           </div>
           <div class="edit-group">
             <label>Available Metrics</label>
-            <select @change="p.query = $event.target.value" class="edit-input">
-              <option value="" disabled selected>Select a metric...</option>
-              <option value="sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)">CPU Usage Rate</option>
-              <option value="sum(container_memory_working_set_bytes) by (pod)">Memory Working Set</option>
-              <option value="rate(container_network_receive_bytes_total[5m])">Network RX Rate</option>
-              <option value="rate(container_network_transmit_bytes_total[5m])">Network TX Rate</option>
-              <option value="count(kube_pod_info)">Pod Count</option>
-              <option value="rate(http_requests_total[5m])">HTTP Requests Rate</option>
-              <option value="rate(container_fs_reads_total[5m])">Disk Read IOPS</option>
-            </select>
+            <Select
+              :model-value="''"
+              @change="(val) => { if (val) p.query = val }"
+              :options="[{value:'',label:'Select a metric...'},{value:'sum(rate(container_cpu_usage_seconds_total[5m])) by (pod)',label:'CPU Usage Rate'},{value:'sum(container_memory_working_set_bytes) by (pod)',label:'Memory Working Set'},{value:'rate(container_network_receive_bytes_total[5m])',label:'Network RX Rate'},{value:'rate(container_network_transmit_bytes_total[5m])',label:'Network TX Rate'},{value:'count(kube_pod_info)',label:'Pod Count'},{value:'rate(http_requests_total[5m])',label:'HTTP Requests Rate'},{value:'rate(container_fs_reads_total[5m])',label:'Disk Read IOPS'}]"
+              size="sm"
+              placeholder="Select a metric..."
+            />
           </div>
           <div class="edit-group">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -710,29 +709,6 @@ function onResizeEnd() {
   gap: 8px;
 }
 
-.db-select {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 6px 28px 6px 12px;
-  border-radius: 4px;
-  font-size: 12px;
-  outline: none;
-  appearance: none;
-}
-.db-select-wrapper {
-  position: relative;
-}
-.db-select-wrapper::after {
-  content: '▼';
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 8px;
-  color: var(--text3);
-  pointer-events: none;
-}
 
 .db-btn {
   background: var(--bg3);

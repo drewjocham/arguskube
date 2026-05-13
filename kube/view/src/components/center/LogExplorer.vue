@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
+import Select from '../common/Select.vue'
 import { useLogs } from '../../composables/useWails'
 import { Events } from '../../composables/useEvents'
 import { bus } from '../../lib/bus'
@@ -117,6 +118,11 @@ const quickNamespace = ref('')
 const quickPod = ref('')
 const quickContainer = ref('')
 const quickSeverity = ref('')
+// Sentinel ref for the saved-filter Select: picking a value loads it then resets.
+const savedFilterLoad = ref('')
+watch(savedFilterLoad, (id) => {
+  if (id) { loadSavedFilter(id); savedFilterLoad.value = '' }
+})
 
 // Derive selector options from the same data the fields drawer uses,
 // so the choices match what's actually in the log stream.
@@ -463,52 +469,45 @@ function fixQuery() {
         <div class="quick-filters">
           <label class="quick-pick">
             <span class="quick-pick-label">Namespace</span>
-            <select
-              class="quick-select"
+            <Select
               v-model="quickNamespace"
+              :options="[{value:'',label:'All'}, ...availableNamespaces.map(ns => ({value:ns,label:ns}))]"
               @change="onQuickNamespaceChange"
-            >
-              <option value="">All</option>
-              <option v-for="ns in availableNamespaces" :key="ns" :value="ns">{{ ns }}</option>
-            </select>
+              size="sm"
+              aria-label="Namespace"
+            />
           </label>
           <label class="quick-pick">
             <span class="quick-pick-label">Pod</span>
-            <select
-              class="quick-select"
+            <Select
               v-model="quickPod"
+              :options="[{value:'',label:'All'}, ...availablePods.map(p => ({value:p,label:p}))]"
               @change="onQuickPodChange"
               :disabled="!availablePods.length"
-            >
-              <option value="">All</option>
-              <option v-for="p in availablePods" :key="p" :value="p">{{ p }}</option>
-            </select>
+              size="sm"
+              aria-label="Pod"
+            />
           </label>
           <label class="quick-pick">
             <span class="quick-pick-label">Container</span>
-            <select
-              class="quick-select"
+            <Select
               v-model="quickContainer"
+              :options="[{value:'',label:'All'}, ...availableContainers.map(c => ({value:c,label:c}))]"
               @change="onQuickContainerChange"
               :disabled="!availableContainers.length"
-            >
-              <option value="">All</option>
-              <option v-for="c in availableContainers" :key="c" :value="c">{{ c }}</option>
-            </select>
+              size="sm"
+              aria-label="Container"
+            />
           </label>
           <label class="quick-pick">
             <span class="quick-pick-label">Severity</span>
-            <select
-              class="quick-select"
+            <Select
               v-model="quickSeverity"
+              :options="[{value:'',label:'All'},{value:'error',label:'Error'},{value:'warn',label:'Warn'},{value:'info',label:'Info'},{value:'debug',label:'Debug'}]"
               @change="onQuickSeverityChange"
-            >
-              <option value="">All</option>
-              <option value="error">Error</option>
-              <option value="warn">Warn</option>
-              <option value="info">Info</option>
-              <option value="debug">Debug</option>
-            </select>
+              size="sm"
+              aria-label="Severity"
+            />
           </label>
           <div class="quick-spacer"></div>
           <button
@@ -586,16 +585,12 @@ function fixQuery() {
               💾 Save
             </button>
             <div class="saved-filters-wrap" v-if="savedFilterEntries.length">
-              <select
-                class="saved-filters-select"
-                @change="(e) => { if (e.target.value) { loadSavedFilter(e.target.value); e.target.value = '' } }"
-                :title="'Load a saved filter set'"
-              >
-                <option value="">📂 Load saved…</option>
-                <option v-for="e in savedFilterEntries" :key="e.id" :value="e.id">
-                  {{ e.name }}
-                </option>
-              </select>
+              <Select
+                v-model="savedFilterLoad"
+                :options="[{value:'',label:'Load saved…'}, ...savedFilterEntries.map(e => ({value:e.id,label:e.name}))]"
+                size="sm"
+                aria-label="Load saved filter"
+              />
             </div>
             <button
               class="action-btn"
@@ -818,19 +813,6 @@ function fixQuery() {
   letter-spacing: 0.06em;
   color: var(--text3);
 }
-.quick-select {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 12.5px;
-  padding: 5px 8px;
-  border-radius: 4px;
-  max-width: 200px;
-  cursor: pointer;
-}
-.quick-select:focus { outline: none; border-color: var(--accent); }
-.quick-select:disabled { opacity: 0.5; cursor: not-allowed; }
 .quick-spacer { flex: 1; }
 .fields-trigger {
   display: inline-flex;
@@ -1136,17 +1118,6 @@ function fixQuery() {
 /* Saved filter sets — pill list under the active filters, plus a select
    in the toolbar. Both live in localStorage via the savedFilters store. */
 .saved-filters-wrap { display: inline-flex; align-items: center; }
-.saved-filters-select {
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  color: var(--text2);
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11.5px;
-  cursor: pointer;
-  outline: none;
-}
-.saved-filters-select:hover { background: var(--bg4); color: var(--text); }
 .saved-filters-list {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
   margin-top: 6px;

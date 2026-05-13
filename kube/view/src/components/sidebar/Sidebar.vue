@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, inject, onMounted, onUnmounted } from 'vue'
 import { useContexts } from '../../composables/useWails'
+import { callGo } from '../../composables/useBridge'
 import { useNavSearchStore } from '../../stores/navSearch'
 import { useSectionTabsStore } from '../../stores/sectionTabs'
 import { useNavVisibilityStore } from '../../stores/navVisibility'
@@ -44,6 +45,15 @@ const props = defineProps({
 const emit = defineEmits(['update:activeNav', 'context-switched'])
 
 const isAllowed = inject('isAllowed')
+
+// --- Blast radius / production detection
+const blastRadius = ref(null)
+async function checkBlastRadius() {
+  try {
+    blastRadius.value = await callGo('GetBlastRadiusInfo')
+  } catch {}
+}
+onMounted(checkBlastRadius)
 
 // --- Cluster context selector (unchanged from the previous Sidebar)
 const { contexts, loading: ctxLoading, switching, listContexts, switchContext } = useContexts()
@@ -232,7 +242,10 @@ function closeMenu() { ctxMenu.value = null }
           </svg>
         </div>
         <div class="cluster-info">
-          <div class="cluster-name">{{ clusterInfo?.name || '—' }}</div>
+          <div class="cluster-name">
+            {{ clusterInfo?.name || '—' }}
+            <span v-if="blastRadius?.isProd" class="prod-badge">PROD</span>
+          </div>
           <div class="cluster-sub">{{ clusterInfo?.nodeCount || 0 }} nodes · {{ clusterInfo?.k8sVersion || '—' }}</div>
         </div>
         <svg class="chevron-down" :class="{ flipped: ctxDropdownOpen }" width="10" height="10" viewBox="0 0 10 10">
@@ -500,6 +513,7 @@ function closeMenu() { ctxMenu.value = null }
   text-overflow: ellipsis;
 }
 .cluster-sub { font-size: 10px; color: var(--text3); }
+.prod-badge { font-size: 8px; font-weight: 700; padding: 1px 4px; border-radius: 3px; background: rgba(240,84,84,0.2); color: #f05454; margin-left: 4px; letter-spacing: 0.05em; vertical-align: middle; }
 .chevron-down { color: var(--text3); transition: transform 0.15s; flex-shrink: 0; }
 .chevron-down.flipped { transform: rotate(180deg); }
 

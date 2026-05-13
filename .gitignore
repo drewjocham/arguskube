@@ -1,5 +1,17 @@
 # Build
 build/
+# …but keep the source-of-truth app icons. Wails reads these directly
+# from build/ at packaging time; if they're not committed the dock icon
+# silently reverts to the default lettermark on every fresh clone.
+# Three-step negation because git won't re-include a file under an
+# ignored directory unless the directory itself is also re-included
+# and the wildcard-ignore is re-applied to everything else inside it.
+!kube/backend/build/
+kube/backend/build/*
+!kube/backend/build/appicon.png
+!kube/mcp/build/
+kube/mcp/build/*
+!kube/mcp/build/appicon.png
 **/view/dist/
 **/node_modules/
 

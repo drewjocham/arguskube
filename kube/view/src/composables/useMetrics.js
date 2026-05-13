@@ -51,12 +51,16 @@ export function useMetrics(intervalMs = 5000) {
  * Composable for time-series metric queries (no polling, on-demand only).
  */
 export function useTimeSeriesMetrics() {
-  // namespace is optional. The backend currently ignores it but the
-  // shape is here so a namespace-aware QueryTimeSeriesMetrics on the
-  // Go side is a drop-in upgrade — no UI change needed.
-  async function queryMetrics(query, timeRange, namespace = '') {
+  // namespace is accepted for API symmetry with the rest of the
+  // metrics surface but is NOT forwarded — the Go binding
+  // QueryTimeSeriesMetrics(query, timeRange) takes 2 args and Wails
+  // rejects the call (with a silent log + null result) if we send 3.
+  // The previous "drop-in upgrade" comment promised a backend change
+  // that never landed; until it does, we ignore namespace here so the
+  // Cluster Overview's CPU/RAM/Network charts actually render data.
+  async function queryMetrics(query, timeRange /*, namespace */) {
     try {
-      return await callGo('QueryTimeSeriesMetrics', query, timeRange, namespace || '')
+      return await callGo('QueryTimeSeriesMetrics', query, timeRange)
     } catch (e) {
       console.error('[metrics] queryTimeSeries:', e)
       return null

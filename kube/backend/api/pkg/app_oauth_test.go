@@ -1,7 +1,6 @@
 package pkg
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -130,7 +129,7 @@ func TestApp_PollOAuthFlow_PendingThenOK(t *testing.T) {
 		t.Errorf("pre-complete status = %q", res.Status)
 	}
 	// Complete the flow.
-	info, err := a.CompleteOAuthFlow(context.Background(), state, "code-1")
+	info, err := a.CompleteOAuthFlow(state, "code-1")
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
@@ -152,7 +151,7 @@ func TestApp_PollOAuthFlow_PendingThenOK(t *testing.T) {
 
 func TestApp_CompleteOAuthFlow_NilManager(t *testing.T) {
 	a := &App{}
-	_, err := a.CompleteOAuthFlow(context.Background(), "state", "code")
+	_, err := a.CompleteOAuthFlow("state", "code")
 	if err == nil {
 		t.Error("expected error for nil manager")
 	}
@@ -160,7 +159,7 @@ func TestApp_CompleteOAuthFlow_NilManager(t *testing.T) {
 
 func TestApp_CompleteOAuthFlow_UnknownState(t *testing.T) {
 	a := &App{oauthManager: oauthproviders.NewManager()}
-	_, err := a.CompleteOAuthFlow(context.Background(), "missing", "code")
+	_, err := a.CompleteOAuthFlow("missing", "code")
 	if !errors.Is(err, oauthproviders.ErrUnknownState) {
 		t.Errorf("want ErrUnknownState, got %v", err)
 	}

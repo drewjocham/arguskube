@@ -24,10 +24,11 @@ import (
 
 // Client wraps the Kubernetes API for Argus's needs.
 type Client struct {
-	cs      kubernetes.Interface
-	restCfg *rest.Config
-	cfg     *config.OnlineDataConfig
-	logger  *slog.Logger
+	cs              kubernetes.Interface
+	restCfg         *rest.Config
+	cfg             *config.OnlineDataConfig
+	logger          *slog.Logger
+	metricsProvider MetricsProvider
 }
 
 // kubeconfigLoadingRules builds the client-go loading rules from the given
@@ -74,7 +75,17 @@ func NewClient(cfg *config.OnlineDataConfig, logger *slog.Logger) (*Client, erro
 		return nil, fmt.Errorf("k8s client: %w", err)
 	}
 
-	return &Client{cs: cs, restCfg: restCfg, cfg: cfg, logger: logger}, nil
+	c := &Client{cs: cs, restCfg: restCfg, cfg: cfg, logger: logger}
+
+	if url := cfg.AI.PrometheusURL; url != "" {
+		c.metricsProvider = newPrometheusProvider(url, logger)
+		c.logger.Info("using prometheus metrics provider", slog.String("url", url))
+	} else {
+		c.metricsProvider = newMetricsServerProvider(c, logger)
+		c.logger.Info("using metrics-server metrics provider (set PROMETHEUS_URL for Prometheus/VictoriaMetrics)")
+	}
+
+	return c, nil
 }
 
 // GetRestConfig returns the underlying REST config for port-forwarding etc.

@@ -141,7 +141,7 @@ func TestParsePodQuery(t *testing.T) {
 	}
 }
 
-// --- metrics-server payload parsers ----------------------------------------
+// --- metrics-server payload parsers (no synthetic jitter) ------------------
 
 func TestParsePodMetrics(t *testing.T) {
 	body := []byte(`{
@@ -160,38 +160,36 @@ func TestParsePodMetrics(t *testing.T) {
 			}
 		]
 	}`)
-	res, err := parsePodMetrics(body, true /*cpu*/, false, 100)
-	if err != nil {
-		t.Fatalf("parsePodMetrics cpu: %v", err)
+	res := parsePodMetrics(body, true, false)
+	if res == nil {
+		t.Fatal("parsePodMetrics cpu returned nil")
 	}
-	if len(res) != 100 {
-		t.Errorf("expected 100 points, got %d", len(res))
+	// Single value, no synthetic spreading.
+	if len(res) != 1 {
+		t.Errorf("expected 1 point, got %d", len(res))
 	}
-	// Total CPU = 2000 millicores, baseline 4000 → 0.5%; spread oscillates around it.
-	for _, v := range res {
-		if v < 0 || v > 100 {
-			t.Errorf("cpu point out of range: %f", v)
-		}
+	if res[0] < 0 || res[0] > 100 {
+		t.Errorf("cpu point out of range: %f", res[0])
 	}
 
-	resMem, err := parsePodMetrics(body, false, true /*mem*/, 50)
-	if err != nil {
-		t.Fatalf("parsePodMetrics mem: %v", err)
+	resMem := parsePodMetrics(body, false, true)
+	if resMem == nil {
+		t.Fatal("parsePodMetrics mem returned nil")
 	}
-	if len(resMem) != 50 {
-		t.Errorf("expected 50 points, got %d", len(resMem))
+	if len(resMem) != 1 {
+		t.Errorf("expected 1 point, got %d", len(resMem))
 	}
 }
 
 func TestParsePodMetrics_EmptyItems(t *testing.T) {
-	if _, err := parsePodMetrics([]byte(`{"items":[]}`), true, false, 10); err == nil {
-		t.Error("expected error on empty items")
+	if res := parsePodMetrics([]byte(`{"items":[]}`), true, false); res != nil {
+		t.Error("expected nil on empty items")
 	}
 }
 
 func TestParsePodMetrics_BadJSON(t *testing.T) {
-	if _, err := parsePodMetrics([]byte(`not json`), true, false, 10); err == nil {
-		t.Error("expected JSON parse error")
+	if res := parsePodMetrics([]byte(`not json`), true, false); res != nil {
+		t.Error("expected nil on bad JSON")
 	}
 }
 
@@ -200,12 +198,12 @@ func TestParseSinglePodMetrics_DirectItem(t *testing.T) {
 		"metadata": {"name": "api", "namespace": "default"},
 		"containers": [{"name": "c", "usage": {"cpu": "250m", "memory": "128Mi"}}]
 	}`)
-	res, err := parseSinglePodMetrics(body, true, false, 30, "api")
-	if err != nil {
-		t.Fatalf("parseSinglePodMetrics: %v", err)
+	res := parseSinglePodMetrics(body, true, false, "api")
+	if res == nil {
+		t.Fatal("parseSinglePodMetrics returned nil")
 	}
-	if len(res) != 30 {
-		t.Errorf("expected 30 points, got %d", len(res))
+	if len(res) != 1 {
+		t.Errorf("expected 1 point, got %d", len(res))
 	}
 }
 
@@ -214,77 +212,53 @@ func TestParseSinglePodMetrics_FallbackList(t *testing.T) {
 		{"metadata": {"name": "api"}, "containers": [{"name":"c","usage":{"cpu":"100m","memory":"64Mi"}}]},
 		{"metadata": {"name": "other"}, "containers": [{"name":"c","usage":{"cpu":"100m","memory":"64Mi"}}]}
 	]}`)
-	res, err := parseSinglePodMetrics(body, false, true, 20, "api")
-	if err != nil {
-		t.Fatalf("expected list-fallback to find api, got %v", err)
+	res := parseSinglePodMetrics(body, false, true, "api")
+	if res == nil {
+		t.Fatal("expected list-fallback to find api, got nil")
 	}
-	if len(res) != 20 {
-		t.Errorf("expected 20 points, got %d", len(res))
+	if len(res) != 1 {
+		t.Errorf("expected 1 point, got %d", len(res))
 	}
 
-	if _, err := parseSinglePodMetrics(body, true, false, 20, "missing"); err == nil {
-		t.Error("expected error when pod name not in list")
+	if res := parseSinglePodMetrics(body, true, false, "missing"); res != nil {
+		t.Error("expected nil when pod name not in list")
 	}
 }
 
 func TestParseNodeMetrics(t *testing.T) {
-	body := []byte(`{"items": [
-		{"metadata": {"name": "n1"}, "usage": {"cpu": "1500m", "memory": "4Gi"}},
-		{"metadata": {"name": "n2"}, "usage": {"cpu": "500m", "memory": "2Gi"}}
-	]}`)
-	resCPU, err := parseNodeMetrics(body, true, false, 40)
-	if err != nil {
-		t.Fatalf("parseNodeMetrics cpu: %v", err)
+	body := []byte(`{
+		"items": [
+			{
+				"metadata": {"name": "n1"},
+				"usage": {"cpu": "2", "memory": "8Gi"}
+			}
+		]
+	}`)
+	res := parseNodeMetrics(body, true, false)
+	if res == nil {
+		t.Fatal("parseNodeMetrics cpu returned nil")
 	}
-	if len(resCPU) != 40 {
-		t.Errorf("expected 40 points, got %d", len(resCPU))
-	}
-	resMem, err := parseNodeMetrics(body, false, true, 25)
-	if err != nil {
-		t.Fatalf("parseNodeMetrics mem: %v", err)
-	}
-	if len(resMem) != 25 {
-		t.Errorf("expected 25 points, got %d", len(resMem))
+	if len(res) != 1 {
+		t.Errorf("expected 1 point, got %d", len(res))
 	}
 
-	if _, err := parseNodeMetrics([]byte(`{"items":[]}`), true, false, 10); err == nil {
-		t.Error("expected error on empty node list")
+	resMem := parseNodeMetrics(body, false, true)
+	if resMem == nil {
+		t.Fatal("parseNodeMetrics mem returned nil")
 	}
-	if _, err := parseNodeMetrics([]byte(`bad`), true, false, 10); err == nil {
-		t.Error("expected JSON parse error")
+	if len(resMem) != 1 {
+		t.Errorf("expected 1 point, got %d", len(resMem))
+	}
+
+	if res := parseNodeMetrics([]byte(`{"items":[]}`), true, false); res != nil {
+		t.Error("expected nil on empty node list")
+	}
+	if res := parseNodeMetrics([]byte(`bad`), true, false); res != nil {
+		t.Error("expected nil on bad JSON")
 	}
 }
 
-// --- spreadWithJitter -------------------------------------------------------
-
-func TestSpreadWithJitter(t *testing.T) {
-	res := spreadWithJitter(50, 30)
-	if len(res) != 30 {
-		t.Fatalf("expected 30 points, got %d", len(res))
-	}
-	for _, v := range res {
-		if v < 0 || v > 100 {
-			t.Errorf("value out of [0,100]: %f", v)
-		}
-	}
-
-	// Negative base should still produce non-negative points (clamped to 0).
-	for _, v := range spreadWithJitter(0, 10) {
-		if v < 0 {
-			t.Errorf("expected clamp to 0, got %f", v)
-		}
-	}
-}
-
-func TestSpreadWithJitter_ZeroPoints(t *testing.T) {
-	if got := spreadWithJitter(50, 0); len(got) != 0 {
-		t.Errorf("expected empty slice, got %d points", len(got))
-	}
-}
-
-// --- containsAny / parsePodQuery composition --------------------------------
-// Sanity check that the prefix list ordering in parsePodQuery handles
-// overlap correctly (memory_pod_ should not be mis-stripped to mem_).
+// --- parsePodQuery composition -----------------------------------------------
 func TestParsePodQuery_PrefixOrdering(t *testing.T) {
 	ns, name := parsePodQuery("memory_pod_kube-system/coredns")
 	if ns != "kube-system" || name != "coredns" {
@@ -292,28 +266,11 @@ func TestParsePodQuery_PrefixOrdering(t *testing.T) {
 	}
 }
 
-func TestSpreadWithJitter_Determinism(t *testing.T) {
-	// Two consecutive calls share the same time-base within microseconds, so
-	// the jitter formula will produce slightly different values; we only
-	// assert that the *length* is stable.
-	a := spreadWithJitter(75, 5)
-	b := spreadWithJitter(75, 5)
-	if len(a) != len(b) {
-		t.Errorf("length differs across calls: %d vs %d", len(a), len(b))
-	}
-	// Each point lives in [75 - jitter, 75 + jitter] roughly within ±15 of base.
-	for _, v := range a {
-		if v < 50 || v > 100 {
-			t.Errorf("unexpected swing for base=75: %f", v)
-		}
-	}
-}
-
 // --- parseSinglePodMetrics edge cases ---------------------------------------
 
 func TestParseSinglePodMetrics_BadJSON(t *testing.T) {
-	if _, err := parseSinglePodMetrics([]byte(`not json`), true, false, 10, "x"); err == nil {
-		t.Error("expected JSON parse error")
+	if res := parseSinglePodMetrics([]byte(`not json`), true, false, "x"); res != nil {
+		t.Error("expected nil on bad JSON")
 	}
 }
 

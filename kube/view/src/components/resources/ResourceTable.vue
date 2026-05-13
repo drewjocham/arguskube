@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useResources } from '../../composables/useWails'
+import Select from '../common/Select.vue'
 
 const props = defineProps({
   resourceKind: { type: String, required: true },
@@ -115,10 +116,7 @@ function statusDotColor(color) {
         <span class="item-count">{{ filteredItems.length }} items</span>
       </div>
       <div class="toolbar-right">
-        <select v-if="!isClusterScoped" v-model="selectedNs" class="ns-select">
-          <option value="">All namespaces</option>
-          <option v-for="ns in namespaces" :key="ns" :value="ns">{{ ns }}</option>
-        </select>
+        <Select v-if="!isClusterScoped" v-model="selectedNs" :options="[{value:'',label:'All namespaces'}, ...namespaces.map(ns => ({value: ns, label: ns}))]" size="sm" aria-label="Namespace" />
         <div class="search-box">
           <svg class="search-icon" width="12" height="12" viewBox="0 0 12 12">
             <circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.2" fill="none"/>
@@ -249,20 +247,6 @@ function statusDotColor(color) {
   gap: 8px;
 }
 
-.ns-select {
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  border-radius: 5px;
-  color: var(--text2);
-  font-size: 11.5px;
-  font-family: var(--font);
-  padding: 4px 8px;
-  outline: none;
-  cursor: pointer;
-  max-width: 160px;
-}
-.ns-select:focus { border-color: var(--accent); }
-.ns-select option { background: var(--bg3); color: var(--text); }
 
 .search-box {
   display: flex;
