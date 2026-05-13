@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useWorkflows } from '../../composables/useWails'
+import Select from '../common/Select.vue'
 
 const { workflows: savedWorkflows, current, saving: isSaving, listWorkflows, getWorkflow, saveWorkflow, deleteWorkflow } = useWorkflows()
 
@@ -213,12 +214,7 @@ onMounted(async () => {
 
           <div v-if="selectedStep.type !== 'trigger'" class="form-group">
             <label>Action Type</label>
-            <select v-model="selectedStep.actionType" class="settings-select">
-              <option value="python">Python Script</option>
-              <option value="slack">Slack Integration</option>
-              <option value="custom">Custom Action</option>
-              <option value="k8s">Kubernetes Operation</option>
-            </select>
+            <Select v-model="selectedStep.actionType" :options="[{value:'python',label:'Python Script'},{value:'slack',label:'Slack Integration'},{value:'custom',label:'Custom Action'},{value:'k8s',label:'Kubernetes Operation'}]" size="sm" />
           </div>
 
           <div v-if="selectedStep.actionType === 'python'" class="form-group">
@@ -502,7 +498,7 @@ onMounted(async () => {
   margin-bottom: 6px;
 }
 
-.settings-input, .settings-select, .settings-textarea {
+.settings-input, .settings-textarea {
   width: 100%;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -514,7 +510,7 @@ onMounted(async () => {
   outline: none;
   transition: border-color 0.2s;
 }
-.settings-input:focus, .settings-select:focus, .settings-textarea:focus {
+.settings-input:focus, .settings-textarea:focus {
   border-color: var(--accent);
 }
 .settings-textarea {

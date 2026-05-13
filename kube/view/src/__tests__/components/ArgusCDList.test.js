@@ -333,7 +333,7 @@ describe('ArgusCDList.vue — Integration', () => {
     const wrapper = createWrapper()
     await nextTick()
     await flushPromises()
-    expect(wrapper.find('select.project-filter').exists()).toBe(false)
+    expect(wrapper.find('.argus-select').exists()).toBe(false)
   })
 
   it('renders the project filter when projects exist and re-lists on change', async () => {
@@ -343,15 +343,25 @@ describe('ArgusCDList.vue — Integration', () => {
     await nextTick()
     await flushPromises()
 
-    const select = wrapper.find('select.project-filter')
-    expect(select.exists()).toBe(true)
-    const options = select.findAll('option').map(o => o.text())
-    expect(options).toContain('All projects')
-    expect(options).toContain('default')
-    expect(options).toContain('platform')
+    // The native <select> is replaced by the argus-select component.
+    const selectWrapper = wrapper.find('.argus-select')
+    expect(selectWrapper.exists()).toBe(true)
 
+    // Open the panel by clicking the trigger button.
+    await selectWrapper.find('button.trigger').trigger('click')
+    await nextTick()
+
+    const panel = selectWrapper.find('.panel')
+    expect(panel.exists()).toBe(true)
+    const optionTexts = panel.findAll('.option').map(o => o.text())
+    expect(optionTexts).toContain('All projects')
+    expect(optionTexts).toContain('default')
+    expect(optionTexts).toContain('platform')
+
+    // Pick 'platform' — fires update:modelValue → projectFilter watcher → listApps.
     mockListApps.mockClear()
-    await select.setValue('platform')
+    const platformOption = panel.findAll('.option').find(o => o.text() === 'platform')
+    await platformOption.trigger('mousedown')
     await flushPromises()
     expect(mockListApps).toHaveBeenCalledWith('platform')
   })

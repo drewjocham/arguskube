@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, inject, watch } from 'vue'
 import { useArgusCD } from '../../composables/useWails'
+import Select from '../common/Select.vue'
 import ProGateOverlay from '../shared/ProGateOverlay.vue'
 
 const isAllowed = inject('isAllowed')
@@ -172,15 +173,13 @@ const degradedCount = computed(() => {
             <span class="stat warn" v-if="outOfSyncCount > 0">{{ outOfSyncCount }} out of sync</span>
             <span class="stat crit" v-if="degradedCount > 0">{{ degradedCount }} degraded</span>
           </div>
-          <select
+          <Select
             v-if="projects && projects.length > 0"
             v-model="projectFilter"
-            class="project-filter"
-            :title="'Filter by Argo CD project'"
-          >
-            <option value="">All projects</option>
-            <option v-for="p in projects" :key="p" :value="p">{{ p }}</option>
-          </select>
+            :options="[{value:'',label:'All projects'}, ...projects.map(p => ({value: p, label: p}))]"
+            size="sm"
+            aria-label="Filter by Argo CD project"
+          />
           <button class="refresh-btn" @click="listApps(projectFilter)" :disabled="loading">
             {{ loading ? '…' : '↻' }} Refresh
           </button>
@@ -471,19 +470,6 @@ const degradedCount = computed(() => {
 }
 .refresh-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
 
-.project-filter {
-  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-  color: var(--text2);
-  padding: 6px 28px 6px 10px; border-radius: 6px;
-  font-size: 12px; cursor: pointer;
-  transition: all 0.15s;
-  appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none' stroke='%238b8f96' stroke-width='1.4'><polyline points='2 3 5 7 8 3' stroke-linecap='round' stroke-linejoin='round'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 8px center;
-}
-.project-filter:hover { background-color: rgba(255,255,255,0.12); color: var(--text); }
-.project-filter:focus { outline: none; border-color: rgba(167,139,250,0.5); }
 
 /* History panel */
 .history-panel {

@@ -1,8 +1,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useResources, useDeploymentRevisions } from '../../composables/useWails'
+import Select from '../common/Select.vue'
 import { useManifestEdit } from '../../composables/useManifestEdit'
 import ManifestEditPopup from '../common/ManifestEditPopup.vue'
+import { callGo } from '../../composables/useBridge'
 
 const { result, detail, loading, detailLoading, listResources, getResourceDetail } = useResources()
 const { revisions, loading: revisionsLoading, error: revisionsError, fetchRevisions } = useDeploymentRevisions()
@@ -27,6 +29,28 @@ const deployments = ref([])
 const depDetail = ref(null)
 const expandedDep = ref(null)
 const activeDetailTab = ref('details')
+const duplicateTarget = ref('')
+const duplicating = ref(false)
+
+async function duplicateDeployment(dep) {
+  const target = duplicateTarget.value || 'default'
+  duplicating.value = true
+  try {
+    await callGo('DuplicateWorkload', dep.namespace, dep.name, target)
+    duplicateTarget.value = ''
+  } catch (e) {
+    alert('Duplicate failed: ' + (e?.message || e))
+  }
+  duplicating.value = false
+}
+
+const namespaces = ref([])
+onMounted(async () => {
+  try {
+    const nss = await callGo('ListNamespaces')
+    if (nss) namespaces.value = nss
+  } catch {}
+})
 
 async function fetchDeployments() {
   await listResources('deployments', '')
@@ -233,6 +257,17 @@ function switchDetailTab(tab) {
                 </div>
               </div>
             </div>
+
+              <!-- Duplicate to Namespace -->
+              <div class="detail-section">
+                <h5 class="section-title">Duplicate to Namespace</h5>
+                <div class="duplicate-row">
+                  <Select v-model="duplicateTarget" :options="namespaces" placeholder="Select namespace…" size="sm" />
+                  <button class="action-btn primary" :disabled="!duplicateTarget || duplicating" @click="duplicateDeployment(d)">
+                    {{ duplicating ? 'Cloning…' : 'Duplicate' }}
+                  </button>
+                </div>
+              </div>
           </div>
 
           <!-- Revisions Tab -->
@@ -514,4 +549,8 @@ function switchDetailTab(tab) {
   padding: 4px 8px; background: rgba(255,255,255,0.02); border-radius: 4px;
 }
 .rev-cause svg { color: #6b7078; flex-shrink: 0; }
+
+.duplicate-row { display: flex; gap: 8px; align-items: center; }
+.action-btn.primary { background: rgba(167,139,250,0.15); border-color: rgba(167,139,250,0.3); color: #a78bfa; }
+.action-btn.primary:hover { background: rgba(167,139,250,0.25); }
 </style>

@@ -133,7 +133,7 @@ describe('navVisibility store', () => {
   it('sections getter shapes per-section metadata for Settings', () => {
     const s = useNavVisibilityStore()
     const list = s.sections
-    expect(list.length).toBe(9)
+    expect(list.length).toBe(10)
     const monitoring = list.find((x) => x.id === 'monitoring')
     expect(monitoring.core).toBe(true)
     const knowledge = list.find((x) => x.id === 'knowledge')
@@ -144,6 +144,6 @@ describe('navVisibility store', () => {
   it('exports a stable CORE/OPTIONAL split', () => {
     expect(__test.CORE_SECTIONS).toContain('monitoring')
     expect(__test.OPTIONAL_SECTIONS).not.toContain('monitoring')
-    expect(__test.CORE_SECTIONS.length + __test.OPTIONAL_SECTIONS.length).toBe(9)
+    expect(__test.CORE_SECTIONS.length + __test.OPTIONAL_SECTIONS.length).toBe(10)
   })
 })

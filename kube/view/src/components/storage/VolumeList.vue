@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useResources, callGo } from '../../composables/useWails'
+import Select from '../common/Select.vue'
 import VolumeCylinder from './VolumeCylinder.js'
 import VolumeAlertModal from './VolumeAlertModal.vue'
 import { useVolumeAlertsStore } from '../../stores/volumeAlerts'
@@ -413,9 +414,7 @@ function scrollExpandedIntoView() {
       <div class="enc-header">
         <div class="enc-title">Encrypted secret sources</div>
         <div class="enc-controls">
-          <select class="enc-ns" v-model="encNamespace" @change="loadEncryptedSources">
-            <option v-for="ns in namespaceOptions" :key="ns" :value="ns">{{ ns }}</option>
-          </select>
+          <Select v-model="encNamespace" :options="namespaceOptions" @change="loadEncryptedSources" size="sm" />
           <button class="enc-refresh" @click="loadEncryptedSources" :disabled="encLoading">
             {{ encLoading ? 'Loading…' : '↻' }}
           </button>
@@ -686,12 +685,6 @@ function scrollExpandedIntoView() {
   display: flex; align-items: center; gap: 8px;
 }
 .enc-controls { display: flex; gap: 6px; align-items: center; }
-.enc-ns {
-  background: var(--bg, #1e2023); color: var(--text, #fff);
-  border: 1px solid rgba(255,255,255,0.12); border-radius: 4px;
-  padding: 4px 8px; font-size: 11.5px; outline: none;
-  font-family: var(--mono, monospace);
-}
 .enc-refresh {
   background: transparent; border: 1px solid rgba(255,255,255,0.12);
   color: #8b8f96; padding: 3px 8px; border-radius: 4px;

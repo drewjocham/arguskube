@@ -96,6 +96,64 @@ async function toggleExpand(itemName) {
   }
 }
 
+// Starter manifests for "Create" — minimal but valid templates the user
+// can edit-and-apply in one step. We default to the busybox `date` command
+// so the manifest works against any cluster without an extra image pull
+// from a private registry, and we name with a random-ish suffix so back-
+// to-back creates don't collide.
+function makeStarterManifest() {
+  const suffix = Math.random().toString(36).slice(2, 7)
+  if (resourceType.value === 'cronjobs') {
+    return `apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: argus-cronjob-${suffix}
+  namespace: default
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: worker
+              image: busybox:1.36
+              command: ["sh", "-c", "date; echo Hello from CronJob"]
+`
+  }
+  return `apiVersion: batch/v1
+kind: Job
+metadata:
+  name: argus-job-${suffix}
+  namespace: default
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: worker
+          image: busybox:1.36
+          command: ["sh", "-c", "date; echo Hello from Job"]
+`
+}
+
+function openCreate() {
+  manifestPopup.value = true
+  manifestKind.value = resourceLabel.value
+  manifestName.value = `New ${resourceLabel.value}`
+  manifestNamespace.value = 'default'
+  manifestContent.value = makeStarterManifest()
+  editingManifest.value = true
+  manifestLoading.value = false
+}
+
 async function openManifest(item) {
   manifestLoading.value = true
   manifestPopup.value = true
@@ -142,6 +200,18 @@ async function applyManifest() {
   }
 }
 
+async function runNow(item) {
+  try {
+    await callGo('RunCronJob', item.namespace, item.name)
+    notification.value = `✓ Spawned Job from "${item.name}"`
+    setTimeout(() => { notification.value = null }, 5000)
+    await fetchData()
+  } catch (e) {
+    notification.value = `✗ Run failed: ${e.message || e}`
+    setTimeout(() => { notification.value = null }, 8000)
+  }
+}
+
 async function deleteResource(item) {
   if (!confirm(`Delete ${resourceLabel.value} "${item.name}" in namespace "${item.namespace}"?`)) return
   try {
@@ -160,8 +230,14 @@ async function deleteResource(item) {
 <template>
   <div class="jc-view">
     <div class="header">
-      <div class="title">{{ resourceLabelPlural }}</div>
-      <div class="subtitle">{{ subtitle }}</div>
+      <div class="header-text">
+        <div class="title">{{ resourceLabelPlural }}</div>
+        <div class="subtitle">{{ subtitle }}</div>
+      </div>
+      <button class="create-btn" @click="openCreate" :title="`Create a new ${resourceLabel}`" data-testid="create-jobcronjob">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Create {{ resourceLabel }}
+      </button>
     </div>
 
     <div v-if="notification" class="agent-notification">
@@ -225,6 +301,7 @@ async function deleteResource(item) {
             </div>
           </template>
           <div class="col-actions" @click.stop>
+            <button v-if="type === 'cronjobs'" class="action-btn trigger" @click="runNow(item)" title="Run Now">▶ Run</button>
             <button class="action-btn" @click="openManifest(item)" title="View/Edit YAML">⚙️ Config</button>
             <button class="action-btn delete" @click="deleteResource(item)" title="Delete">🗑</button>
             <svg class="chevron" :class="{ open: expandedItem === item.name }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -359,8 +436,21 @@ async function deleteResource(item) {
 
 <style scoped>
 .jc-view { padding: 24px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; flex: 1; min-height: 0; }
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; text-transform: capitalize; }
 .header .subtitle { font-size: 13px; color: #8b8f96; }
+.create-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #4f8ef7; color: #fff;
+  border: 1px solid #4f8ef7;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 13px; font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.create-btn:hover { background: #6ba3f9; border-color: #6ba3f9; }
+.create-btn:active { background: #3d7bd9; }
 
 /* ── State Box ── */
 .state-box { display: flex; align-items: center; gap: 12px; padding: 24px; border-radius: 8px; background: #1e2023; border: 1px solid rgba(255,255,255,0.08); font-size: 13px; color: #8b8f96; }
@@ -403,6 +493,8 @@ async function deleteResource(item) {
 .action-btn.primary { background: rgba(167,139,250,0.15); border-color: rgba(167,139,250,0.3); color: #a78bfa; }
 .action-btn.primary:hover { background: rgba(167,139,250,0.25); }
 .action-btn.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.action-btn.trigger { background: rgba(62,207,142,0.12); border-color: rgba(62,207,142,0.25); color: #3ecf8e; }
+.action-btn.trigger:hover { background: rgba(62,207,142,0.25); }
 .action-btn.delete:hover { background: rgba(240,84,84,0.15); border-color: rgba(240,84,84,0.3); color: #f05454; }
 .action-btn.close { background: transparent; border: none; color: #6b7078; font-size: 16px; padding: 4px 8px; }
 .action-btn.close:hover { color: #e8eaec; }
