@@ -165,4 +165,87 @@ describe('Sidebar.vue — section navigation model', () => {
     const renderedOrder = rows.map((r) => r.attributes('data-testid').replace('sidebar-section-', ''))
     expect(renderedOrder).toEqual([...SECTION_ORDER])
   })
+
+  // --- §C3 right-click quick-toggle menu ---
+
+  it('right-click on an optional section reveals Hide + Show all + Open settings', async () => {
+    const vis = useNavVisibilityStore()
+    vis.show('storage')
+    const wrapper = createWrapper()
+    await nextTick()
+    const row = wrapper.find('[data-testid="sidebar-section-storage"]')
+    await row.trigger('contextmenu', { clientX: 100, clientY: 200 })
+    expect(document.querySelector('[data-testid="sidebar-section-menu-hide"]')).toBeTruthy()
+    expect(document.querySelector('[data-testid="sidebar-section-menu-show-all"]')).toBeTruthy()
+    expect(document.querySelector('[data-testid="sidebar-section-menu-open-settings"]')).toBeTruthy()
+  })
+
+  it('right-click on a core section omits the Hide option', async () => {
+    const wrapper = createWrapper()
+    await wrapper.find('[data-testid="sidebar-section-monitoring"]').trigger('contextmenu')
+    expect(document.querySelector('[data-testid="sidebar-section-menu-hide"]')).toBeNull()
+    expect(document.querySelector('[data-testid="sidebar-section-menu-show-all"]')).toBeTruthy()
+  })
+
+  it('Hide menu item hides the section', async () => {
+    const vis = useNavVisibilityStore()
+    vis.show('storage')
+    const wrapper = createWrapper()
+    await nextTick()
+    await wrapper.find('[data-testid="sidebar-section-storage"]').trigger('contextmenu')
+    const hide = document.querySelector('[data-testid="sidebar-section-menu-hide"]')
+    hide.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(vis.isVisible('storage')).toBe(false)
+  })
+
+  it('Show all menu item reveals every section', async () => {
+    const wrapper = createWrapper()
+    await wrapper.find('[data-testid="sidebar-section-monitoring"]').trigger('contextmenu')
+    const showAll = document.querySelector('[data-testid="sidebar-section-menu-show-all"]')
+    showAll.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    const vis = useNavVisibilityStore()
+    for (const id of SECTION_ORDER) expect(vis.isVisible(id)).toBe(true)
+  })
+
+  it('Open settings menu item navigates to admin/settings + reveals admin', async () => {
+    const wrapper = createWrapper()
+    await wrapper.find('[data-testid="sidebar-section-monitoring"]').trigger('contextmenu')
+    const open = document.querySelector('[data-testid="sidebar-section-menu-open-settings"]')
+    open.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    const vis = useNavVisibilityStore()
+    expect(vis.isVisible('admin')).toBe(true)
+    const { useSectionTabsStore } = await import('../../stores/sectionTabs')
+    expect(useSectionTabsStore().activeTab('admin')).toBe('settings')
+    expect(wrapper.emitted('update:activeNav').at(-1)).toEqual(['admin'])
+  })
+
+  // --- §C4 Density quick-pick in the sidebar footer ---
+
+  it('density footer renders three buttons with the current selection marked active', () => {
+    const wrapper = createWrapper()
+    const compact = wrapper.find('[data-testid="density-compact"]')
+    const normal = wrapper.find('[data-testid="density-normal"]')
+    const comfortable = wrapper.find('[data-testid="density-comfortable"]')
+    expect(compact.exists()).toBe(true)
+    expect(normal.exists()).toBe(true)
+    expect(comfortable.exists()).toBe(true)
+    expect(normal.classes()).toContain('active')
+  })
+
+  it('clicking a density button updates the appearance store', async () => {
+    const wrapper = createWrapper()
+    const { useAppearanceStore } = await import('../../stores/appearance')
+    const app = useAppearanceStore()
+    await wrapper.find('[data-testid="density-compact"]').trigger('click')
+    expect(app.density).toBe('compact')
+  })
+
+  it('hides the density footer when the sidebar is collapsed', async () => {
+    const wrapper = createWrapper()
+    await wrapper.find('.collapse-toggle').trigger('click')
+    expect(wrapper.find('[data-testid="sidebar-footer"]').exists()).toBe(false)
+  })
 })
