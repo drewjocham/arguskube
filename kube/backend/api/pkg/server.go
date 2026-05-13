@@ -284,6 +284,17 @@ var httpExposedMethods = map[string]struct{}{
 	"GetResourceYaml":        {},
 	"ListAllNamespaces":      {},
 	"ListContexts":           {},
+	"AutoResolveContext":     {},
+	"RunEnvProbes":           {},
+	// User-profile / "Argus suggests" surface. RecordView is high-frequency
+	// (every nav) but harmless; Mute/Accept/Dismiss are user-driven so the
+	// rate is naturally bounded. ClearUserActivity is deliberately omitted
+	// — it's a destructive action restricted to desktop.
+	"RecordView":         {},
+	"GetNextSuggestion":  {},
+	"MuteSuggestion":     {},
+	"AcceptSuggestion":   {},
+	"DismissSuggestion":  {},
 	"GetTopology":            {},
 	"GetWarningEvents":       {},
 	"GetNamespacePodCounts":  {},

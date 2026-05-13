@@ -25,6 +25,8 @@ on:
 
 permissions:
   contents: write
+  packages: write   # push container images to ghcr.io/<repo>
+  id-token: write   # cosign keyless via GitHub Actions OIDC
 
 concurrency:
   group: release-${{ github.ref }}
@@ -142,6 +144,98 @@ jobs:
             kube/backend/build/bin/Argus-*-universal.zip
             kube/backend/build/bin/Argus-*-universal.zip.sha256
             kube/backend/build/bin/argus.rb
+
+  build-agent-image:
+    name: Build + sign argus-agent container
+    needs: build-macos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build-macos.outputs.tag }}
+
+      - name: Resolve image coordinates
+        id: img
+        run: |
+          set -euo pipefail
+          # ghcr.io tag names are case-sensitive lowercase.
+          repo_lc="${GITHUB_REPOSITORY,,}"
+          version='${{ needs.build-macos.outputs.version }}'
+          echo "repo_lc=${repo_lc}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${repo_lc}/argus-agent" >> "$GITHUB_OUTPUT"
+          echo "tag=${version}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The agent image is a single-stage Alpine build; the Dockerfile
+      # lives at agent/Dockerfile and the build context IS that dir
+      # because agent/ has its own go.mod (see .context.md → "Two
+      # go.mod files (backend/ + agent/)").
+      - name: Build and push (multi-arch)
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: agent
+          file: agent/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ steps.img.outputs.image }}:${{ steps.img.outputs.tag }}
+            ${{ steps.img.outputs.image }}:latest
+          provenance: true
+          sbom: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      # Keyless signing — the OIDC token comes from id-token: write at
+      # the job level. The certificate identity recorded against the
+      # signature is the workflow's run URL, which the policies in
+      # kube/deploy/policies/ pin via the subjectRegExp.
+      - name: Sign image with cosign (keyless)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          IMAGE: ${{ steps.img.outputs.image }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          echo "Signed ${IMAGE}@${DIGEST}"
+
+      # Re-render the policy templates with the actual repo path so the
+      # files attached to the Release can be applied directly. The
+      # desktop app does the same substitution at Apply time; uploading
+      # them as Release assets makes the manual-apply path painless.
+      - name: Render policy templates
+        env:
+          REPO_LC: ${{ steps.img.outputs.repo_lc }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/policies
+          for f in kube/deploy/policies/*.yaml; do
+            sed "s|__REPO__|${REPO_LC}|g" "$f" > "out/policies/$(basename "$f")"
+          done
+          ls -la out/policies/
+
+      - name: Attach policies to the Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build-macos.outputs.tag }}
+          files: |
+            out/policies/kyverno.yaml
+            out/policies/gatekeeper.yaml
+            out/policies/policy-controller.yaml
 
   update-tap:
     name: Update Homebrew tap

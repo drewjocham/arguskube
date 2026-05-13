@@ -1,0 +1,50 @@
+# OPA Gatekeeper ConstraintTemplate + Constraint that requires Argus
+# container images to carry an annotation set by the Argus deploy flow
+# proving the image was admitted by cosign verification.
+#
+# Apply with:
+#
+#   kubectl apply -f gatekeeper.yaml
+#
+# The Sigstore policy-controller / Kyverno files in this directory do
+# full cosign-keyless verification at admission time. Gatekeeper does
+# not, on its own, perform cosign verification — instead this Constraint
+# enforces that any Argus image entering the cluster carries an Argus-
+# deploy-attested annotation. The desktop app's deploy flow stamps the
+# annotation only after a successful local `cosign verify`, so the
+# guarantee chains.
+#
+# The desktop app rewrites __REPO__ on Apply.
+---
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: arguscosignannotation
+spec:
+  crd:
+    spec:
+      names:
+        kind: ArgusCosignAnnotation
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package arguscosignannotation
+
+        violation[{"msg": msg}] {
+          input.review.kind.kind == "Pod"
+          some i
+          container := input.review.object.spec.containers[i]
+          startswith(container.image, "ghcr.io/__REPO__/argus-")
+          not input.review.object.metadata.annotations["argus.cosign/verified"]
+          msg := sprintf("Argus image %v requires the 'argus.cosign/verified' annotation set by the Argus deploy flow.", [container.image])
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: ArgusCosignAnnotation
+metadata:
+  name: argus-cosign-annotation
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]

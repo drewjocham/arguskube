@@ -14,6 +14,8 @@ import { useNotificationGuardStore } from '../../stores/notificationGuard'
 import { useWatcherRegistryStore } from '../../stores/watcherRegistry'
 import { runDueNow as watcherRunDueNow, runWatcherById } from '../../composables/useWatcherEngine'
 import SecretsToolProbeRow from './SecretsToolProbeRow.vue'
+import SetupChecklist from './SetupChecklist.vue'
+import PrivacyControls from './PrivacyControls.vue'
 
 const credentialAlerts = useCredentialAlertsStore()
 const esStore = useExternalSecretsStore()
@@ -824,6 +826,16 @@ onMounted(async () => {
     </transition>
 
     <div class="scroll" v-if="!loading">
+      <!-- "Get Argus ready" checklist — the one surface the user must
+           interact with. Every other section below is the "All settings"
+           escape hatch for power users. -->
+      <SetupChecklist />
+
+      <!-- Privacy controls — the user's escape hatch for the learning
+           agents. Sits right under the checklist so it's discoverable
+           without scrolling. -->
+      <PrivacyControls />
+
       <!-- Vault: every credential the app uses, in one auditable place. -->
       <div class="section vault-section" id="vault" ref="vaultAnchorRef">
         <div class="section-header-row">

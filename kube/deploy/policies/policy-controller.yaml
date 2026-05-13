@@ -1,0 +1,31 @@
+# Sigstore policy-controller ClusterImagePolicy that allows Argus
+# container images signed by the Argus GitHub Actions release workflow.
+#
+# Required prerequisite — opt the Argus namespace in:
+#
+#   kubectl label namespace argus policy.sigstore.dev/include=true
+#
+# Then apply:
+#
+#   kubectl apply -f policy-controller.yaml
+#
+# The desktop app rewrites __REPO__ on Apply so this policy ends up
+# pinned to *your* fork (or to drewjocham/argus by default).
+---
+apiVersion: policy.sigstore.dev/v1beta1
+kind: ClusterImagePolicy
+metadata:
+  name: argus-image-trust
+spec:
+  images:
+    - glob: "ghcr.io/__REPO__/argus-agent**"
+    - glob: "ghcr.io/__REPO__/argus-alert-ingress**"
+  authorities:
+    - name: github-actions-release
+      keyless:
+        url: https://fulcio.sigstore.dev
+        identities:
+          - issuer: https://token.actions.githubusercontent.com
+            subjectRegExp: "^https://github\\.com/__REPO__/\\.github/workflows/release\\.yml@refs/tags/v.*$"
+      ctlog:
+        url: https://rekor.sigstore.dev

@@ -207,6 +207,12 @@ func (a *App) Startup(ctx context.Context) {
 
 	a.periodicAgent = agentanalysis.NewAgent(a.logger, a.cfg, a.ctx)
 	go a.periodicAgent.StartLoop(a.ctx)
+
+	// Environment probes: DNS / TLS / clock-skew. The runner publishes
+	// argus:envprobe events for the Settings checklist and argus:status
+	// events for the bottom ribbon. Cheap (<3s per probe), runs on a
+	// 60s ticker so a corp-VPN flip is caught within a minute.
+	a.StartEnvProbeLoop(a.ctx)
 }
 
 // Shutdown is called by Wails when the app closes.
