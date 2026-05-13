@@ -29,6 +29,12 @@ type Client struct {
 	cfg             *config.OnlineDataConfig
 	logger          *slog.Logger
 	metricsProvider MetricsProvider
+
+	// runExec is the seam pod-network-diag tests use to inject canned
+	// exec output. nil in production — execInPod falls back to the real
+	// SPDY-over-API exec path when this is unset. See pod_network_diag.go
+	// for the rationale.
+	runExec podExecFn
 }
 
 // kubeconfigLoadingRules builds the client-go loading rules from the given
