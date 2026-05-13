@@ -29,6 +29,12 @@ describe('StatusRibbon.vue', () => {
     // versions; provide a no-op so the loop doesn't throw.
     window.requestAnimationFrame = vi.fn(() => 1)
     window.cancelAnimationFrame = vi.fn()
+    // The component mirrors status events into the notifications store,
+    // which persists to localStorage. Without an explicit clear, earlier
+    // tests in this file (or earlier files in the same worker) leave
+    // items behind that the mirror test then counts. CI runs hit this;
+    // local runs sometimes don't because of worker placement.
+    try { window.localStorage?.clear() } catch (_) { /* jsdom may not expose it in some configs */ }
   })
 
   it('renders the idle state when no events have been pushed', () => {
