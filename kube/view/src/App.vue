@@ -15,6 +15,12 @@ import { useNavVisibilityProbes } from './composables/useNavVisibilityProbes'
 import { useCredentialMonitor } from './composables/useCredentialMonitor'
 import { useWatcherEngine } from './composables/useWatcherEngine'
 import { useArgusAlertContext } from './composables/useArgusAlertContext'
+import { useAutoContext } from './composables/useAutoContext'
+import { useAutoContextProbe } from './composables/useAutoContextProbe'
+import { useEnvProbeWatcher } from './composables/useEnvProbeWatcher'
+import { useSecretStore } from './composables/useSecretStore'
+import { useUserProfile } from './composables/useUserProfile'
+import ArgusSuggestionCard from './components/ai/ArgusSuggestionCard.vue'
 import LoginView from './components/auth/LoginView.vue'
 import ChatPopOut from './components/ai/ChatPopOut.vue'
 import ToastContainer from './components/ToastContainer.vue'
@@ -26,23 +32,33 @@ import DiagnosticsPanel from './components/diagnostics/DiagnosticsPanel.vue'
 import AgentAnalysisNotification from './components/common/AgentAnalysisNotification.vue'
 import TerminalView from './components/terminal/TerminalView.vue'
 import ProDesktopApp from './components/desktop/ProDesktopApp.vue'
+import StatusRibbon from './components/status/StatusRibbon.vue'
+import { useStatusFeedStore } from './stores/statusFeed'
 
 // Auth gate — no session means the user only sees LoginView. Once
 // signed in (or when the backend reports auth is disabled for local
 // dev), isAuthenticated flips to true and the dashboard renders.
 const auth = useAuthStore()
 const authReady = ref(false)
+// macOS Keychain bridge — used by onMounted to migrate any pre-existing
+// localStorage session token onto the OS-native secret store.
+const secretStore = useSecretStore()
+
 // Smart-defaults probes — reveal optional sidebar sections when their
 // matching subsystem is configured (S3 bucket → Knowledge, cluster
 // has PVCs → Storage). Fire-and-forget: a slow probe never blocks
 // auth from settling, and the UI starts with the 5 core sections.
 const navProbes = useNavVisibilityProbes()
-
 onMounted(async () => {
   // /auth/providers tells us whether dev-mode bypass is on, in parallel
   // with restoring any persisted token. Both have to land before we
   // decide which gate to show — otherwise we'd flash LoginView for one
   // frame even when auth is disabled.
+  //
+  // On Wails desktop we also one-time-migrate any pre-existing
+  // localStorage token into the OS Keychain. Idempotent + fire-and-
+  // forget — never blocks the gate from settling.
+  secretStore.migrateLegacyToken().catch(() => {})
   const tasks = [auth.loadProviders()]
   if (auth.token) tasks.push(auth.restoreSession())
   await Promise.all(tasks)
@@ -113,6 +129,38 @@ useWatcherEngine()
 // Exposes window.argusAlertContext so the AI chat can read live watcher
 // + silence state and silence/unsilence things on the user's behalf.
 useArgusAlertContext()
+
+// Auto-context resolver. Once per session, ask the backend to probe every
+// kubeconfig context, pick the best one, and switch the live client to it.
+// The backend emits status events directly into the bottom ribbon — this
+// composable just kicks the flow off and refreshes the cluster panel when
+// the chosen context is reachable.
+const { resolve: resolveAutoContext } = useAutoContext()
+// Bridges that resolution into the Settings checklist as a single row.
+useAutoContextProbe()
+// Subscribes to "argus:envprobe" events (DNS / TLS / clock skew) and
+// upserts checklist rows. The backend's StartEnvProbeLoop pushes
+// updates every 60s so corp-network changes mid-session are caught.
+useEnvProbeWatcher()
+
+// Learning agents (§6): record every navigation into the user-profile
+// activity log. The suggester reads from that log and surfaces at most
+// one card at a time via <ArgusSuggestionCard>. Pure observation — no
+// network round-trip blocks the nav.
+const userProfile = useUserProfile()
+watch(activeNav, (next) => {
+  if (!next) return
+  userProfile.recordView(next, clusterInfo.value?.name || '', '')
+}, { immediate: true })
+watch(() => auth.isAuthenticated, async (isAuth, wasAuth) => {
+  if (!isAuth || wasAuth) return
+  const r = await resolveAutoContext()
+  if (r && r.chosen && r.reachableCount > 0) {
+    refreshClusterInfo()
+    refreshMetrics()
+    refreshAlerts()
+  }
+}, { immediate: true })
 
 const terminalOpen = ref(false)
 const terminalHeight = ref(220)
@@ -243,6 +291,15 @@ useWailsEvent('argus:notification', (data) => {
   if (!data || typeof data !== 'object') return
   notifications.add(data)
 })
+
+// Status feed: backend emits "argus:status" events for envprobe, k8s
+// refresh, ai diagnosis, popeye, agent connect, etc. They land in the
+// statusFeed ring buffer and surface in the bottom <StatusRibbon>.
+const statusFeed = useStatusFeedStore()
+useWailsEvent('argus:status', (data) => {
+  if (!data || typeof data !== 'object') return
+  statusFeed.push(data)
+})
 </script>
 
 <template>
@@ -265,6 +322,7 @@ useWailsEvent('argus:notification', (data) => {
 
   <template v-else>
     <Titlebar :clusterInfo="clusterInfo" @toggle-terminal="toggleTerminal" @pop-out="openPopOut" :terminalOpen="terminalOpen" />
+    <div class="app-shell">
     <div class="main">
       <Sidebar
         :clusterInfo="clusterInfo"
@@ -288,14 +346,16 @@ useWailsEvent('argus:notification', (data) => {
               <polyline points="3 2 7 5 3 8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </div>
-          <DiagnosticsPanel
-            v-show="!diagCollapsed"
-            :selectedAlert="selectedAlert"
-            :bundle="bundle"
-            :loading="diagLoading"
-            :error="diagError"
-            @diagnose="onAlertSelect"
-          />
+          <div v-show="!diagCollapsed" class="diag-stack">
+            <ArgusSuggestionCard :activeView="activeNav" />
+            <DiagnosticsPanel
+              :selectedAlert="selectedAlert"
+              :bundle="bundle"
+              :loading="diagLoading"
+              :error="diagError"
+              @diagnose="onAlertSelect"
+            />
+          </div>
         </div>
 
         <!-- Terminal panel -->
@@ -319,7 +379,9 @@ useWailsEvent('argus:notification', (data) => {
         </template>
       </div>
     </div>
-    
+      <StatusRibbon />
+    </div>
+
     <ToastContainer />
     <SaveToastStack />
     <AgentAnalysisNotification />
@@ -329,6 +391,13 @@ useWailsEvent('argus:notification', (data) => {
 </template>
 
 <style scoped>
+.app-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .main {
   flex: 1;
   display: flex;
@@ -346,6 +415,24 @@ useWailsEvent('argus:notification', (data) => {
   flex: 1;
   display: flex;
   overflow: hidden;
+}
+
+/* Right-rail stack: the suggestion card sits above the diagnostics
+   panel so the user sees both without the card pushing diagnostics
+   off-screen. DiagnosticsPanel keeps its own height, the card is
+   intrinsic height (~110 px when visible). */
+.diag-stack {
+  display: flex;
+  flex-direction: column;
+  min-width: 320px;
+  max-width: 420px;
+  border-left: 1px solid var(--border, #2a2a2a);
+  background: var(--bg, #141414);
+}
+.diag-stack > :deep(.diagnostics-panel) {
+  flex: 1;
+  min-height: 0;
+  border-left: none;
 }
 
 /* Terminal panel */

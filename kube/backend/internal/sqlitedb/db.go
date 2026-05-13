@@ -200,4 +200,48 @@ var migrations = []migration{
 		name: "create_alert_events_sig_index",
 		sql:  `CREATE INDEX idx_alert_events_sig ON alert_events(signature, created_at DESC)`,
 	},
+	{
+		// Append-only nav log driving the userprofile suggester (§6).
+		// One row per view the user actually visits. Tiny rows so
+		// retention is cheap; the store keeps the most recent 5000.
+		name: "create_user_activity",
+		sql: `CREATE TABLE user_activity (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			ts         INTEGER NOT NULL,
+			kind       TEXT NOT NULL DEFAULT 'nav',
+			view_id    TEXT NOT NULL DEFAULT '',
+			context    TEXT NOT NULL DEFAULT '',
+			namespace  TEXT NOT NULL DEFAULT ''
+		)`,
+	},
+	{
+		name: "create_user_activity_index",
+		sql:  `CREATE INDEX idx_user_activity_ts ON user_activity(ts DESC)`,
+	},
+	{
+		// Persistent mute set so a "Don't ask again" survives restart.
+		// Keyed by a stable suggestion key produced by the suggester.
+		name: "create_user_profile_mutes",
+		sql: `CREATE TABLE user_profile_mutes (
+			mute_key  TEXT PRIMARY KEY,
+			muted_at  INTEGER NOT NULL
+		)`,
+	},
+	{
+		// Audit trail of what the suggester actually showed, used by
+		// the annoyance budget (3/day cap) and the auto-self-throttle
+		// (silence for a week if user mutes >50% over 14 days).
+		name: "create_user_suggestion_log",
+		sql: `CREATE TABLE user_suggestion_log (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			mute_key   TEXT NOT NULL DEFAULT '',
+			kind       TEXT NOT NULL DEFAULT '',
+			outcome    TEXT NOT NULL DEFAULT 'shown',
+			created_at INTEGER NOT NULL
+		)`,
+	},
+	{
+		name: "create_user_suggestion_log_index",
+		sql:  `CREATE INDEX idx_user_suggestion_log_created ON user_suggestion_log(created_at DESC)`,
+	},
 }

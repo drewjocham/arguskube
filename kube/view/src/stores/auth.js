@@ -10,6 +10,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiBase } from '../composables/useBridge'
+import { useSecretStore } from '../composables/useSecretStore'
 
 const STORAGE_KEY = 'argus.auth.session'
 
@@ -99,6 +100,8 @@ export const useAuthStore = defineStore('auth', () => {
     return res.json()
   }
 
+  const secretStore = useSecretStore()
+
   function _adopt(loginPayload) {
     if (!loginPayload?.token || !loginPayload?.user) {
       throw new Error('login response missing token or user')
@@ -107,6 +110,12 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = loginPayload.user
     expiresAt.value = loginPayload.expiresAt || (Math.floor(Date.now() / 1000) + 14 * 24 * 60 * 60)
     writePersisted({ token: token.value, user: user.value, expiresAt: expiresAt.value })
+    // Dual-write the token to the OS secret store when available. The
+    // localStorage write above stays as the boot-time fast path; a
+    // follow-up turn will drop it on macOS once the async-boot gate is
+    // wired through App.vue. Fire-and-forget — a Keychain error never
+    // fails an otherwise-good login.
+    secretStore.setSessionToken(token.value).catch(() => {})
   }
 
   async function loadProviders() {
@@ -148,6 +157,10 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     expiresAt.value = 0
     writePersisted(null)
+    // Best-effort wipe of the OS secret store. Same fire-and-forget
+    // pattern as _adopt — we don't want a Keychain hiccup to block
+    // logout from completing on the UI side.
+    secretStore.clearSessionToken().catch(() => {})
   }
 
   // Verify a persisted session is still good. Called on app boot — if

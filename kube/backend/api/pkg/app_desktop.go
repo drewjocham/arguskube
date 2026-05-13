@@ -41,6 +41,101 @@ func (a *App) ListContexts() ([]k8s.ContextInfo, error) {
 	return k8s.ListContextsFromKubeconfig(kubeconfigPath, "")
 }
 
+// AutoResolveContext probes every kubeconfig context, picks the best one,
+// and switches the live k8s client to it. The whole flow is one binding
+// so the frontend can run it as a single non-interactive bootstrap step.
+//
+// Status events fire into the bottom ribbon via "argus:status":
+//   - "Checking N kubeconfig contexts…" at the start
+//   - "context X reachable in Yms" / "context X unreachable: <err>" per probe
+//   - "Connected to <chosen> (<confidence>)" at the end
+//
+// The selection priority lives in k8s.ChooseContext and is unit-tested
+// without a real cluster. We honour the active-override stored on the
+// current cfg so a user choice from a previous session beats kubeconfig's
+// current-context. Returns the resolution unconditionally — callers (the
+// settings checklist, the sidebar) can inspect Probes to render per-context
+// status even when the chosen one is unreachable.
+func (a *App) AutoResolveContext() (k8s.ContextResolution, error) {
+	kubeconfigPath := ""
+	activeOverride := ""
+	if a.cfg != nil {
+		kubeconfigPath = a.cfg.Kubernetes.Config
+		activeOverride = a.cfg.Kubernetes.Context
+	}
+
+	a.emitStatus("k8s", "info", "Scanning kubeconfig for contexts…", "")
+
+	// 2s per-context timeout strikes the right balance: longer than typical
+	// LAN/VPN handshakes, shorter than a corp firewall timing out a RST.
+	probes, err := k8s.ProbeContexts(a.ctx, kubeconfigPath, activeOverride, 2*time.Second)
+	if err != nil {
+		a.emitStatus("k8s", "error", "Could not read kubeconfig", err.Error())
+		return k8s.ContextResolution{}, err
+	}
+	if len(probes) == 0 {
+		a.emitStatus("k8s", "warn", "No kubeconfig contexts found", "Add a context with kubectl or via the settings checklist.")
+		return k8s.ContextResolution{Confidence: "none", Probes: probes}, k8s.ErrNoContexts
+	}
+
+	// Per-probe ribbon line so the user sees the scan running, not a
+	// 4-second silence. We keep it terse so the marquee stays readable.
+	for _, p := range probes {
+		if p.Reachable {
+			a.emitStatus("k8s", "info",
+				fmt.Sprintf("%s reachable (%dms, %s)", p.Name, p.LatencyMs, p.ServerVersion), "")
+		} else {
+			a.emitStatus("k8s", "warn",
+				fmt.Sprintf("%s unreachable", p.Name), p.Error)
+		}
+	}
+
+	res := k8s.ChooseContext(probes)
+	if res.Chosen == "" {
+		a.emitStatus("k8s", "warn", "No reachable contexts", "Argus will retry on the next manual switch.")
+		return res, nil
+	}
+
+	// Bind the live client to the chosen context. Re-use the same path
+	// SwitchContext uses so the agent connector is rebuilt consistently.
+	if err := a.SwitchContext(res.Chosen); err != nil {
+		a.emitStatus("k8s", "error",
+			fmt.Sprintf("Could not switch to %s", res.Chosen), err.Error())
+		return res, err
+	}
+
+	switch res.Confidence {
+	case "active-reachable":
+		a.emitStatus("k8s", "info",
+			fmt.Sprintf("Connected to %s", res.Chosen), "")
+	case "fallback-reachable":
+		a.emitStatus("k8s", "warn",
+			fmt.Sprintf("Active context unreachable — using %s", res.Chosen),
+			"You can switch back via the sidebar context picker.")
+	case "active-unreachable":
+		a.emitStatus("k8s", "warn",
+			fmt.Sprintf("%s is selected but unreachable", res.Chosen),
+			"Argus will keep retrying. Common cause: VPN off or corporate proxy.")
+	}
+	return res, nil
+}
+
+// emitStatus publishes a StatusEvent onto the "argus:status" channel that
+// the frontend <StatusRibbon> subscribes to. Safe to call from any goroutine
+// — Wails' EventsEmit is concurrency-safe. No-op when ctx is nil (Startup
+// hasn't run yet).
+func (a *App) emitStatus(source, severity, message, detail string) {
+	if a.ctx == nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, "argus:status", map[string]any{
+		"source":   source,
+		"severity": severity,
+		"message":  message,
+		"detail":   detail,
+	})
+}
+
 // SwitchContext changes the active kubeconfig context at runtime. If no k8s
 // client exists yet (e.g. initial connection failed), it creates one.
 func (a *App) SwitchContext(name string) error {

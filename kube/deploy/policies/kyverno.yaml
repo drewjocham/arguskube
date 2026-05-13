@@ -1,0 +1,44 @@
+# Kyverno cluster policy that allows Argus container images signed by
+# the Argus GitHub Actions release workflow. Apply with:
+#
+#   kubectl apply -f kyverno.yaml
+#
+# The desktop app rewrites __REPO__ on Apply so this policy ends up
+# pinned to *your* fork (or to drewjocham/argus by default).
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: argus-image-trust
+  annotations:
+    policies.kyverno.io/title: Argus image trust
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Verifies that Argus container images are signed by the Argus
+      GitHub Actions release workflow via cosign keyless. Generated and
+      maintained by the Argus desktop app.
+spec:
+  validationFailureAction: Enforce
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-argus-agent
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              # Match across all namespaces — operators commonly deploy
+              # Argus into a dedicated namespace, but we don't want a
+              # mis-typed namespace to silently bypass the rule.
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/__REPO__/argus-agent:*"
+            - "ghcr.io/__REPO__/argus-alert-ingress:*"
+          attestors:
+            - entries:
+                - keyless:
+                    subject: "https://github.com/__REPO__/.github/workflows/release.yml@refs/tags/v*"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: "https://rekor.sigstore.dev"
