@@ -2,29 +2,54 @@
 import { ref, computed, inject, onMounted, onUnmounted } from 'vue'
 import { useContexts } from '../../composables/useWails'
 import { useNavSearchStore } from '../../stores/navSearch'
+import { useSectionTabsStore } from '../../stores/sectionTabs'
+import { useNavVisibilityStore } from '../../stores/navVisibility'
+import { useAppearanceStore } from '../../stores/appearance'
+import { useAppNavStore } from '../../stores/appNav'
+import { SECTIONS, SECTION_ORDER } from '../../lib/sectionTabs'
+import ContextMenu from '../shared/ContextMenu.vue'
 
-// Search state lives in the store so the Titlebar's input drives our
-// filter without prop drilling. `filteredNavTree` collapses out
-// sections that no longer have any matching items.
+// Sidebar — section-level navigation. Each row is one of the 9 SECTIONS
+// from lib/sectionTabs.js. Sub-items (Pods, Deployments, …) live inside
+// CenterPanel as tabs; the sidebar no longer renders them. The user
+// clicks a section header to switch to it; CenterPanel reads the
+// section's remembered tab from useSectionTabsStore.
+//
+// What survived from the previous (37-row) layout:
+//   - Cluster context selector + dropdown
+//   - Sidebar collapse to icon-only mode + teleported popover
+//   - Argus Context card at the bottom
+//   - navSearch hook (now filtering at the tab-label level)
+//
+// What's new:
+//   - navVisibility filter — optional sections (Storage, Knowledge, …)
+//     are hidden by default. Re-enable from Settings → Navigation.
+
 const navSearch = useNavSearchStore()
+const sectionTabs = useSectionTabsStore()
+const navVisibility = useNavVisibilityStore()
+const appearance = useAppearanceStore()
+const appNav = useAppNavStore()
 
 const props = defineProps({
   clusterInfo: { type: Object, default: null },
   alerts: { type: Array, default: () => [] },
-  activeNav: { type: String, default: 'alerts' },
+  // activeNav is now a section id ('monitoring', 'workloads', …). The
+  // legacy contract (tab ids like 'pods') is still tolerated upstream
+  // — App.vue maps inbound tab requests onto (section, tab) — but
+  // by the time the prop lands here it's always a section id.
+  activeNav: { type: String, default: 'monitoring' },
 })
 
 const emit = defineEmits(['update:activeNav', 'context-switched'])
 
 const isAllowed = inject('isAllowed')
 
-// Context switching.
+// --- Cluster context selector (unchanged from the previous Sidebar)
 const { contexts, loading: ctxLoading, switching, listContexts, switchContext } = useContexts()
 const ctxDropdownOpen = ref(false)
 
-onMounted(() => {
-  listContexts()
-})
+onMounted(() => { listContexts() })
 
 async function onSwitchContext(name) {
   await switchContext(name)
@@ -37,7 +62,6 @@ function toggleCtxDropdown() {
   if (ctxDropdownOpen.value) listContexts()
 }
 
-// Close dropdown on outside click.
 function onDocClick(e) {
   if (ctxDropdownOpen.value && !e.target.closest('.cluster-area')) {
     ctxDropdownOpen.value = false
@@ -46,11 +70,11 @@ function onDocClick(e) {
 onMounted(() => document.addEventListener('click', onDocClick))
 onUnmounted(() => document.removeEventListener('click', onDocClick))
 
-// Sidebar collapse state.
+// --- Sidebar collapse + popover (collapsed-mode flyout from each icon)
 const sidebarCollapsed = ref(false)
-const popoverSection = ref(null) // ID of section whose popover is open.
-const popoverTop = ref(0) // Viewport-absolute top in px (popover is teleported to <body>).
-const popoverLeft = ref(0) // Viewport-absolute left in px.
+const popoverSection = ref(null)
+const popoverTop = ref(0)
+const popoverLeft = ref(0)
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
@@ -64,10 +88,6 @@ function openPopover(sectionId, event) {
     return
   }
   popoverSection.value = sectionId
-  // The popover is teleported to <body> to escape the sidebar's overflow:hidden
-  // (and .nav-scroll's overflow-x:hidden) — without teleport the popover is
-  // clipped to the 48px wide collapsed sidebar and looks like clicks do
-  // nothing. So we compute viewport-absolute coordinates here.
   const rect = event.currentTarget.getBoundingClientRect()
   const sidebar = event.currentTarget.closest('.sidebar')
   const sidebarRect = sidebar.getBoundingClientRect()
@@ -83,155 +103,114 @@ function closePopover(e) {
 onMounted(() => document.addEventListener('click', closePopover))
 onUnmounted(() => document.removeEventListener('click', closePopover))
 
-function getPopoverItems() {
+function popoverTabs() {
   if (!popoverSection.value) return []
-  const section = navTree.find(s => s.id === popoverSection.value)
-  return section ? section.items : []
+  return SECTIONS[popoverSection.value]?.tabs || []
 }
-
-function getPopoverLabel() {
+function popoverLabel() {
   if (!popoverSection.value) return ''
-  const section = navTree.find(s => s.id === popoverSection.value)
-  return section ? section.label : ''
+  return SECTIONS[popoverSection.value]?.label || ''
 }
 
-// Track which sections are collapsed.
-const collapsed = ref({})
-
-function toggleSection(id) {
-  collapsed.value[id] = !collapsed.value[id]
-}
-
-function isCollapsed(id) {
-  return !!collapsed.value[id]
-}
-
-// Navigation tree definition — each section has an icon SVG path.
-const navTree = [
-  {
-    id: 'monitoring',
-    label: 'Monitoring',
-    icon: 'M2 12h4l3-9 4 18 3-9h4', // activity/pulse
-    items: [
-      { id: 'argusai', label: 'Argus AI' },
-      { id: 'metrics', label: 'Metrics Explorer' },
-      { id: 'alerts', label: 'Alerts' },
-      { id: 'vulnerabilities', label: 'Vulnerabilities' },
-      { id: 'logs', label: 'Logs' },
-      { id: 'anomalies', label: 'Argus Alerting' },
-      { id: 'analysis', label: 'Analysis' },
-      { id: 'finops', label: 'Cost Explorer' },
-    ],
-  },
-  {
-    id: 'cluster',
-    label: 'Cluster',
-    icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5', // layers
-    items: [
-      { id: 'nodes', label: 'Nodes' },
-      { id: 'namespaces', label: 'Namespaces' },
-      { id: 'events', label: 'Events' },
-    ],
-  },
-  {
-    id: 'workloads',
-    label: 'Workloads',
-    icon: 'M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z', // box
-    items: [
-      { id: 'pods', label: 'Pods' },
-      { id: 'deployments', label: 'Deployments' },
-      { id: 'statefulsets', label: 'StatefulSets' },
-      { id: 'daemonsets', label: 'DaemonSets' },
-      { id: 'replicasets', label: 'ReplicaSets' },
-      { id: 'jobs', label: 'Jobs' },
-      { id: 'cronjobs', label: 'Cron Jobs' },
-    ],
-  },
-  {
-    id: 'config',
-    label: 'Config',
-    icon: 'M4 6h16M4 12h16M4 18h16', // sliders/config
-    items: [
-      { id: 'configmaps', label: 'Config Maps' },
-      { id: 'secrets', label: 'Secrets' },
-      { id: 'hpas', label: 'HPAs' },
-    ],
-  },
-  {
-    id: 'network',
-    label: 'Network',
-    icon: 'M12 2a10 10 0 100 20 10 10 0 000-20zM2 12h20M12 2a15 15 0 014 10 15 15 0 01-4 10 15 15 0 01-4-10A15 15 0 0112 2z', // globe
-    items: [
-      { id: 'services', label: 'Services' },
-      { id: 'endpoints', label: 'Endpoints' },
-      { id: 'ingresses', label: 'Ingresses' },
-      { id: 'networkpolicies', label: 'Network Policies' },
-    ],
-  },
-  {
-    id: 'storage',
-    label: 'Storage',
-    icon: 'M4 7v10c0 2 4 4 8 4s8-2 8-4V7M4 7c0 2 4 4 8 4s8-2 8-4M4 7c0-2 4-4 8-4s8 2 8 4', // database
-    items: [
-      { id: 'pvcs', label: 'Volume Claims' },
-      { id: 'pvs', label: 'Volumes' },
-      { id: 'storageclasses', label: 'Storage Classes' },
-    ],
-  },
-  {
-    id: 'operations',
-    label: 'Operations',
-    icon: 'M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z', // wrench
-    items: [
-      { id: 'runbooks', label: 'Runbooks' },
-      { id: 'incidents', label: 'Incident Log' },
-      { id: 'audit', label: 'Config Audit' },
-      { id: 'arguscd', label: 'ArgusCD', pro: true },
-      { id: 'pipelines', label: 'Pipelines' },
-    ],
-  },
-  {
-    id: 'knowledge',
-    label: 'Knowledge',
-    /* The id literal is reused below as the section anchor. */
-    icon: 'M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 016.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z', // book
-    items: [
-      { id: 'documents', label: 'Documents' },
-      { id: 'notebooks', label: 'Notebooks & S3' },
-    ],
-  },
-  {
-    id: 'admin',
-    label: 'Admin',
-    icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75', // users/admin
-    items: [
-      { id: 'setup', label: 'Setup & Tools' },
-      { id: 'settings', label: 'Settings' },
-    ],
-  },
-]
-
-const criticalCount = computed(() =>
-  props.alerts.filter(a => a.severity === 'critical').length
-)
-const warningCount = computed(() =>
-  props.alerts.filter(a => a.severity === 'warning').length
+// --- Section list, filtered by visibility AND search.
+// Order is canonical SECTION_ORDER → user can't reshuffle, which matches
+// the previous fixed-order navTree. Visibility removes the optional
+// sections the user (or the first-launch defaults) hasn't enabled.
+const visibleSections = computed(() =>
+  SECTION_ORDER
+    .filter((id) => navVisibility.isVisible(id))
+    .map((id) => SECTIONS[id])
 )
 
-// Filtered nav tree: when the user types in the titlebar search, drop
-// items whose label doesn't include the query, and drop sections that
-// end up empty. A section header itself doesn't match — we filter on
-// the leaf items because that's what the user is actually navigating
-// to. When the search is empty, this returns navTree unchanged.
-const filteredNavTree = computed(() => {
-  if (!navSearch.active) return navTree
+// When the user types in the titlebar search, we keep a section
+// visible iff any of its tabs match. Clicking such a section navigates
+// to it AND jumps to the first matching tab, so the search result is
+// honored end-to-end.
+const filteredSections = computed(() => {
+  if (!navSearch.active) {
+    return visibleSections.value.map((s) => ({ ...s, matchedTabs: null }))
+  }
   const out = []
-  for (const section of navTree) {
-    const items = section.items.filter((it) => navSearch.matches(it.label))
-    if (items.length) out.push({ ...section, items })
+  for (const sec of visibleSections.value) {
+    const matchedTabs = sec.tabs.filter((t) => navSearch.matches(t.label))
+    if (matchedTabs.length) out.push({ ...sec, matchedTabs })
   }
   return out
 })
+
+// --- Alert badge surfaces on the Monitoring row.
+const criticalCount = computed(() =>
+  props.alerts.filter((a) => a.severity === 'critical').length
+)
+const warningCount = computed(() =>
+  props.alerts.filter((a) => a.severity === 'warning').length
+)
+
+function sectionBadge(sectionId) {
+  if (sectionId !== 'monitoring') return null
+  if (criticalCount.value > 0) return { tone: 'red', n: criticalCount.value }
+  if (warningCount.value > 0) return { tone: 'amber', n: warningCount.value }
+  return null
+}
+
+// --- Click handlers
+function onSectionClick(section) {
+  // When the user is searching, jump to the first tab that actually
+  // matched. Otherwise, leave the section's remembered tab in place.
+  if (navSearch.active) {
+    const matched = section.matchedTabs?.[0]
+    if (matched) sectionTabs.setTab(section.id, matched.id)
+  }
+  emit('update:activeNav', section.id)
+}
+
+function onTabHit(sectionId, tabId) {
+  // Click on a search-result tab row: switch to its section + tab.
+  sectionTabs.setTab(sectionId, tabId)
+  emit('update:activeNav', sectionId)
+}
+
+function onPopoverTabClick(sectionId, tabId) {
+  sectionTabs.setTab(sectionId, tabId)
+  emit('update:activeNav', sectionId)
+  popoverSection.value = null
+}
+
+// --- §C3 Right-click quick-toggle menu on section headers
+const ctxMenu = ref(null)
+
+function openSectionMenu(event, sectionId) {
+  const items = []
+  // Hide is only meaningful for optional sections — hiding a core
+  // one would corner the user; the Settings panel handles edge cases.
+  const sec = navVisibility.sections.find((s) => s.id === sectionId)
+  if (sec && !sec.core) {
+    items.push({ id: 'hide', label: `Hide ${sec.label}` })
+  }
+  items.push({ id: 'show-all', label: 'Show all sections' })
+  items.push({ id: 'open-settings', label: 'Open navigation settings' })
+  ctxMenu.value = { x: event.clientX, y: event.clientY, sectionId, items }
+}
+
+function onMenuSelect(id) {
+  const sectionId = ctxMenu.value?.sectionId
+  if (id === 'hide' && sectionId) {
+    navVisibility.hide(sectionId)
+  } else if (id === 'show-all') {
+    for (const s of navVisibility.sections) {
+      if (!navVisibility.isVisible(s.id)) navVisibility.show(s.id)
+    }
+  } else if (id === 'open-settings') {
+    // Reveal Admin so the user can find the Settings panel even if it
+    // wasn't visible before. Then jump to admin/settings.
+    navVisibility.show('admin')
+    sectionTabs.setTab('admin', 'settings')
+    appNav.requestNav({ navId: 'settings' })
+    emit('update:activeNav', 'admin')
+  }
+}
+
+function closeMenu() { ctxMenu.value = null }
 </script>
 
 <template>
@@ -294,56 +273,56 @@ const filteredNavTree = computed(() => {
       </div>
     </div>
 
-    <!-- EXPANDED: Navigation tree -->
+    <!-- EXPANDED: Section list -->
     <div class="nav-scroll" v-if="!sidebarCollapsed">
-      <!-- When the user is searching but no items match, surface that
-           explicitly so it doesn't look like the sidebar broke. -->
-      <div v-if="navSearch.active && filteredNavTree.length === 0" class="nav-empty">
+      <div
+        v-if="navSearch.active && filteredSections.length === 0"
+        class="nav-empty"
+      >
         No menu items match <span class="nav-empty-q">"{{ navSearch.query }}"</span>.
       </div>
 
-      <template v-for="section in filteredNavTree" :key="section.id">
-        <div class="section-header" @click="toggleSection(section.id)">
-          <svg class="section-chevron" :class="{ open: !isCollapsed(section.id) || navSearch.active }" width="8" height="8" viewBox="0 0 8 8">
-            <path d="M2 1.5l3 2.5-3 2.5" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <template v-for="section in filteredSections" :key="section.id">
+        <div
+          class="section-row"
+          :class="{ active: activeNav === section.id }"
+          :data-testid="`sidebar-section-${section.id}`"
+          @click="onSectionClick(section)"
+          @contextmenu.prevent="openSectionMenu($event, section.id)"
+        >
+          <svg class="section-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path :d="section.icon" />
           </svg>
           <span class="section-label">{{ section.label }}</span>
+          <span
+            v-if="sectionBadge(section.id)"
+            class="badge"
+            :class="`badge-${sectionBadge(section.id).tone}`"
+          >{{ sectionBadge(section.id).n }}</span>
         </div>
 
-        <!-- Force every section open while searching so the user can see
-             every match even in collapsed sections. -->
-        <div v-show="!isCollapsed(section.id) || navSearch.active" class="section-items">
-          <template v-for="item in section.items" :key="item.id">
-            <div
-              v-if="!item.pro || isAllowed(item.id)"
-              class="nav-item"
-              :class="{ active: activeNav === item.id }"
-              @click="emit('update:activeNav', item.id)"
-            >
-              <div class="nav-dot" :class="{ active: activeNav === item.id }"></div>
-              <span class="nav-label">
-                <template v-for="(seg, i) in navSearch.highlight(item.label)" :key="i">
-                  <mark v-if="seg.hit" class="nav-label-hit">{{ seg.text }}</mark>
-                  <template v-else>{{ seg.text }}</template>
-                </template>
-              </span>
-              <span v-if="item.id === 'alerts' && criticalCount > 0" class="badge badge-red">{{ criticalCount }}</span>
-              <span v-if="item.id === 'alerts' && warningCount > 0 && criticalCount === 0" class="badge badge-amber">{{ warningCount }}</span>
-            </div>
-            <div
-              v-else
-              class="nav-item pro-locked"
-            >
-              <div class="nav-dot"></div>
-              <span class="nav-label">
-                <template v-for="(seg, i) in navSearch.highlight(item.label)" :key="i">
-                  <mark v-if="seg.hit" class="nav-label-hit">{{ seg.text }}</mark>
-                  <template v-else>{{ seg.text }}</template>
-                </template>
-              </span>
-              <span class="pro-badge">PRO</span>
-            </div>
-          </template>
+        <!-- Search hits are surfaced as a flat list of tab rows under
+             the section. Clicking jumps straight to that tab. -->
+        <div
+          v-if="navSearch.active && section.matchedTabs"
+          class="section-hits"
+        >
+          <div
+            v-for="tab in section.matchedTabs"
+            :key="`${section.id}.${tab.id}`"
+            class="tab-hit"
+            :class="{ active: activeNav === section.id && sectionTabs.activeTab(section.id) === tab.id, 'pro-locked': tab.pro && !isAllowed(tab.id) }"
+            :data-testid="`sidebar-hit-${section.id}-${tab.id}`"
+            @click.stop="onTabHit(section.id, tab.id)"
+          >
+            <span class="tab-hit-label">
+              <template v-for="(seg, i) in navSearch.highlight(tab.label)" :key="i">
+                <mark v-if="seg.hit" class="nav-label-hit">{{ seg.text }}</mark>
+                <template v-else>{{ seg.text }}</template>
+              </template>
+            </span>
+            <span v-if="tab.pro" class="pro-badge">PRO</span>
+          </div>
         </div>
       </template>
     </div>
@@ -351,10 +330,10 @@ const filteredNavTree = computed(() => {
     <!-- COLLAPSED: Icon-only navigation -->
     <div class="nav-scroll icon-nav" v-if="sidebarCollapsed">
       <div
-        v-for="section in navTree"
+        v-for="section in visibleSections"
         :key="section.id"
         class="icon-item"
-        :class="{ active: section.items.some(i => activeNav === i.id), 'popover-open': popoverSection === section.id }"
+        :class="{ active: activeNav === section.id, 'popover-open': popoverSection === section.id }"
         :title="section.label"
         @click.stop="openPopover(section.id, $event)"
       >
@@ -362,11 +341,10 @@ const filteredNavTree = computed(() => {
           <path :d="section.icon" />
         </svg>
       </div>
-
     </div>
 
-    <!-- Popover for collapsed section, teleported so overflow:hidden on the
-         sidebar root doesn't clip it. -->
+    <!-- Popover for collapsed section — lists tabs so the user can jump
+         to a specific tab without first expanding the sidebar. -->
     <Teleport to="body">
       <div
         v-if="popoverSection"
@@ -374,16 +352,19 @@ const filteredNavTree = computed(() => {
         :style="{ top: popoverTop + 'px', left: popoverLeft + 'px' }"
         @click.stop
       >
-        <div class="popover-header">{{ getPopoverLabel() }}</div>
+        <div class="popover-header">{{ popoverLabel() }}</div>
         <div
-          v-for="item in getPopoverItems()"
-          :key="item.id"
+          v-for="tab in popoverTabs()"
+          :key="tab.id"
           class="popover-item"
-          :class="{ active: activeNav === item.id, 'pro-locked': item.pro && !isAllowed(item.id) }"
-          @click="emit('update:activeNav', item.id); popoverSection = null"
+          :class="{
+            active: activeNav === popoverSection && sectionTabs.activeTab(popoverSection) === tab.id,
+            'pro-locked': tab.pro && !isAllowed(tab.id),
+          }"
+          @click="onPopoverTabClick(popoverSection, tab.id)"
         >
-          {{ item.label }}
-          <span v-if="item.pro && !isAllowed(item.id)" class="pro-badge">PRO</span>
+          {{ tab.label }}
+          <span v-if="tab.pro && !isAllowed(tab.id)" class="pro-badge">PRO</span>
         </div>
       </div>
     </Teleport>
@@ -404,6 +385,42 @@ const filteredNavTree = computed(() => {
         PRO: Attach runbook
       </div>
     </div>
+
+    <!-- §C4 Density quick-pick in the sidebar footer. One-click access
+         so users don't have to open Settings just to tighten spacing. -->
+    <div
+      class="sidebar-footer"
+      v-if="!sidebarCollapsed"
+      data-testid="sidebar-footer"
+    >
+      <div class="density-selector" :title="`UI density: ${appearance.density}`">
+        <button
+          v-for="d in ['compact', 'normal', 'comfortable']"
+          :key="d"
+          type="button"
+          class="density-btn"
+          :class="{ active: appearance.density === d }"
+          :title="`${d.charAt(0).toUpperCase() + d.slice(1)} density`"
+          :data-testid="`density-${d}`"
+          @click="appearance.setDensity(d)"
+        >
+          <span v-if="d === 'compact'">⇕</span>
+          <span v-else-if="d === 'normal'">⊞</span>
+          <span v-else>⊟</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- §C3 Right-click context menu on section headers -->
+    <ContextMenu
+      v-if="ctxMenu"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :items="ctxMenu.items"
+      test-id="sidebar-section-menu"
+      @select="onMenuSelect"
+      @close="closeMenu"
+    />
   </div>
 </template>
 
@@ -419,326 +436,358 @@ const filteredNavTree = computed(() => {
   position: relative;
   transition: width 0.2s ease;
 }
-.sidebar-collapsed {
-  width: 48px;
-}
+.sidebar-collapsed { width: 48px; }
 
-/* Collapse toggle */
 .collapse-toggle {
   position: absolute;
   top: 8px;
-  right: 6px;
+  right: -10px;
   width: 20px;
   height: 20px;
+  border-radius: 50%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text2);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--text3);
-  border-radius: 4px;
   z-index: 10;
-  transition: background 0.15s, color 0.15s;
+  transition: all 0.15s;
 }
 .collapse-toggle:hover { background: var(--bg4); color: var(--text); }
 .collapse-toggle svg { transition: transform 0.2s ease; }
 .collapse-toggle svg.flipped { transform: rotate(180deg); }
 
-.sidebar-collapsed .collapse-toggle { right: auto; left: 50%; transform: translateX(-50%); top: 6px; }
-
 .cluster-area { padding: 10px 10px 6px; }
 
-/* Collapsed cluster icon */
 .cluster-area-mini {
+  padding: 10px 0 6px;
   display: flex;
   justify-content: center;
-  padding: 34px 0 8px;
   cursor: pointer;
 }
 
 .cluster-selector {
-  padding: 8px 10px;
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  border-radius: var(--r2);
-  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: border-color 0.15s, background 0.15s;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s;
 }
-.cluster-selector:hover { border-color: rgba(255,255,255,0.18); background: var(--bg4); }
-
+.cluster-selector:hover { background: var(--bg4); }
+.cluster-selector.open { border-color: var(--accent2); }
 .cluster-icon {
-  width: 24px; height: 24px; border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 22px; height: 22px;
+  background: var(--accent2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 .cluster-info { flex: 1; min-width: 0; }
-.cluster-name { font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cluster-sub { font-size: 10px; color: var(--text3); margin-top: 1px; }
-.chevron-down { color: var(--text3); flex-shrink: 0; transition: transform 0.2s ease; }
-.chevron-down.flipped { transform: rotate(180deg); }
-
-.cluster-selector.open { border-color: var(--accent); background: var(--bg4); }
-
-/* Context dropdown */
-.cluster-area { position: relative; }
-
-.ctx-dropdown {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 10px;
-  right: 10px;
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  border-radius: var(--r2);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-  z-index: 100;
-  overflow: hidden;
-  animation: ctx-slide 0.15s ease-out;
-}
-@keyframes ctx-slide { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-
-.ctx-dropdown-header {
-  padding: 8px 12px 6px;
-  font-size: 10px;
+.cluster-name {
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text3);
-  border-bottom: 1px solid var(--border);
-}
-.ctx-loading { padding: 12px; font-size: 11px; color: var(--text3); }
-
-.ctx-list { max-height: 200px; overflow-y: auto; }
-
-.ctx-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.ctx-item:hover { background: var(--bg4); }
-.ctx-item.active { background: rgba(79,142,247,0.08); }
-.ctx-item.switching { opacity: 0.5; pointer-events: none; }
-
-.ctx-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
-.ctx-dot.active { background: var(--accent); }
-
-.ctx-details { flex: 1; min-width: 0; }
-.ctx-name { font-size: 12px; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ctx-cluster { font-size: 10px; color: var(--text3); margin-top: 1px; }
-
-.ctx-badge {
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--accent);
-  background: rgba(79,142,247,0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-/* Scrollable nav */
-.nav-scroll {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 4px 0 8px;
-}
-
-/* Section headers */
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px 4px;
-  cursor: pointer;
-  user-select: none;
-}
-.section-header:hover .section-label { color: var(--text2); }
-
-.section-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--text3);
-  text-transform: uppercase;
-  transition: color 0.15s;
-}
-
-.section-chevron {
-  color: var(--text3);
-  transition: transform 0.2s ease;
-  flex-shrink: 0;
-}
-.section-chevron.open { transform: rotate(90deg); }
-
-/* Nav items */
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 12px 5px 26px;
-  cursor: pointer;
-  transition: background 0.1s, color 0.1s;
-  color: var(--text2);
-  font-size: 12.5px;
-  font-weight: 400;
-  position: relative;
-}
-.nav-item:hover { background: var(--bg3); color: var(--text); }
-.nav-item.active { background: rgba(79,142,247,0.08); color: var(--accent2); }
-.nav-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 3px; bottom: 3px;
-  width: 2px;
-  background: var(--accent);
-  border-radius: 0 2px 2px 0;
-}
-
-.nav-dot {
-  width: 4px; height: 4px; border-radius: 50%;
-  background: var(--text3);
-  flex-shrink: 0;
-  transition: background 0.15s;
-}
-.nav-dot.active { background: var(--accent); }
-
-.nav-label {
-  flex: 1;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.nav-label-hit {
-  background: rgba(79,142,247,0.22);
-  color: var(--accent2);
-  border-radius: 2px;
-  padding: 0 1px;
-  font-weight: 600;
-}
-.nav-item.active .nav-label-hit {
-  background: rgba(79,142,247,0.35);
-  color: #fff;
-}
+.cluster-sub { font-size: 10px; color: var(--text3); }
+.chevron-down { color: var(--text3); transition: transform 0.15s; flex-shrink: 0; }
+.chevron-down.flipped { transform: rotate(180deg); }
 
-.nav-empty {
-  padding: 12px 16px;
-  font-size: 11.5px;
-  color: var(--text3);
-  font-style: italic;
-}
-.nav-empty-q {
-  color: var(--text2);
-  font-style: normal;
-  font-family: var(--mono);
-}
-
-/* AI Context */
-.ai-context-card {
-  margin: 6px 10px 10px;
-  background: rgba(79,142,247,0.06);
-  border: 1px solid rgba(79,142,247,0.15);
-  border-radius: 8px;
-  padding: 9px 10px;
-  flex-shrink: 0;
-}
-.ai-context-header { font-size: 10px; font-weight: 600; color: var(--accent2); margin-bottom: 3px; display: flex; align-items: center; gap: 4px; }
-.ai-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
-.ai-context-body { font-size: 10.5px; color: var(--text3); line-height: 1.5; }
-.ai-context-action { margin-top: 5px; font-size: 10.5px; color: var(--accent2); cursor: pointer; }
-.ai-context-action.pro-label { color: var(--purple); opacity: 0.5; cursor: default; }
-
-/* Pro-locked nav items */
-.nav-item.pro-locked { opacity: 0.4; cursor: default; }
-.nav-item.pro-locked:hover { background: transparent; color: var(--text2); }
-.pro-badge {
-  font-size: 8px; font-weight: 700; letter-spacing: 0.06em;
-  color: var(--purple); background: rgba(167, 139, 250, 0.12);
-  padding: 1px 4px; border-radius: 3px; margin-left: auto;
-}
-
-/* Icon-only navigation (collapsed) */
-.icon-nav {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 0;
-  position: relative;
-}
-
-.icon-item {
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--text3);
-  transition: background 0.15s, color 0.15s;
-}
-.icon-item:hover { background: var(--bg3); color: var(--text); }
-.icon-item.active { background: rgba(79,142,247,0.1); color: var(--accent2); }
-.icon-item.popover-open { background: var(--bg4); color: var(--text); }
-
-@keyframes pop-in { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
-</style>
-
-<!-- Popover styles must be unscoped because the popover is teleported to
-     <body> and would otherwise lose Vue's data-v-xxxxx scoping attribute. -->
-<style>
-.sidebar-popover {
-  position: fixed;
-  min-width: 180px;
+.ctx-dropdown {
+  margin-top: 4px;
   background: var(--bg3);
-  border: 1px solid var(--border2);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  z-index: 1100;
+  border: 1px solid var(--border);
+  border-radius: 6px;
   overflow: hidden;
-  animation: pop-in 0.12s ease-out;
 }
-
-.sidebar-popover .popover-header {
-  padding: 8px 12px 6px;
+.ctx-dropdown-header {
+  padding: 6px 10px;
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
   text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--text3);
+  background: var(--bg2);
   border-bottom: 1px solid var(--border);
 }
-
-.sidebar-popover .popover-item {
-  padding: 7px 12px;
-  font-size: 12.5px;
-  color: var(--text2);
+.ctx-loading { padding: 10px; font-size: 12px; color: var(--text3); }
+.ctx-list { max-height: 240px; overflow-y: auto; }
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
   cursor: pointer;
+  transition: background 0.15s;
+}
+.ctx-item:hover { background: var(--bg4); }
+.ctx-item.active { background: rgba(79, 142, 247, 0.1); }
+.ctx-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text3);
+  flex-shrink: 0;
+}
+.ctx-dot.active { background: var(--accent2); }
+.ctx-details { flex: 1; min-width: 0; }
+.ctx-name {
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctx-cluster {
+  font-size: 10px;
+  color: var(--text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ctx-badge {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent2);
+}
+
+.nav-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+.nav-scroll.icon-nav { padding: 6px 0; }
+
+.section-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--text2);
+  font-size: 12.5px;
+  font-weight: 500;
+  margin-bottom: 1px;
   transition: background 0.1s, color 0.1s;
+}
+.section-row:hover {
+  background: var(--bg3);
+  color: var(--text);
+}
+.section-row.active {
+  background: rgba(79, 142, 247, 0.12);
+  color: var(--accent2);
+}
+.section-icon { flex-shrink: 0; }
+.section-label { flex: 1; min-width: 0; }
+.badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 9px;
+  flex-shrink: 0;
+}
+.badge-red { background: rgba(208, 90, 90, 0.18); color: var(--red, #d05a5a); }
+.badge-amber { background: rgba(212, 162, 86, 0.18); color: var(--amber, #d4a256); }
+
+.section-hits {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 6px 22px;
+}
+.tab-hit {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  color: var(--text2);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
 }
-.sidebar-popover .popover-item:hover { background: var(--bg4); color: var(--text); }
-.sidebar-popover .popover-item.active { background: rgba(79, 142, 247, 0.08); color: var(--accent2); }
-.sidebar-popover .popover-item.pro-locked { opacity: 0.4; cursor: default; }
-.sidebar-popover .popover-item.pro-locked:hover { background: transparent; }
+.tab-hit:hover {
+  background: var(--bg3);
+  color: var(--text);
+}
+.tab-hit.active {
+  background: rgba(79, 142, 247, 0.1);
+  color: var(--accent2);
+}
+.tab-hit.pro-locked { opacity: 0.6; cursor: default; }
+.tab-hit-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.sidebar-popover .pro-badge {
+.nav-label-hit {
+  background: rgba(212, 162, 86, 0.28);
+  color: var(--text);
+  padding: 0;
+  border-radius: 2px;
+}
+.nav-empty {
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--text3);
+}
+.nav-empty-q { color: var(--text2); font-weight: 500; }
+
+.icon-item {
+  width: 100%;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text2);
+  transition: background 0.1s, color 0.1s;
+  position: relative;
+}
+.icon-item:hover {
+  background: var(--bg3);
+  color: var(--text);
+}
+.icon-item.active {
+  background: rgba(79, 142, 247, 0.12);
+  color: var(--accent2);
+}
+.icon-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--accent2);
+}
+.icon-item.popover-open { background: var(--bg3); color: var(--text); }
+
+.sidebar-popover {
+  position: fixed;
+  z-index: 100;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  min-width: 180px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+.popover-header {
+  padding: 6px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text3);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.popover-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text2);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.popover-item:hover {
+  background: var(--bg3);
+  color: var(--text);
+}
+.popover-item.active {
+  background: rgba(79, 142, 247, 0.12);
+  color: var(--accent2);
+}
+.popover-item.pro-locked { opacity: 0.6; cursor: default; }
+
+.pro-badge {
   font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   padding: 1px 5px;
   border-radius: 3px;
-  background: rgba(245, 166, 35, 0.15);
-  color: var(--amber);
+  background: rgba(208, 156, 88, 0.16);
+  color: #d09c58;
+}
+
+.ai-context-card {
+  margin: 8px 10px 12px;
+  padding: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.ai-context-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.ai-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent2);
+  box-shadow: 0 0 6px var(--accent2);
+}
+.ai-context-body {
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 6px;
+}
+.ai-context-action {
+  font-size: 11px;
+  color: var(--accent2);
+  cursor: pointer;
+}
+.ai-context-action.pro-label { color: var(--amber, #d4a256); cursor: default; }
+
+/* §C4 — density picker pinned to the bottom of the sidebar */
+.sidebar-footer {
+  padding: 6px 10px 10px;
+  border-top: 1px solid var(--border, #2a2a2a);
+  display: flex;
+  justify-content: center;
+}
+.density-selector {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg3, #222);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 6px;
+}
+.density-btn {
+  background: none;
+  border: none;
+  color: var(--text3, #5a5a5a);
+  cursor: pointer;
+  width: 26px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  border-radius: 4px;
+  transition: background 0.1s, color 0.1s;
+  font-family: inherit;
+}
+.density-btn:hover { background: var(--bg4, #2a2a2a); color: var(--text, #e5e5e5); }
+.density-btn.active {
+  background: rgba(79, 142, 247, 0.16);
+  color: var(--accent2, #4a9eff);
 }
 </style>
