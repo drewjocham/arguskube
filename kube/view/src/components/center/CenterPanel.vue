@@ -24,6 +24,7 @@ import EventStream from '../cluster/EventStream.vue'
 import PodList from '../workloads/PodList.vue'
 import DeploymentList from '../workloads/DeploymentList.vue'
 import ConfigMapList from '../config/ConfigMapList.vue'
+import SecretsView from '../config/SecretsView.vue'
 import ServiceList from '../network/ServiceList.vue'
 import VolumeList from '../storage/VolumeList.vue'
 import JobCronJobList from '../workloads/JobCronJobList.vue'
@@ -293,9 +294,10 @@ const adminTabs = SECTIONS.admin.tabs
       />
       <div class="resource-scroll-area">
         <ConfigMapList
-          v-if="currentTab === 'configmaps' || currentTab === 'secrets'"
+          v-if="currentTab === 'configmaps'"
           :type="currentTab"
         />
+        <SecretsView v-else-if="currentTab === 'secrets'" />
         <HpaList v-else-if="currentTab === 'hpas'" />
       </div>
     </template>
