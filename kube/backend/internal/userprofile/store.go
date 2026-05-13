@@ -98,14 +98,26 @@ func (s *Store) RecordNav(ctx context.Context, viewID, kubeCtx, namespace string
 	return nil
 }
 
-// pruneOld keeps the table bounded at MaxRetainedActivity by deleting
-// rows older than the (MaxRetainedActivity+1)-th most-recent one.
+// pruneOld keeps the table bounded at MaxRetainedActivity rows. We use
+// an OFFSET-based range delete instead of `NOT IN` against a large
+// subquery — the latter is O(N) per call (CI hit a 120s timeout on
+// 5050 inserts), the former is O(log N + deleted_rows) because the
+// PRIMARY KEY index gives constant-time positional lookup and the
+// delete is a single range scan.
+//
+// The subquery picks the smallest id we want to KEEP — the row at
+// offset (MaxRetainedActivity - 1) in id-desc order, i.e. the
+// MaxRetainedActivity-th newest. Everything below that id gets pruned.
+//
+// When the table has fewer than MaxRetainedActivity rows the subquery
+// returns NULL and `id < NULL` is always NULL → no rows are deleted,
+// which is the correct no-op.
 func (s *Store) pruneOld(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 		DELETE FROM user_activity
-		WHERE id NOT IN (
-			SELECT id FROM user_activity ORDER BY id DESC LIMIT ?
-		)`, MaxRetainedActivity)
+		WHERE id < (
+			SELECT id FROM user_activity ORDER BY id DESC LIMIT 1 OFFSET ?
+		)`, MaxRetainedActivity-1)
 	return err
 }
 

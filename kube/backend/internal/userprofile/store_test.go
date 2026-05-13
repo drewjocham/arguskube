@@ -85,7 +85,9 @@ func TestStore_PruneKeepsRingBufferBounded(t *testing.T) {
 	s := NewStore(db, discardLogger())
 	ctx := context.Background()
 	// Insert MaxRetainedActivity + 50 rows; only the last MaxRetainedActivity
-	// should survive.
+	// should survive. Also regression-locks the SQL performance: the prune
+	// query must be O(log N), not O(N) — see pruneOld's comment for the
+	// 120s CI timeout this used to hit.
 	for i := 0; i < MaxRetainedActivity+50; i++ {
 		if err := s.RecordNav(ctx, "v", "", ""); err != nil {
 			t.Fatalf("record %d: %v", i, err)
@@ -97,6 +99,33 @@ func TestStore_PruneKeepsRingBufferBounded(t *testing.T) {
 	}
 	if n != MaxRetainedActivity {
 		t.Errorf("retention sweep failed: want %d rows, got %d", MaxRetainedActivity, n)
+	}
+}
+
+// Lock the off-by-one boundary. With exactly MaxRetainedActivity rows
+// the prune is a no-op; with one more we delete exactly one row.
+func TestStore_PruneBoundary(t *testing.T) {
+	db := newTestDB(t)
+	s := NewStore(db, discardLogger())
+	ctx := context.Background()
+
+	for i := 0; i < MaxRetainedActivity; i++ {
+		if err := s.RecordNav(ctx, "v", "", ""); err != nil {
+			t.Fatalf("record %d: %v", i, err)
+		}
+	}
+	var n int
+	_ = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM user_activity").Scan(&n)
+	if n != MaxRetainedActivity {
+		t.Fatalf("at cap: want %d, got %d", MaxRetainedActivity, n)
+	}
+
+	if err := s.RecordNav(ctx, "v", "", ""); err != nil {
+		t.Fatalf("over-cap record: %v", err)
+	}
+	_ = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM user_activity").Scan(&n)
+	if n != MaxRetainedActivity {
+		t.Errorf("after +1: want %d (one row pruned), got %d", MaxRetainedActivity, n)
 	}
 }
 
