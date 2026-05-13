@@ -103,6 +103,67 @@ function toggleFieldSection(key) {
   openSections.value[key] = !openSections.value[key]
 }
 
+// ── Field drawer + quick-select state ────────────────────────────
+// The full per-value field checklist lives in a drawer triggered by
+// the Fields button. Quick selectors give a one-click path for the
+// three filters users actually reach for most: namespace, pod,
+// container. Severity is a hint-only filter — we substring-match
+// the message because no shared "level" field exists across all
+// stacks. Each selector REPLACES any existing filter for its field
+// rather than appending, so toggling between values doesn't pile up.
+
+const fieldsOpen = ref(false)
+const quickNamespace = ref('')
+const quickPod = ref('')
+const quickContainer = ref('')
+const quickSeverity = ref('')
+
+// Derive selector options from the same data the fields drawer uses,
+// so the choices match what's actually in the log stream.
+const availableNamespaces = computed(() =>
+  (fieldSections.value['kubernetes.pod_namespace']?.items || [])
+    .map(it => parseFieldLabel(it.label).value)
+    .filter(Boolean)
+    .sort()
+)
+const availablePods = computed(() =>
+  (fieldSections.value['kubernetes.pod_name']?.items || [])
+    .map(it => parseFieldLabel(it.label).value)
+    .filter(Boolean)
+    .sort()
+)
+const availableContainers = computed(() =>
+  (fieldSections.value['kubernetes.container_name']?.items || [])
+    .map(it => parseFieldLabel(it.label).value)
+    .filter(Boolean)
+    .sort()
+)
+
+const totalCheckedFields = computed(() => {
+  let n = 0
+  for (const sec of Object.values(fieldSections.value)) {
+    for (const it of sec.items) if (it.checked) n++
+  }
+  return n
+})
+
+function setQuickFilter(field, value) {
+  // Remove any existing filter for this field so the dropdown drives
+  // a clean replace, not an append. Then add the new one if non-empty.
+  const removed = filters.value.filter(f => f.field === field)
+  filters.value = filters.value.filter(f => f.field !== field)
+  for (const r of removed) syncSidebarCheckbox(field, r.value, false)
+  if (value) {
+    filters.value.push({ field, value })
+    syncSidebarCheckbox(field, value, true)
+  }
+}
+
+function onQuickNamespaceChange() { setQuickFilter('kubernetes.pod_namespace', quickNamespace.value) }
+function onQuickPodChange() { setQuickFilter('kubernetes.pod_name', quickPod.value) }
+function onQuickContainerChange() { setQuickFilter('kubernetes.container_name', quickContainer.value) }
+function onQuickSeverityChange() { setQuickFilter('level', quickSeverity.value) }
+
 // Filter actions.
 function removeFilter(index) {
   // Sync the corresponding sidebar checkbox so the UI stays consistent.
@@ -389,34 +450,82 @@ function fixQuery() {
 
 <template>
   <div class="log-explorer">
-    <!-- Stream Fields Sidebar -->
-    <div class="explorer-sidebar">
-      <div class="sidebar-header">
-        Stream fields
-        <div class="sidebar-actions">
-          <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 3h8M2 6h8M2 9h8" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-        </div>
-      </div>
-
-      <div v-for="(section, key) in fieldSections" :key="key" class="field-group">
-        <div class="field-header" @click="toggleFieldSection(key)">
-          <div class="field-icon">{{ section.open ? '-' : '+' }}</div>
-          {{ key }} <span class="count">(49)</span>
-          <span v-if="section.items.some(i => i.checked)" class="field-badge">{{ section.items.filter(i => i.checked).length }}</span>
-        </div>
-        <div v-if="section.open && section.items.length" class="field-items">
-          <label v-for="(item, i) in section.items" :key="i" class="field-checkbox">
-            <input type="checkbox" v-model="item.checked" @change="toggleFilterFromCheckbox(key, item)" /> {{ item.label }}
-          </label>
-        </div>
-      </div>
-    </div>
-
-    <!-- Main Explorer Area -->
+    <!-- Main explorer takes the full width — the per-value Stream
+         Fields list moved into a drawer triggered by the Fields button
+         in the toolbar below, so logs get the room. -->
     <div class="explorer-main">
-      
+
       <!-- Query Builder -->
       <div class="query-area">
+        <!-- Quick selectors — common filters at one click. Each REPLACES
+             its own field's filter (no piling up); the Fields drawer is
+             still there for multi-value or any-field selection. -->
+        <div class="quick-filters">
+          <label class="quick-pick">
+            <span class="quick-pick-label">Namespace</span>
+            <select
+              class="quick-select"
+              v-model="quickNamespace"
+              @change="onQuickNamespaceChange"
+            >
+              <option value="">All</option>
+              <option v-for="ns in availableNamespaces" :key="ns" :value="ns">{{ ns }}</option>
+            </select>
+          </label>
+          <label class="quick-pick">
+            <span class="quick-pick-label">Pod</span>
+            <select
+              class="quick-select"
+              v-model="quickPod"
+              @change="onQuickPodChange"
+              :disabled="!availablePods.length"
+            >
+              <option value="">All</option>
+              <option v-for="p in availablePods" :key="p" :value="p">{{ p }}</option>
+            </select>
+          </label>
+          <label class="quick-pick">
+            <span class="quick-pick-label">Container</span>
+            <select
+              class="quick-select"
+              v-model="quickContainer"
+              @change="onQuickContainerChange"
+              :disabled="!availableContainers.length"
+            >
+              <option value="">All</option>
+              <option v-for="c in availableContainers" :key="c" :value="c">{{ c }}</option>
+            </select>
+          </label>
+          <label class="quick-pick">
+            <span class="quick-pick-label">Severity</span>
+            <select
+              class="quick-select"
+              v-model="quickSeverity"
+              @change="onQuickSeverityChange"
+            >
+              <option value="">All</option>
+              <option value="error">Error</option>
+              <option value="warn">Warn</option>
+              <option value="info">Info</option>
+              <option value="debug">Debug</option>
+            </select>
+          </label>
+          <div class="quick-spacer"></div>
+          <button
+            class="fields-trigger"
+            :class="{ active: fieldsOpen }"
+            @click="fieldsOpen = !fieldsOpen"
+            :title="'Open the full Stream fields drawer (' + totalCheckedFields + ' selected)'"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 3h8M2 6h8M2 9h8" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+            Fields
+            <span v-if="totalCheckedFields > 0" class="fields-badge">{{ totalCheckedFields }}</span>
+          </button>
+        </div>
+
+        <!-- Query input + Fix + Limit + Execute all on ONE flex row.
+             No more absolute-positioned Fix button colliding with the
+             input text at long queries or different font scales. -->
         <div class="query-row">
           <div class="query-input-wrap">
             <span class="input-label">Query ({{ queryTime }}ms)</span>
@@ -430,11 +539,6 @@ function fixQuery() {
               autocomplete="off"
               spellcheck="false"
             />
-            <button
-              class="query-wand"
-              @click="fixQuery"
-              title="Fix common syntax issues in the query (balance braces/quotes, normalize curly quotes, quote bare values)"
-            >✨ Fix</button>
             <div v-if="queryFocused && querySuggestions.length" class="suggestions-dropdown">
               <div
                 v-for="(s, i) in querySuggestions"
@@ -451,10 +555,20 @@ function fixQuery() {
               </div>
             </div>
           </div>
+          <button
+            class="query-fix"
+            @click="fixQuery"
+            title="Fix common syntax issues in the query (balance braces/quotes, normalize curly quotes, quote bare values)"
+          >✨ Fix</button>
           <div class="limit-input-wrap">
             <span class="input-label">Limit</span>
             <input type="number" class="limit-input" v-model.number="limit" />
           </div>
+          <button
+            class="action-btn primary query-execute"
+            :class="{ executing }"
+            @click="executeQuery"
+          >{{ executing ? '⏳ Running…' : '▶ Execute' }}</button>
         </div>
 
         <div v-if="lastFixNotes.length" class="fix-notes">
@@ -494,9 +608,9 @@ function fixQuery() {
               <span v-if="!streamingEnabled && droppedWhilePaused > 0" class="stream-count">+{{ droppedWhilePaused }}</span>
             </button>
           </div>
-          <div class="action-right">
-            <button class="action-btn primary" :class="{ executing }" @click="executeQuery">{{ executing ? '⏳ Running…' : '▶ Execute' }}</button>
-          </div>
+          <!-- Execute moved up next to the query input so the
+               primary action sits with the primary input. The Live /
+               Filters / Save controls remain on this secondary row. -->
         </div>
 
         <div class="active-filters" v-if="filters.length">
@@ -632,12 +746,49 @@ function fixQuery() {
         </div>
       </div>
     </div>
+
+    <!-- Stream Fields drawer — slides in from the right when the user
+         needs the full per-value picker. Teleported to body so the
+         backdrop covers the whole window. -->
+    <Teleport to="body">
+      <div
+        v-if="fieldsOpen"
+        class="fields-drawer-backdrop"
+        @click.self="fieldsOpen = false"
+        @keydown.escape="fieldsOpen = false"
+      >
+        <div class="fields-drawer" role="dialog" aria-label="Stream fields">
+          <div class="fields-header">
+            <span>Stream fields</span>
+            <button class="fields-close" @click="fieldsOpen = false" title="Close (esc)">×</button>
+          </div>
+          <div class="fields-body">
+            <div v-for="(section, key) in fieldSections" :key="key" class="field-group">
+              <div class="field-header" @click="toggleFieldSection(key)">
+                <div class="field-icon">{{ section.open ? '−' : '+' }}</div>
+                {{ key }} <span class="count">({{ section.items.length }})</span>
+                <span v-if="section.items.some(i => i.checked)" class="field-badge">{{ section.items.filter(i => i.checked).length }}</span>
+              </div>
+              <div v-if="section.open && section.items.length" class="field-items">
+                <label v-for="(item, i) in section.items" :key="i" class="field-checkbox">
+                  <input type="checkbox" v-model="item.checked" @change="toggleFilterFromCheckbox(key, item)" /> {{ item.label }}
+                </label>
+              </div>
+              <div v-if="section.open && !section.items.length" class="field-empty">
+                No values yet — run a query.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
 .log-explorer {
   display: flex;
+  flex-direction: column;
   height: 100%;
   background: var(--bg);
   border-radius: var(--r);
@@ -646,24 +797,124 @@ function fixQuery() {
   font-family: var(--font);
 }
 
-/* Sidebar */
-.explorer-sidebar {
-  width: 260px;
+/* Quick-filter strip — common selectors sit above the query row so
+   the most-used filters are a single click away. The Fields trigger
+   on the right opens the full per-value drawer for everything else. */
+.quick-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.quick-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.quick-pick-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text3);
+}
+.quick-select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  max-width: 200px;
+  cursor: pointer;
+}
+.quick-select:focus { outline: none; border-color: var(--accent); }
+.quick-select:disabled { opacity: 0.5; cursor: not-allowed; }
+.quick-spacer { flex: 1; }
+.fields-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.fields-trigger:hover { background: var(--bg4); color: var(--text); }
+.fields-trigger.active {
+  background: rgba(79, 142, 247, 0.14);
+  color: var(--accent2);
+  border-color: rgba(79, 142, 247, 0.35);
+}
+.fields-badge {
+  background: rgba(79, 142, 247, 0.16);
+  color: var(--accent2);
+  padding: 1px 6px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  font-family: var(--mono);
+}
+
+/* Stream Fields drawer — teleported overlay. Slides in from the right
+   on demand. Backdrop catches outside clicks to close. */
+.fields-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 80;
+  display: flex;
+  justify-content: flex-end;
+}
+.fields-drawer {
+  width: 320px;
   background: var(--bg2);
-  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  height: 100%;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4);
+  animation: fields-slide-in 0.18s ease-out;
 }
-.sidebar-header {
+@keyframes fields-slide-in {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.fields-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 12px 14px;
   font-size: 13px;
   font-weight: 500;
   color: var(--text);
   border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
 }
-.sidebar-actions { color: var(--text3); cursor: pointer; }
+.fields-close {
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 6px;
+}
+.fields-close:hover { color: var(--text); }
+.fields-body {
+  flex: 1;
+  overflow-y: auto;
+}
+.field-empty {
+  padding: 8px 14px 10px;
+  font-size: 11.5px;
+  color: var(--text3);
+  font-style: italic;
+}
 
 .field-group {
   border-bottom: 1px solid var(--border);
@@ -713,13 +964,20 @@ function fixQuery() {
   border-bottom: 1px solid var(--border);
   background: var(--bg2);
 }
+/* Query row: a single horizontal flex group containing
+   [query input] [Fix] [Limit] [Execute]. Every control aligns on the
+   same baseline because nothing here is absolute-positioned anymore.
+   The previous layout floated the Fix button inside the input wrap,
+   which crashed against long queries and reflowed under density
+   changes — replaced. */
 .query-row {
   display: flex;
-  gap: 12px;
+  align-items: stretch;
+  gap: 10px;
   margin-bottom: 12px;
 }
 .query-input-wrap { flex: 1; position: relative; }
-.limit-input-wrap { width: 80px; position: relative; }
+.limit-input-wrap { width: 90px; position: relative; }
 .input-label {
   position: absolute;
   top: -6px; left: 8px;
@@ -730,6 +988,8 @@ function fixQuery() {
 }
 .query-input, .limit-input {
   width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -741,21 +1001,32 @@ function fixQuery() {
 }
 .query-input:focus, .limit-input:focus { border-color: var(--accent); }
 
-/* Wand button — sits at the right end of the query input. */
-.query-wand {
-  position: absolute;
-  right: 6px;
-  top: 24px;
+/* Fix button — sibling of the query input, not overlaying it. Same
+   height as the inputs so the row reads as a clean input-group. */
+.query-fix {
+  flex-shrink: 0;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
   background: rgba(167, 139, 250, 0.12);
   border: 1px solid rgba(167, 139, 250, 0.3);
   color: #c4b3fd;
-  padding: 3px 8px;
   border-radius: 4px;
-  font-size: 11px;
+  font: inherit;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.15s;
+  white-space: nowrap;
 }
-.query-wand:hover { background: rgba(167, 139, 250, 0.22); color: #fff; }
+.query-fix:hover { background: rgba(167, 139, 250, 0.22); color: #fff; }
+.query-execute {
+  flex-shrink: 0;
+  align-self: stretch;
+  white-space: nowrap;
+  padding-left: 14px;
+  padding-right: 14px;
+}
 
 /* Suggestions dropdown — appears below the query input on focus. */
 .suggestions-dropdown {

@@ -200,6 +200,13 @@ function statusDotColor(color) {
 
 <style scoped>
 .resource-table {
+  /* flex: 1 + min-width: 0 lets this fill the row in
+     .resource-layout. Without them ResourceTable sized to its
+     content's natural width and looked "oddly stopped" — visible
+     on storageclasses where the parent uses flex-row layout to
+     leave room for an optional ResourceDetail panel. */
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   height: 100%;

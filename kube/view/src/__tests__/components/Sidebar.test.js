@@ -54,11 +54,13 @@ describe('Sidebar.vue — section navigation model', () => {
     setActivePinia(createPinia())
   })
 
-  it('renders one row per visible section (5 by default — core only)', () => {
+  it('renders one row per visible section (6 by default — core only)', () => {
     const wrapper = createWrapper()
     const rows = wrapper.findAll('[data-testid^="sidebar-section-"]')
-    // Core sections per navVisibility defaults.
-    expect(rows.length).toBe(5)
+    // Core sections per navVisibility defaults: monitoring, cluster,
+    // workloads, network, operations, admin. Admin is core because it
+    // owns Settings — hiding it would lock users out.
+    expect(rows.length).toBe(6)
   })
 
   it('shows additional sections after the user enables them', async () => {
@@ -68,7 +70,8 @@ describe('Sidebar.vue — section navigation model', () => {
     vis.show('knowledge')
     await nextTick()
     const rows = wrapper.findAll('[data-testid^="sidebar-section-"]')
-    expect(rows.length).toBe(7)
+    // 6 core + 2 newly enabled.
+    expect(rows.length).toBe(8)
     expect(wrapper.find('[data-testid="sidebar-section-storage"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="sidebar-section-knowledge"]').exists()).toBe(true)
   })

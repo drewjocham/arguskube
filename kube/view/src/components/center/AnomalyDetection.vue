@@ -202,6 +202,34 @@ watch(sensitivitySelect, (val) => {
   else sensitivitySlider.value = 85
 })
 
+// hasLiveData drives the empty-state overlay. The previous code
+// rendered fake baselines + hard-coded "19:00 18:00 17:00…" labels
+// when there were no anomalies, making a configuration problem look
+// like normal operation. Now we hide the chart and show an honest
+// "agent not connected" panel.
+const hasLiveData = computed(() =>
+  Array.isArray(agentAnomalies.value) && agentAnomalies.value.length > 0
+)
+
+// Cause for emptiness, surfaced in the empty-state panel.
+const emptyReason = computed(() => {
+  if (agentLoading.value) return 'loading'
+  if (agentError.value) return 'agent-error'
+  return 'no-data'
+})
+
+const emptyMessage = computed(() => {
+  switch (emptyReason.value) {
+    case 'loading':
+      return 'Connecting to the in-cluster anomaly agent…'
+    case 'agent-error':
+      return `Argus AI agent unreachable: ${agentError.value}. Deploy the in-cluster agent from Admin → Setup & Tools.`
+    case 'no-data':
+    default:
+      return 'No anomalies detected in the current window. Deploy the in-cluster agent and define detection rules to start seeing live data.'
+  }
+})
+
 // ── Dynamic chart paths for the main dashboard SVG ─────────────
 const maxChartPoints = 20
 
@@ -385,10 +413,25 @@ function isAcknowledged(alertId) { return Boolean(incidentForAlert.value[alertId
           <div class="card-header">
             <div class="card-title">System Anomaly Score</div>
             <div class="card-actions">
-              <span class="live-badge"><span class="dot"></span> Real Time</span>
+              <span class="live-badge" :class="{ stale: !hasLiveData }">
+                <span class="dot"></span> {{ hasLiveData ? 'Real Time' : 'No data' }}
+              </span>
             </div>
           </div>
-          <div class="chart-container">
+          <!-- Empty state: honest message replacing the fake baseline
+               + hard-coded clock labels that used to render here. -->
+          <div v-if="!hasLiveData" class="chart-empty" data-testid="anomaly-empty">
+            <div class="chart-empty-title">
+              {{ emptyReason === 'loading' ? 'Loading…' : 'No anomaly data yet' }}
+            </div>
+            <div class="chart-empty-body">{{ emptyMessage }}</div>
+            <div v-if="emptyReason !== 'loading'" class="chart-empty-actions">
+              <button class="empty-action" @click="connectAgent('all')">
+                Retry agent connection
+              </button>
+            </div>
+          </div>
+          <div v-else class="chart-container">
             <!-- Y-Axis Labels -->
             <div class="y-axis">
               <span>100</span>
@@ -792,6 +835,46 @@ function isAcknowledged(alertId) { return Boolean(incidentForAlert.value[alertId
 .live-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green2); animation: pulse 2s infinite; }
 
 .chart-container { display: flex; flex: 1; padding: 16px; gap: 12px; }
+
+/* §empty-state for the anomaly dashboard's main chart card. Replaces
+   the previous hard-coded "fake baseline" rendering. */
+.live-badge.stale { color: var(--text3); }
+.live-badge.stale .dot { background: var(--text3); animation: none; }
+.chart-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  gap: 8px;
+}
+.chart-empty-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+.chart-empty-body {
+  font-size: 12.5px;
+  color: var(--text2);
+  max-width: 480px;
+  line-height: 1.5;
+}
+.chart-empty-actions {
+  margin-top: 8px;
+}
+.empty-action {
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.empty-action:hover { background: var(--bg4); }
 .y-axis { display: flex; flex-direction: column; justify-content: space-between; color: var(--text3); font-size: 11px; font-family: var(--mono); padding-bottom: 24px; }
 .svg-wrapper { flex: 1; position: relative; display: flex; flex-direction: column; }
 .chart-svg { width: 100%; flex: 1; overflow: visible; }

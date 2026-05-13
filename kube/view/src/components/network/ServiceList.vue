@@ -74,12 +74,17 @@ async function toggleExpand(svcName) {
 async function openShellForService(svc) {
   expandedSvc.value = svc.name
   shellService.value = svc
+  // Flip the tab IMMEDIATELY so the Details pane unmounts and the
+  // pod-picker / terminal pane has a chance to render. Without this
+  // the v-if chain short-circuited on details and the picker was
+  // never visible — users with multi-pod services saw no UI change
+  // after clicking Shell.
+  activeTab.value = 'shell'
   showPodPicker.value = true
   await fetchServicePods(svc.namespace, svc.name)
 
   // If only one pod, go straight to shell.
   if (backingPods.value.length === 1) {
-    showPodPicker.value = false
     await openShellIntoPod(backingPods.value[0])
   }
 }
@@ -272,8 +277,10 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Pod picker (when service has multiple backing pods) -->
-          <div v-else-if="showPodPicker" class="pod-picker">
+          <!-- Pod picker (when service has multiple backing pods).
+               Lives under the Shell tab — gated on showPodPicker so the
+               terminal pane below can take over once a pod is chosen. -->
+          <div v-else-if="activeTab === 'shell' && showPodPicker" class="pod-picker">
             <div v-if="podsLoading" class="picker-loading">Resolving backing pods…</div>
             <div v-else-if="podsError" class="picker-error">{{ podsError }}</div>
             <div v-else-if="!backingPods.length" class="picker-empty">No backing pods found for this service.</div>
@@ -292,8 +299,9 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Shell tab -->
-          <div v-else-if="activeTab === 'shell'" class="shell-section">
+          <!-- Shell terminal — only after a pod has been selected
+               (showPodPicker flipped back to false). -->
+          <div v-else-if="activeTab === 'shell' && !showPodPicker" class="shell-section">
             <div class="shell-toolbar">
               <div class="shell-info">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
