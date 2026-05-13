@@ -148,7 +148,15 @@ func (c *Connector) portForwardAndCall(ctx context.Context, namespace, path stri
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- fw.ForwardPorts()
+		err := fw.ForwardPorts()
+		errCh <- err
+		// Errors AFTER readyCh closed are dropped by the select below
+		// because nobody else reads errCh. Log them so a mid-session
+		// teardown isn't completely silent — useful for diagnosing
+		// flaky agent connections.
+		if err != nil {
+			c.logger.Debug("port-forward exited", slog.String("error", err.Error()))
+		}
 	}()
 
 	// Wait for port-forward to be ready.

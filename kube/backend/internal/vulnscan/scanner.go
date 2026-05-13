@@ -45,6 +45,10 @@ type ScannedImage struct {
 	AIOpt     AIOptimization  `json:"aiOpt"`
 }
 
+// trivyRunner is a function that invokes trivy and returns its JSON output.
+// It is a field on Scanner so tests can inject a fake without shelling out.
+type trivyRunner func(ctx context.Context, image string) ([]byte, error)
+
 // Scanner manages vulnerability scanning of cluster images.
 type Scanner struct {
 	cs     kubernetes.Interface
@@ -52,14 +56,20 @@ type Scanner struct {
 
 	mu      sync.RWMutex
 	results []ScannedImage
+
+	// runTrivy is the function used to execute trivy. Defaults to s.execTrivy.
+	// Tests may replace this field to avoid shelling out.
+	runTrivy trivyRunner
 }
 
 // New creates a new vulnerability scanner.
 func New(cs kubernetes.Interface, logger *slog.Logger) *Scanner {
-	return &Scanner{
+	s := &Scanner{
 		cs:     cs,
 		logger: logger.With("component", "vulnscan"),
 	}
+	s.runTrivy = s.execTrivy
+	return s
 }
 
 // List returns the cached scan results.
@@ -226,25 +236,18 @@ type trivyVulnerability struct {
 	FixedVersion    string `json:"FixedVersion"`
 }
 
-// scanImage runs Trivy against a single container image.
-func (s *Scanner) scanImage(ctx context.Context, img clusterImage) (*ScannedImage, error) {
-	start := time.Now()
-	output, err := s.execTrivy(ctx, img.name)
-	elapsed := time.Since(start)
-
-	if err != nil {
-		return nil, err
-	}
-
+// parseTrivyOutput parses raw Trivy JSON output into a ScannedImage.
+// It is a pure function with no side effects and is exported for testing.
+func parseTrivyOutput(name, namespace, lastScan string, output []byte) (*ScannedImage, error) {
 	var report trivyReport
 	if err := json.Unmarshal(output, &report); err != nil {
 		return nil, fmt.Errorf("trivy json parse: %w", err)
 	}
 
 	result := &ScannedImage{
-		Name:      img.name,
-		Namespace: img.namespace,
-		LastScan:  fmtElapsed(elapsed),
+		Name:      name,
+		Namespace: namespace,
+		LastScan:  lastScan,
 		CVEs:      []Vulnerability{},
 	}
 
@@ -299,9 +302,22 @@ func (s *Scanner) scanImage(ctx context.Context, img clusterImage) (*ScannedImag
 	}
 
 	// Generate AI optimization suggestion.
-	result.AIOpt = generateAIOptimization(img.name, result)
+	result.AIOpt = generateAIOptimization(name, result)
 
 	return result, nil
+}
+
+// scanImage runs Trivy against a single container image.
+func (s *Scanner) scanImage(ctx context.Context, img clusterImage) (*ScannedImage, error) {
+	start := time.Now()
+	output, err := s.runTrivy(ctx, img.name)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return parseTrivyOutput(img.name, img.namespace, fmtElapsed(elapsed), output)
 }
 
 // execTrivy tries local binary first, then Docker.

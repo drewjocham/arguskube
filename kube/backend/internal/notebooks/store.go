@@ -60,6 +60,87 @@ func (st *Store) Close() {
 	}
 }
 
+// resolveLocal turns a frontend-supplied logical path into an absolute
+// filesystem path INSIDE the cache dir, refusing any input that would
+// resolve outside it. The previous code used `filepath.Clean(path)`
+// directly inside `filepath.Join(st.cacheDir, ...)`, which does NOT
+// strip leading `../` segments — `filepath.Join("/cache", "../etc")`
+// happily resolves to `/etc`. Because `path` arrives over Wails RPC and
+// is user-controlled, that was a directory-traversal sink (read /
+// overwrite / delete of arbitrary user-readable files: ~/.ssh, vault,
+// kubeconfig). Two-stage defense:
+//
+//  1. Prefix with `/` then Clean, which collapses any leading `..` to
+//     the root and lets us strip it back off as a relative segment.
+//  2. After Join, take Abs of both sides and verify the result is still
+//     prefixed by the cache root. The trailing separator guard prevents
+//     a `/home/u/.argus/notebooks-evil` from passing as if it were
+//     under `/home/u/.argus/notebooks`.
+//
+// Returns the absolute cache path on success, or an error suitable to
+// bubble straight back to the frontend.
+func (st *Store) resolveLocal(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("empty path")
+	}
+	if strings.ContainsRune(path, '\x00') {
+		return "", fmt.Errorf("invalid path: contains NUL")
+	}
+	// Absolute paths are always wrong here — even if they happen to
+	// re-root inside the cache (e.g. "/etc/passwd" → "cacheDir/etc/passwd"
+	// which is safe-but-confusing), the frontend should never have
+	// authored one, so reject loudly instead of silently re-rooting.
+	if strings.HasPrefix(path, "/") || strings.HasPrefix(path, "\\") {
+		return "", fmt.Errorf("invalid path: absolute paths not allowed")
+	}
+	// Reject any literal ".." segment in the input even though the
+	// Clean-with-leading-slash trick below would contain it inside the
+	// cache root. A frontend supplying "foo/../../bad" is signaling
+	// malicious or buggy intent; safer to fail loud than silently
+	// rewrite to "bad" inside the cache.
+	for _, seg := range strings.Split(path, "/") {
+		if seg == ".." {
+			return "", fmt.Errorf("invalid path: contains .. segment")
+		}
+	}
+	rel := strings.TrimPrefix(filepath.Clean("/"+path), "/")
+	full := filepath.Join(st.cacheDir, rel)
+	abs, err := filepath.Abs(full)
+	if err != nil {
+		return "", fmt.Errorf("resolve path: %w", err)
+	}
+	baseAbs, err := filepath.Abs(st.cacheDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve cache root: %w", err)
+	}
+	sep := string(os.PathSeparator)
+	if abs != baseAbs && !strings.HasPrefix(abs+sep, baseAbs+sep) {
+		return "", fmt.Errorf("path escapes cache root")
+	}
+	return abs, nil
+}
+
+// resolveKey validates a logical path before it's used as an S3 object
+// key. Leading slashes, backslashes (Windows-style), `..` segments, and
+// NULs are rejected. We accept the same set of paths resolveLocal
+// would, expressed as forward-slash keys (no leading slash).
+func (st *Store) resolveKey(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("empty path")
+	}
+	if strings.ContainsRune(path, '\x00') || strings.ContainsRune(path, '\\') {
+		return "", fmt.Errorf("invalid path: contains NUL or backslash")
+	}
+	cleaned := strings.TrimPrefix(filepath.Clean("/"+path), "/")
+	// After Clean+TrimPrefix, any remaining `..` segment means traversal.
+	for _, seg := range strings.Split(cleaned, "/") {
+		if seg == ".." {
+			return "", fmt.Errorf("path escapes root")
+		}
+	}
+	return cleaned, nil
+}
+
 // New creates a notebook store with optional S3 support.
 func New(cfg *appconfig.OnlineDataConfig, logger *slog.Logger) (*Store, error) {
 	uploadCtx, uploadCancel := context.WithCancel(context.Background())
@@ -236,8 +317,14 @@ func (st *Store) listFilesS3(ctx context.Context) ([]FileEntry, error) {
 
 // GetFile retrieves file content, checking local cache first.
 func (st *Store) GetFile(ctx context.Context, path string) (string, error) {
-	// Check local cache first
-	cachePath := filepath.Join(st.cacheDir, filepath.Clean(path))
+	cachePath, err := st.resolveLocal(path)
+	if err != nil {
+		return "", err
+	}
+	key, err := st.resolveKey(path)
+	if err != nil {
+		return "", err
+	}
 	if data, err := os.ReadFile(cachePath); err == nil {
 		st.logger.DebugContext(ctx, "retrieved file from cache", slog.String("path", path))
 		return string(data), nil
@@ -250,7 +337,7 @@ func (st *Store) GetFile(ctx context.Context, path string) (string, error) {
 
 	result, err := st.s3Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(st.bucket),
-		Key:    aws.String(path),
+		Key:    aws.String(key),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to get file from S3: %w", err)
@@ -278,9 +365,15 @@ func (st *Store) SaveFile(ctx context.Context, path, content string) error {
 	if !strings.HasSuffix(path, ".md") {
 		path += ".md"
 	}
+	cachePath, err := st.resolveLocal(path)
+	if err != nil {
+		return err
+	}
+	key, err := st.resolveKey(path)
+	if err != nil {
+		return err
+	}
 
-	// Write to local cache immediately
-	cachePath := filepath.Join(st.cacheDir, filepath.Clean(path))
 	if err := os.MkdirAll(filepath.Dir(cachePath), 0750); err != nil {
 		return fmt.Errorf("failed to create cache directory: %w", err)
 	}
@@ -297,7 +390,7 @@ func (st *Store) SaveFile(ctx context.Context, path, content string) error {
 		go func() {
 			_, err := st.s3Client.PutObject(st.uploadCtx, &s3.PutObjectInput{
 				Bucket:      aws.String(st.bucket),
-				Key:         aws.String(path),
+				Key:         aws.String(key),
 				Body:        bytes.NewReader([]byte(content)),
 				ContentType: aws.String("text/markdown"),
 			})
@@ -317,8 +410,14 @@ func (st *Store) SaveFile(ctx context.Context, path, content string) error {
 
 // DeleteFile removes a file from both S3 and local cache.
 func (st *Store) DeleteFile(ctx context.Context, path string) error {
-	// Delete from local cache
-	cachePath := filepath.Join(st.cacheDir, filepath.Clean(path))
+	cachePath, err := st.resolveLocal(path)
+	if err != nil {
+		return err
+	}
+	key, err := st.resolveKey(path)
+	if err != nil {
+		return err
+	}
 	if err := os.Remove(cachePath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete from cache: %w", err)
 	}
@@ -327,7 +426,7 @@ func (st *Store) DeleteFile(ctx context.Context, path string) error {
 	if st.configured {
 		_, err := st.s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
 			Bucket: aws.String(st.bucket),
-			Key:    aws.String(path),
+			Key:    aws.String(key),
 		})
 		if err != nil {
 			return fmt.Errorf("failed to delete from S3: %w", err)
@@ -343,18 +442,27 @@ func (st *Store) CreateFolder(ctx context.Context, path string) error {
 	if !strings.HasSuffix(path, "/") {
 		path += "/"
 	}
-
-	// Create local folder
-	cachePath := filepath.Join(st.cacheDir, filepath.Clean(path))
+	cachePath, err := st.resolveLocal(path)
+	if err != nil {
+		return err
+	}
+	key, err := st.resolveKey(path)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(cachePath, 0750); err != nil {
 		return fmt.Errorf("failed to create folder: %w", err)
 	}
 
 	// Create marker in S3 if configured
 	if st.configured {
+		// Restore trailing slash that filepath.Clean stripped.
+		if !strings.HasSuffix(key, "/") {
+			key += "/"
+		}
 		_, err := st.s3Client.PutObject(ctx, &s3.PutObjectInput{
 			Bucket: aws.String(st.bucket),
-			Key:    aws.String(path),
+			Key:    aws.String(key),
 			Body:   bytes.NewReader([]byte("")),
 		})
 		if err != nil {
@@ -429,7 +537,15 @@ func (st *Store) SyncAll(ctx context.Context) error {
 				continue
 			}
 
-			cachePath := filepath.Join(st.cacheDir, filepath.Clean(key))
+			// S3 keys are server-supplied but a tampered/shared bucket
+			// could include "../" segments that would write outside the
+			// cache. resolveLocal applies the same traversal check we use
+			// for frontend-supplied paths.
+			cachePath, err := st.resolveLocal(key)
+			if err != nil {
+				st.logger.WarnContext(ctx, "skipping S3 key that escapes cache root", slog.String("key", key), slog.String("error", err.Error()))
+				continue
+			}
 			if err := os.MkdirAll(filepath.Dir(cachePath), 0750); err != nil {
 				st.logger.WarnContext(ctx, "failed to create cache dir during sync", slog.String("error", err.Error()))
 				continue

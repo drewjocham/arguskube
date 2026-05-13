@@ -117,7 +117,12 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(res)
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		a.logger.WarnContext(r.Context(), "encode response failed",
+			slog.String("error", err.Error()),
+			slog.String("path", r.URL.Path),
+		)
+	}
 }
 
 // WebhookPayload is the JSON body from an anomaly detection webhook.
@@ -213,10 +218,15 @@ func (a *App) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	)
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{
+	if err := json.NewEncoder(w).Encode(map[string]string{
 		"alert_id": alertID,
 		"status":   "ok",
-	})
+	}); err != nil {
+		a.logger.WarnContext(r.Context(), "encode response failed",
+			slog.String("error", err.Error()),
+			slog.String("path", r.URL.Path),
+		)
+	}
 }
 
 // StartHTTPServer starts the SaaS API server on the specified port.

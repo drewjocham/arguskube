@@ -21,14 +21,24 @@ import (
 //
 // Agents that connect machine-to-machine over mTLS don't carry an Origin
 // header (it's a browser concept) and pass through cleanly.
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true
-		}
-		return originAllowed(origin, allowedOrigins())
-	},
+// hubUpgrader is built by HandleTunnel rather than declared as a package
+// var because the empty-Origin gate depends on the receiver's TLS state.
+// Browsers always send Origin, so empty-Origin means "non-browser
+// client" — fine for our in-cluster mTLS agent, but a free pass for any
+// other process on the box if we ignore Origin unconditionally. Allow
+// empty Origin only when (a) mTLS is configured for this hub (the agent
+// path) or (b) the request came from loopback (the embedded-app path).
+// Otherwise defer to the existing allowlist.
+func (h *Hub) buildUpgrader() websocket.Upgrader {
+	return websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return h.tlsCfg != nil || remoteIsLocal(r)
+			}
+			return originAllowed(origin, allowedOrigins())
+		},
+	}
 }
 
 // TunnelMessage represents a payload sent over the WebSocket.
@@ -147,6 +157,7 @@ func (h *Hub) HandleTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	upgrader := h.buildUpgrader()
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		h.logger.Error("Failed to upgrade websocket", slog.String("error", err.Error()))
