@@ -3,6 +3,7 @@ package pkg
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,12 @@ import (
 	"github.com/argues/argus/internal/alerts"
 	"github.com/google/uuid"
 )
+
+// apiRequestMaxBytes caps inbound RPC bodies. The Wails-style RPC over
+// HTTP only carries typed JSON args; no legitimate caller approaches
+// this limit. Sized loosely so internal tooling that batches resource
+// lookups still fits, while DoS attacks via oversized bodies don't.
+const apiRequestMaxBytes int64 = 4 << 20 // 4 MiB
 
 type APIRequest struct {
 	Args []interface{} `json:"args"`
@@ -56,8 +63,23 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cap request bodies before they hit the JSON decoder. Without this
+	// the dispatcher will happily buffer a multi-GB payload from a
+	// malicious client and OOM the server — the audit flagged it as a
+	// trivial DoS surface. 4 MiB is well above any legitimate RPC arg
+	// shape this API exposes (typed args are small JSON values; the
+	// large surfaces — uploads, log streams — don't go through here).
+	r.Body = http.MaxBytesReader(w, r.Body, apiRequestMaxBytes)
 	var req APIRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// http.MaxBytesError is what MaxBytesReader returns on overflow.
+		// Distinguish from a malformed body so the client knows whether
+		// to shrink or fix.
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}

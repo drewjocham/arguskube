@@ -132,12 +132,12 @@ func (c *Client) queryMetricsServer(ctx context.Context, query string, points in
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, baseURL+path, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build metrics request: %w", err)
 	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("metrics-server request: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -148,7 +148,7 @@ func (c *Client) queryMetricsServer(ctx context.Context, query string, points in
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read metrics response: %w", err)
 	}
 
 	if containsAny(query, "node") {

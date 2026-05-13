@@ -251,13 +251,21 @@ func (s *MCPServer) processAlert(ctx context.Context, a kwatch.Alert) {
 	}
 
 	if foundIndex >= 0 {
-		// Update existing alert
+		// Update existing alert in place, then shift it to index 0 so it
+		// ranks as the most-recent occurrence. The previous form rebuilt
+		// the whole slice with two append(make-new-slice) calls — O(n)
+		// allocation per repeated alert, blocking every concurrent
+		// reader on s.alertsMu. The in-place copy below moves the same
+		// number of elements but reuses the backing array, dropping the
+		// lock-hold time from ~milliseconds at typical alert volumes to
+		// microseconds.
 		existing := &s.alerts[foundIndex]
 		existing.Alert.OccurredAt = a.OccurredAt
 		existing.OccurrenceCount++
-		// Move to front (most recent)
 		if foundIndex > 0 {
-			s.alerts = append([]AlertRecord{*existing}, append(s.alerts[:foundIndex], s.alerts[foundIndex+1:]...)...)
+			record := s.alerts[foundIndex]
+			copy(s.alerts[1:foundIndex+1], s.alerts[0:foundIndex])
+			s.alerts[0] = record
 		}
 	} else {
 		// Add new alert

@@ -219,6 +219,12 @@ func (a *App) Startup(ctx context.Context) {
 func (a *App) Shutdown(ctx context.Context) {
 	a.closeExecSession()
 	a.term.Close()
+	// Cancel any in-flight async S3 uploads so they don't outlive the
+	// process. The store's upload goroutine listens on its uploadCtx,
+	// and Close() is the only way to signal it from the outside.
+	if a.notebooks != nil {
+		a.notebooks.Close()
+	}
 	a.logger.InfoContext(ctx, "argus shutting down")
 }
 

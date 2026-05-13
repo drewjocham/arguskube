@@ -37,14 +37,38 @@ type Store struct {
 	bucket     string
 	cacheDir   string
 	configured bool
+
+	// uploadCtx scopes async uploads to the store's lifetime. SaveFile
+	// kicks off uploads in a detached goroutine (so the user's RPC
+	// returns before the network round-trip), which means we can NOT
+	// pass the caller's ctx — that ctx is canceled the moment the
+	// caller returns and the upload would abort mid-PUT. But we also
+	// can't use context.Background() (the previous code), because then
+	// Close()/shutdown can't cancel in-flight uploads and they survive
+	// the process. uploadCtx + uploadCancel split the difference:
+	// detached from the caller, but cancelable by the store's owner.
+	uploadCtx    context.Context
+	uploadCancel context.CancelFunc
+}
+
+// Close cancels any in-flight async uploads and releases resources.
+// Safe to call multiple times; Close() on a never-Closed store is a
+// no-op for the cancel func too (CancelFunc is idempotent).
+func (st *Store) Close() {
+	if st.uploadCancel != nil {
+		st.uploadCancel()
+	}
 }
 
 // New creates a notebook store with optional S3 support.
 func New(cfg *appconfig.OnlineDataConfig, logger *slog.Logger) (*Store, error) {
+	uploadCtx, uploadCancel := context.WithCancel(context.Background())
 	store := &Store{
-		logger:     logger,
-		cacheDir:   filepath.Join(os.ExpandEnv("$HOME"), ".argus", "notebooks"),
-		configured: false,
+		logger:       logger,
+		cacheDir:     filepath.Join(os.ExpandEnv("$HOME"), ".argus", "notebooks"),
+		configured:   false,
+		uploadCtx:    uploadCtx,
+		uploadCancel: uploadCancel,
 	}
 
 	// Ensure cache directory exists
@@ -264,11 +288,14 @@ func (st *Store) SaveFile(ctx context.Context, path, content string) error {
 		return fmt.Errorf("failed to write to cache: %w", err)
 	}
 
-	// Upload to S3 asynchronously if configured
+	// Upload to S3 asynchronously if configured. Use the store-scoped
+	// uploadCtx (NOT the caller's ctx or context.Background()) so the
+	// upload outlives the RPC but is still cancellable by store.Close()
+	// when the process shuts down — otherwise pending uploads would
+	// either abort mid-PUT or leak past shutdown.
 	if st.configured {
 		go func() {
-			bgCtx := context.Background()
-			_, err := st.s3Client.PutObject(bgCtx, &s3.PutObjectInput{
+			_, err := st.s3Client.PutObject(st.uploadCtx, &s3.PutObjectInput{
 				Bucket:      aws.String(st.bucket),
 				Key:         aws.String(path),
 				Body:        bytes.NewReader([]byte(content)),
@@ -280,7 +307,7 @@ func (st *Store) SaveFile(ctx context.Context, path, content string) error {
 					slog.String("error", err.Error()),
 				)
 			} else {
-				st.logger.DebugContext(bgCtx, "uploaded file to S3", slog.String("path", path))
+				st.logger.DebugContext(st.uploadCtx, "uploaded file to S3", slog.String("path", path))
 			}
 		}()
 	}
