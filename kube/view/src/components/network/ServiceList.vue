@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useResources, usePodExec, useServicePods } from '../../composables/useWails'
 import { bus } from '../../lib/bus'
+import { callGo } from '../../composables/useBridge'
 
 const props = defineProps({
   type: { type: String, default: 'services' }
@@ -18,6 +19,19 @@ const svcDetail = ref(null)
 const expandedSvc = ref(null)
 const notification = ref(null)
 const activeTab = ref('details')
+const readinessResult = ref(null)
+const readinessLoading = ref(false)
+
+async function analyzeReadiness(svc) {
+  readinessLoading.value = true
+  try {
+    const result = await callGo('AnalyzeEndpointReadiness', svc.namespace, svc.name)
+    readinessResult.value = result
+  } catch {
+    readinessResult.value = null
+  }
+  readinessLoading.value = false
+}
 
 // Shell state.
 const shellTermRef = ref(null)
@@ -236,6 +250,10 @@ onUnmounted(() => {
           <!-- Tabs -->
           <div class="tab-bar">
             <button class="tab-btn" :class="{ active: activeTab === 'details' }" @click="activeTab = 'details'">Details</button>
+            <button class="tab-btn" :class="{ active: activeTab === 'readiness' }" @click="activeTab = 'readiness'; analyzeReadiness(s)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              Readiness
+            </button>
             <button class="tab-btn shell-tab" :class="{ active: activeTab === 'shell' }" @click="openShellForService(s)">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
               Shell
@@ -270,6 +288,60 @@ onUnmounted(() => {
                       <span class="ev-reason font-mono">{{ ev.reason }}</span>
                       <span class="ev-msg">{{ ev.message }}</span>
                       <span class="ev-age font-mono">{{ ev.age }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Readiness tab -->
+          <div v-else-if="activeTab === 'readiness'">
+            <div v-if="readinessLoading" style="color:#8b8f96; font-size:13px; padding:12px;">Analyzing readiness…</div>
+            <div v-else-if="!readinessResult" style="color:#8b8f96; font-size:13px; padding:12px;">No readiness data available</div>
+            <div v-else class="expanded-grid">
+              <div v-if="!readinessResult.healthy" class="readiness-warning-banner">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f05454" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <div class="warning-body">
+                  <div class="warning-title">Endpoint Mismatch Detected</div>
+                  <div class="warning-detail">
+                    Expected <strong>{{ readinessResult.expectedEndpoints }}</strong> endpoints,
+                    found <strong>{{ readinessResult.actualEndpoints }}</strong> —
+                    <strong>{{ readinessResult.missingCount }}</strong> missing
+                  </div>
+                </div>
+              </div>
+              <div v-else class="readiness-ok-banner">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3ecf8e" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <span>All endpoints healthy ({{ readinessResult.actualEndpoints }}/{{ readinessResult.expectedEndpoints }})</span>
+              </div>
+
+              <div v-if="readinessResult.failingPods && readinessResult.failingPods.length" class="expanded-card failing-section">
+                <h4 class="card-title" style="color:#f05454">Failing Pods ({{ readinessResult.failingPods.length }})</h4>
+                <div v-for="fp in readinessResult.failingPods" :key="fp.name" class="failing-pod-card">
+                  <div class="fp-header">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f05454" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    <span class="fp-name font-mono">{{ fp.name }}</span>
+                    <span class="fp-reason">{{ fp.reason }}</span>
+                    <span v-if="fp.exitCode" class="fp-exit font-mono">exit {{ fp.exitCode }}</span>
+                  </div>
+                  <div v-if="fp.logs" class="fp-logs font-mono">
+                    <div class="fp-logs-header">Crash logs:</div>
+                    <pre class="fp-log-content">{{ fp.logs }}</pre>
+                  </div>
+                </div>
+              </div>
+
+              <div class="expanded-card" v-if="readinessResult.timeline && readinessResult.timeline.length">
+                <h4 class="card-title">Endpoint State Timeline</h4>
+                <div class="timeline">
+                  <div v-for="(ev, i) in readinessResult.timeline" :key="i" class="timeline-event" :class="ev.type">
+                    <div class="tl-dot" :class="ev.type"></div>
+                    <div class="tl-content">
+                      <span class="tl-ip font-mono">{{ ev.ip }}</span>
+                      <span class="tl-pod font-mono" v-if="ev.podName">{{ ev.podName }}</span>
+                      <span class="tl-status" :class="ev.type">{{ ev.type }}</span>
+                      <span class="tl-reason" v-if="ev.reason">{{ ev.reason }}</span>
                     </div>
                   </div>
                 </div>
@@ -518,4 +590,34 @@ onUnmounted(() => {
 }
 .shell-terminal :deep(.xterm) { height: 100%; }
 .shell-terminal :deep(.xterm-viewport) { overflow-y: auto !important; }
+
+/* Readiness Analyzer */
+.readiness-warning-banner { display: flex; gap: 12px; padding: 14px 16px; background: rgba(240,84,84,0.1); border: 1px solid rgba(240,84,84,0.25); border-radius: 8px; margin-bottom: 12px; align-items: flex-start; }
+.readiness-warning-banner .warning-body { flex: 1; }
+.readiness-warning-banner .warning-title { font-size: 14px; font-weight: 600; color: #f05454; margin-bottom: 4px; }
+.readiness-warning-banner .warning-detail { font-size: 13px; color: #e8eaec; }
+.readiness-ok-banner { display: flex; align-items: center; gap: 10px; padding: 14px 16px; background: rgba(62,207,142,0.1); border: 1px solid rgba(62,207,142,0.25); border-radius: 8px; margin-bottom: 12px; font-size: 13px; color: #3ecf8e; }
+.failing-section { border-color: rgba(240,84,84,0.2); }
+.failing-pod-card { padding: 10px; background: rgba(240,84,84,0.04); border: 1px solid rgba(240,84,84,0.12); border-radius: 6px; margin-top: 6px; }
+.fp-header { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.fp-name { color: #e8eaec; flex: 1; }
+.fp-reason { color: #f05454; font-weight: 500; }
+.fp-exit { color: #8b8f96; }
+.fp-logs { margin-top: 8px; }
+.fp-logs-header { font-size: 11px; color: #8b8f96; margin-bottom: 4px; }
+.fp-log-content { font-size: 11px; line-height: 1.4; color: #b0b4ba; background: #141517; padding: 8px; border-radius: 4px; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin: 0; }
+
+.timeline { display: flex; flex-direction: column; gap: 0; }
+.timeline-event { display: flex; gap: 10px; padding: 6px 0; border-left: 2px solid rgba(255,255,255,0.06); margin-left: 8px; padding-left: 16px; }
+.timeline-event:last-child { border-left-color: transparent; }
+.tl-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-left: -20px; margin-top: 4px; }
+.tl-dot.active { background: #3ecf8e; }
+.tl-dot.not-ready { background: #f5a623; }
+.tl-content { display: flex; gap: 8px; align-items: center; font-size: 12px; flex-wrap: wrap; }
+.tl-ip { color: #a78bfa; }
+.tl-pod { color: #8b8f96; }
+.tl-status { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-weight: 600; }
+.tl-status.active { background: rgba(62,207,142,0.15); color: #3ecf8e; }
+.tl-status.not-ready { background: rgba(245,166,35,0.15); color: #f5a623; }
+.tl-reason { color: #8b8f96; font-size: 11px; }
 </style>

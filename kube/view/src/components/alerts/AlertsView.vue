@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useNotificationGuardStore } from '../../stores/notificationGuard'
+import Select from '../common/Select.vue'
 import { useWatcherRegistryStore } from '../../stores/watcherRegistry'
 import { useNotificationsStore } from '../../stores/notifications'
 import { useAppNavStore } from '../../stores/appNav'
@@ -374,11 +375,7 @@ function fmtDuration(ms) {
           </label>
           <label class="manual-field">
             <span>Severity</span>
-            <select v-model="manualAlertForm.severity" class="ctrl-input">
-              <option value="info">Info</option>
-              <option value="warning">Warning</option>
-              <option value="critical">Critical</option>
-            </select>
+            <Select v-model="manualAlertForm.severity" :options="[{value:'info',label:'Info'},{value:'warning',label:'Warning'},{value:'critical',label:'Critical'}]" size="sm" />
           </label>
           <label class="manual-field">
             <span>Message</span>

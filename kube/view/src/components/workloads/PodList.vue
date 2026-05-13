@@ -4,6 +4,7 @@ import { useResources, usePodLogs, useLogStream, useTimeSeriesMetrics, usePodExe
 import { bus } from '../../lib/bus'
 import { useManifestEdit } from '../../composables/useManifestEdit'
 import ManifestEditPopup from '../common/ManifestEditPopup.vue'
+import Select from '../common/Select.vue'
 import { tokenize } from '../../utils/logHighlight'
 
 const {
@@ -343,6 +344,18 @@ function logLevel(msg) {
   return 'info'
 }
 
+async function injectDebugger(pod) {
+  notification.value = `Injecting debug container into ${pod.name}...`
+  try {
+    await callGo('InjectDebugContainer', pod.namespace, pod.name, 'nicolaka/netshoot:latest')
+    notification.value = `Debug container injected into ${pod.name}. Use the Shell tab to access it.`
+    setTimeout(() => { notification.value = null }, 8000)
+  } catch (e) {
+    notification.value = `Debug injection failed: ${e?.message || e}`
+    setTimeout(() => { notification.value = null }, 8000)
+  }
+}
+
 async function deletePod(pod) {
   confirmDelete.value = null
   notification.value = `Deleting pod ${pod.name}...`
@@ -438,10 +451,14 @@ onUnmounted(() => {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         <input type="text" v-model="searchQuery" placeholder="Filter pods by name, namespace, status, node..." class="search-input" />
       </div>
-      <select v-model="selectedNamespace" @change="onNamespaceChange" class="ns-select">
-        <option value="">All Namespaces</option>
-        <option v-for="ns in namespaces" :key="ns" :value="ns">{{ ns }}</option>
-      </select>
+      <Select
+        v-model="selectedNamespace"
+        :options="[{ value: '', label: 'All Namespaces' }, ...namespaces.map((ns) => ({ value: ns, label: ns }))]"
+        size="sm"
+        width="180px"
+        aria-label="Namespace filter"
+        @change="onNamespaceChange"
+      />
       <div class="pod-count">{{ filteredPods.length }} pod{{ filteredPods.length !== 1 ? 's' : '' }}</div>
     </div>
 
@@ -507,6 +524,9 @@ onUnmounted(() => {
             </button>
 
             <div class="tab-actions">
+              <button class="action-btn debug-btn" @click.stop="injectDebugger(p)" title="Inject netshoot debug container">
+                🐛 Debug
+              </button>
               <button class="action-btn" @click.stop="editPod(p)" title="View/Edit YAML">
                 ⚙️ Config
               </button>
@@ -629,12 +649,19 @@ onUnmounted(() => {
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                 <input type="text" v-model="logSearchFilter" placeholder="Filter log lines..." class="log-filter-input" />
               </div>
-              <select v-model="logTailLines" @change="loadLogs" class="log-lines-select">
-                <option :value="50">Last 50 lines</option>
-                <option :value="100">Last 100 lines</option>
-                <option :value="500">Last 500 lines</option>
-                <option :value="1000">Last 1000 lines</option>
-              </select>
+              <Select
+                v-model="logTailLines"
+                :options="[
+                  { value: 50, label: 'Last 50 lines' },
+                  { value: 100, label: 'Last 100 lines' },
+                  { value: 500, label: 'Last 500 lines' },
+                  { value: 1000, label: 'Last 1000 lines' },
+                ]"
+                size="sm"
+                width="150px"
+                aria-label="Log tail length"
+                @change="loadLogs"
+              />
               <button class="follow-btn small" :class="{ active: followMode }" @click="toggleFollow" :disabled="streaming">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
                 {{ followMode ? 'Following' : 'Follow' }}
@@ -844,6 +871,8 @@ onUnmounted(() => {
   padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: all 0.2s;
 }
 .delete-btn:hover { color: #f05454; border-color: rgba(240, 84, 84, 0.3); background: rgba(240, 84, 84, 0.08); }
+.debug-btn { color: #38bdf8; }
+.debug-btn:hover { color: #7dd3fc; border-color: rgba(56, 189, 248, 0.3); background: rgba(56, 189, 248, 0.08); }
 
 .close-x {
   display: flex; align-items: center; justify-content: center;

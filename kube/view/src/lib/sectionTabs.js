@@ -48,6 +48,8 @@ export const SECTIONS = Object.freeze({
       { id: 'logs', label: 'Logs' },
       { id: 'anomalies', label: 'Argus Alerting' },
       { id: 'analysis', label: 'Analysis' },
+      { id: 'correlator', label: 'Log & Event Timeline' },
+      { id: 'waste', label: 'Waste Heatmap' },
       { id: 'finops', label: 'Cost Explorer' },
     ],
   },
@@ -73,6 +75,7 @@ export const SECTIONS = Object.freeze({
       { id: 'replicasets', label: 'ReplicaSets' },
       { id: 'jobs', label: 'Jobs' },
       { id: 'cronjobs', label: 'Cron Jobs' },
+      { id: 'builder', label: 'Builder' },
     ],
   },
   config: {
@@ -94,6 +97,20 @@ export const SECTIONS = Object.freeze({
       { id: 'endpoints', label: 'Endpoints' },
       { id: 'ingresses', label: 'Ingresses' },
       { id: 'networkpolicies', label: 'Network Policies' },
+      { id: 'external-bridges', label: 'External Bridges' },
+      { id: 'label-matcher', label: 'Label Matcher' },
+      { id: 'endpoint-topology', label: 'Endpoint Topology' },
+    ],
+  },
+  gateway: {
+    id: 'gateway',
+    label: 'Gateway',
+    icon: 'M4 10h16v4H4zM8 6l-4 4 4 4M16 6l4 4-4 4',
+    tabs: [
+      { id: 'topology', label: 'Route Topology' },
+      { id: 'status', label: 'Status Dashboard' },
+      { id: 'migration', label: 'Ingress Migration' },
+      { id: 'traffic', label: 'Traffic Splitter' },
     ],
   },
   storage: {
@@ -134,6 +151,7 @@ export const SECTIONS = Object.freeze({
     tabs: [
       { id: 'setup', label: 'Setup & Tools' },
       { id: 'settings', label: 'Settings' },
+      { id: 'rbac', label: 'RBAC & Permissions' },
     ],
   },
 })
@@ -147,6 +165,7 @@ export const SECTION_ORDER = Object.freeze([
   'workloads',
   'config',
   'network',
+  'gateway',
   'storage',
   'operations',
   'knowledge',
@@ -164,6 +183,7 @@ export const DEFAULT_TABS = Object.freeze({
   workloads: 'pods',
   config: 'configmaps',
   network: 'services',
+  gateway: 'topology',
   storage: 'pvcs',
   operations: 'runbooks',
   knowledge: 'documents',

@@ -1,7 +1,6 @@
 package pkg
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -45,11 +44,11 @@ func (a *App) StartOAuthFlow(provider string) (authURL, state, errMsg string) {
 // a token and fetching the userinfo endpoint. This is intentionally
 // callable both via the in-process Wails binding (for the embedded
 // app) and via the HTTP callback handler (for the SaaS deployment).
-func (a *App) CompleteOAuthFlow(ctx context.Context, state, code string) (*oauthproviders.UserInfo, error) {
+func (a *App) CompleteOAuthFlow(state, code string) (*oauthproviders.UserInfo, error) {
 	if a.oauthManager == nil {
 		return nil, errors.New("oauth manager not configured")
 	}
-	return a.oauthManager.Complete(ctx, state, code)
+	return a.oauthManager.Complete(a.appCtx(), state, code)
 }
 
 // OAuthPollResult is the JSON shape the frontend polls for. Status is

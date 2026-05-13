@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
+import Select from '../common/Select.vue'
 import { useToast } from '../../composables/useToast'
 import { useBackgroundTasks } from '../../composables/useBackgroundTasks'
 import { useUIPrefsStore } from '../../stores/uiPrefs'
@@ -203,12 +204,7 @@ const investigatingThis = computed(() =>
           
           <div v-if="showScheduler" class="schedule-popover" @click.stop>
             <div class="sched-title">Schedule Scans</div>
-            <select class="sched-select" v-model="scheduleFreq">
-              <option value="none">Disabled</option>
-              <option value="hourly">Every Hour</option>
-              <option value="daily">Every Day</option>
-              <option value="weekly">Every Week</option>
-            </select>
+            <Select v-model="scheduleFreq" :options="[{value:'none',label:'Disabled'},{value:'hourly',label:'Every Hour'},{value:'daily',label:'Every Day'},{value:'weekly',label:'Every Week'}]" size="sm" />
             <button class="sched-save" @click="saveSchedule">Save</button>
           </div>
         </div>
@@ -430,15 +426,6 @@ const investigatingThis = computed(() =>
   color: var(--text);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-}
-.sched-select {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 6px;
-  border-radius: 4px;
-  font-size: 12px;
-  outline: none;
 }
 .sched-save {
   background: var(--accent);

@@ -13,6 +13,7 @@ import { useExternalSecretsStore } from '../../stores/externalSecrets'
 import { useNotificationGuardStore } from '../../stores/notificationGuard'
 import { useWatcherRegistryStore } from '../../stores/watcherRegistry'
 import { runDueNow as watcherRunDueNow, runWatcherById } from '../../composables/useWatcherEngine'
+import Select from '../common/Select.vue'
 import SecretsToolProbeRow from './SecretsToolProbeRow.vue'
 import SetupChecklist from './SetupChecklist.vue'
 import PrivacyControls from './PrivacyControls.vue'
@@ -1137,14 +1138,12 @@ onMounted(async () => {
                 </div>
                 <div class="es-field-row">
                   <label>Auth method</label>
-                  <select class="input short"
-                    :value="esStore.config.esoVault.authMethod"
-                    @change="esStore.setSection('esoVault', { authMethod: $event.target.value })">
-                    <option value="kubernetes">kubernetes</option>
-                    <option value="approle">approle</option>
-                    <option value="token">token</option>
-                    <option value="iam">aws-iam</option>
-                  </select>
+                  <Select
+                    :model-value="esStore.config.esoVault.authMethod"
+                    @change="(val) => esStore.setSection('esoVault', { authMethod: val })"
+                    :options="[{value:'kubernetes',label:'kubernetes'},{value:'approle',label:'approle'},{value:'token',label:'token'},{value:'iam',label:'aws-iam'}]"
+                    size="sm"
+                  />
                 </div>
               </div>
             </div>
@@ -1476,17 +1475,12 @@ onMounted(async () => {
               </div>
               <div class="watcher-status-pill" :data-status="watcherStatusOf(w)">{{ watcherStatusOf(w) || 'pending' }}</div>
               <div class="watcher-row-actions">
-                <select class="input short watcher-interval"
-                  :value="w.intervalMs"
-                  @change="registry.setInterval(w.id, Number($event.target.value))">
-                  <option :value="60_000">every 1 min</option>
-                  <option :value="5 * 60_000">every 5 min</option>
-                  <option :value="15 * 60_000">every 15 min</option>
-                  <option :value="30 * 60_000">every 30 min</option>
-                  <option :value="60 * 60_000">every 1 h</option>
-                  <option :value="6 * 60 * 60_000">every 6 h</option>
-                  <option :value="24 * 60 * 60_000">every 24 h</option>
-                </select>
+                <Select
+                  :model-value="w.intervalMs"
+                  @change="(val) => registry.setInterval(w.id, Number(val))"
+                  :options="[{value:60000,label:'every 1 min'},{value:300000,label:'every 5 min'},{value:900000,label:'every 15 min'},{value:1800000,label:'every 30 min'},{value:3600000,label:'every 1 h'},{value:21600000,label:'every 6 h'},{value:86400000,label:'every 24 h'}]"
+                  size="sm"
+                />
                 <label class="watcher-enable" :title="w.enabled ? 'Disable watcher' : 'Enable watcher'">
                   <input type="checkbox" :checked="w.enabled"
                     @change="registry.setEnabled(w.id, $event.target.checked)" />
@@ -1565,10 +1559,12 @@ onMounted(async () => {
         <div class="field">
           <label class="label">Context</label>
           <div class="row">
-            <select v-model="form.currentContext" class="select">
-              <option value="">Auto (current context)</option>
-              <option v-for="ctx in contexts" :key="ctx.name" :value="ctx.name">{{ ctx.name }}{{ ctx.active ? ' (active)' : '' }}</option>
-            </select>
+            <Select
+              v-model="form.currentContext"
+              :options="[{value:'',label:'Auto (current context)'}, ...contexts.map(ctx => ({value:ctx.name,label:ctx.name + (ctx.active ? ' (active)' : '')}))]"
+              size="sm"
+              aria-label="Kubernetes context"
+            />
             <button class="icon-btn" @click="listContexts" :disabled="ctxLoading">{{ ctxLoading ? '\u2026' : '\u21BB' }}</button>
           </div>
         </div>
@@ -2061,25 +2057,6 @@ onMounted(async () => {
   line-height: 1.5;
 }
 
-.select {
-  flex: 1;
-  padding: 8px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font-size: 13px;
-  outline: none;
-  appearance: none;
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%235c6168' fill='none' stroke-width='1.3'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 28px;
-}
-
-.select:focus {
-  border-color: var(--accent);
-}
 
 .row {
   display: flex;
@@ -3101,7 +3078,6 @@ onMounted(async () => {
 .watcher-status-pill[data-status="invalid"] { background: rgba(240,84,84,0.18);  color: #f05454; }
 .watcher-status-pill[data-status="error"]   { background: rgba(240,84,84,0.18);  color: #f05454; }
 .watcher-row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.watcher-interval { font-size: 11px; padding: 3px 6px; }
 .watcher-enable {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: 11px; color: var(--text2); cursor: pointer;
