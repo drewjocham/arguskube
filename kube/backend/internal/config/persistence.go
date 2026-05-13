@@ -14,24 +14,113 @@ import (
 // across restarts. Env vars still bootstrap config.New(); persisted values
 // override env when present (the user's most recent UI choice wins).
 //
+// IMPORTANT: every field UpdateSettings (in api/pkg/app_desktop.go) can write
+// must round-trip here, or it will be silently dropped on the next launch.
+// A round-trip test in persistence_test.go is the guardrail against drift.
+//
 // Tier and license info are intentionally NOT persisted — those are gated by
 // the license server, not user-editable.
 type PersistedSettings struct {
-	KubeconfigPath   string `json:"kubeconfigPath,omitempty"`
-	Context          string `json:"context,omitempty"`
-	Namespace        string `json:"namespace,omitempty"`
-	DeepSeekAPIKey   string `json:"deepseekApiKey,omitempty"`
+	// Kubernetes
+	KubeconfigPath string `json:"kubeconfigPath,omitempty"`
+	Context        string `json:"context,omitempty"`
+	Namespace      string `json:"namespace,omitempty"`
+
+	// AI / LLM
+	DeepSeekAPIKey    string `json:"deepseekApiKey,omitempty"`
+	LLMBaseURL        string `json:"llmBaseUrl,omitempty"`
+	LLMModel          string `json:"llmModel,omitempty"`
 	AnomstackURL      string `json:"anomstackUrl,omitempty"`
 	MCPServersConfig  string `json:"mcpServersConfig,omitempty"`
 	AgentInstructions string `json:"agentInstructions,omitempty"`
 	PrometheusURL     string `json:"prometheusUrl,omitempty"`
+
+	// ArgoCD
 	ArgoCDURL      string `json:"argocdUrl,omitempty"`
 	ArgoCDToken    string `json:"argocdToken,omitempty"`
 	ArgoCDInsecure bool   `json:"argocdInsecure,omitempty"`
-	SnykToken      string `json:"snykToken,omitempty"`
-	TrivyBinary    string `json:"trivyBinary,omitempty"`
-	FalcoURL       string `json:"falcoUrl,omitempty"`
-	LogLevel       string `json:"logLevel,omitempty"`
+
+	// Security
+	SnykToken   string `json:"snykToken,omitempty"`
+	TrivyBinary string `json:"trivyBinary,omitempty"`
+	FalcoURL    string `json:"falcoUrl,omitempty"`
+
+	// Pipelines. Nested as a snapshot so the "has the user ever
+	// touched pipelines?" question has a single answer (HasPipelines).
+	// Without that flag we couldn't distinguish "user explicitly set
+	// Enabled=false" from "Enabled was never set, env default wins".
+	HasPipelines bool                       `json:"hasPipelines,omitempty"`
+	Pipelines    PersistedPipelinesSettings `json:"pipelines,omitempty"`
+
+	// Logging
+	LogLevel string `json:"logLevel,omitempty"`
+}
+
+// PersistedPipelinesSettings mirrors PipelinesConfig 1:1 so every field the
+// Settings UI mutates round-trips through disk. Booleans are persisted
+// unconditionally (no `omitempty`) so an explicit "off" survives reload.
+type PersistedPipelinesSettings struct {
+	Enabled  bool             `json:"enabled"`
+	Provider PipelineProvider `json:"provider,omitempty"`
+
+	GitHubToken    string `json:"githubToken,omitempty"`
+	GitHubOwner    string `json:"githubOwner,omitempty"`
+	GitHubRepo     string `json:"githubRepo,omitempty"`
+	GitHubWorkflow string `json:"githubWorkflow,omitempty"`
+
+	GitLabURL       string `json:"gitlabUrl,omitempty"`
+	GitLabToken     string `json:"gitlabToken,omitempty"`
+	GitLabProjectID string `json:"gitlabProjectId,omitempty"`
+	GitLabRef       string `json:"gitlabRef,omitempty"`
+
+	AWSRegion    string `json:"awsRegion,omitempty"`
+	AWSAccessKey string `json:"awsAccessKey,omitempty"`
+	AWSSecretKey string `json:"awsSecretKey,omitempty"`
+	AWSProject   string `json:"awsProject,omitempty"`
+
+	GCPProject     string `json:"gcpProject,omitempty"`
+	GCPRegion      string `json:"gcpRegion,omitempty"`
+	GCPCredentials string `json:"gcpCredentials,omitempty"`
+
+	CircleCIToken       string `json:"circleciToken,omitempty"`
+	CircleCIProjectSlug string `json:"circleciProjectSlug,omitempty"`
+
+	AzureOrganization string `json:"azureOrganization,omitempty"`
+	AzureProject      string `json:"azureProject,omitempty"`
+	AzurePipelineID   string `json:"azurePipelineId,omitempty"`
+	AzureToken        string `json:"azureToken,omitempty"`
+	AzureBranch       string `json:"azureBranch,omitempty"`
+
+	NotifyOnPROpened    bool `json:"notifyOnPrOpened"`
+	NotifyOnPRUpdated   bool `json:"notifyOnPrUpdated"`
+	NotifyOnPRCommented bool `json:"notifyOnPrCommented"`
+	NotifyOnPRMerged    bool `json:"notifyOnPrMerged"`
+
+	AutoCodeReview        bool   `json:"autoCodeReview"`
+	CodeReviewDestination string `json:"codeReviewDestination,omitempty"`
+	GDriveFolderID        string `json:"gdriveFolderId,omitempty"`
+	CodeReviewS3Prefix    string `json:"codeReviewS3Prefix,omitempty"`
+	CodeReviewEmailTo     string `json:"codeReviewEmailTo,omitempty"`
+
+	ConfluenceURL          string `json:"confluenceUrl,omitempty"`
+	ConfluenceEmail        string `json:"confluenceEmail,omitempty"`
+	ConfluenceToken        string `json:"confluenceToken,omitempty"`
+	ConfluenceSpaceKey     string `json:"confluenceSpaceKey,omitempty"`
+	ConfluenceParentPageID string `json:"confluenceParentPageId,omitempty"`
+	NotionToken            string `json:"notionToken,omitempty"`
+	NotionDatabaseID       string `json:"notionDatabaseId,omitempty"`
+	EvernoteToken          string `json:"evernoteToken,omitempty"`
+	EvernoteNotebookGUID   string `json:"evernoteNotebookGuid,omitempty"`
+	OneNoteToken           string `json:"onenoteToken,omitempty"`
+	OneNoteSectionID       string `json:"onenoteSectionId,omitempty"`
+	AmplenoteAPIKey        string `json:"amplenoteApiKey,omitempty"`
+	StandardNotesURL       string `json:"standardNotesUrl,omitempty"`
+	StandardNotesToken     string `json:"standardNotesToken,omitempty"`
+	ObsidianVaultPath      string `json:"obsidianVaultPath,omitempty"`
+	JoplinURL              string `json:"joplinUrl,omitempty"`
+	JoplinToken            string `json:"joplinToken,omitempty"`
+	LogseqGraphPath        string `json:"logseqGraphPath,omitempty"`
+	BearToken              string `json:"bearToken,omitempty"`
 }
 
 // settingsDirOverride lets tests redirect the persistence path without
@@ -114,6 +203,10 @@ func SavePersistedSettings(s *PersistedSettings) error {
 // MergeInto applies non-empty persisted settings over the provided config.
 // Empty/zero persisted fields leave the existing config untouched, so env
 // var defaults still apply when the user has not customized a setting.
+//
+// Pipelines is gated by HasPipelines: once the user has saved through the
+// UI at least once, the persisted snapshot wins wholesale (including
+// explicit `false` values). Before that, env defaults stay in place.
 func (s *PersistedSettings) MergeInto(cfg *OnlineDataConfig) {
 	if s == nil || cfg == nil {
 		return
@@ -129,6 +222,12 @@ func (s *PersistedSettings) MergeInto(cfg *OnlineDataConfig) {
 	}
 	if s.DeepSeekAPIKey != "" {
 		cfg.AI.DeepSeekAPIKey = s.DeepSeekAPIKey
+	}
+	if s.LLMBaseURL != "" {
+		cfg.AI.LLMBaseURL = s.LLMBaseURL
+	}
+	if s.LLMModel != "" {
+		cfg.AI.LLMModel = s.LLMModel
 	}
 	if s.AnomstackURL != "" {
 		cfg.AI.AnomstackURL = s.AnomstackURL
@@ -164,6 +263,13 @@ func (s *PersistedSettings) MergeInto(cfg *OnlineDataConfig) {
 	if s.LogLevel != "" {
 		cfg.Logging.Level = s.LogLevel
 	}
+
+	// Pipelines: once the user has hit Save, the snapshot is
+	// authoritative. We replace the whole nested struct so an explicit
+	// off-toggle survives reload.
+	if s.HasPipelines {
+		cfg.Pipelines = s.Pipelines.toConfig()
+	}
 }
 
 // FromConfig captures the persistable subset of an OnlineDataConfig.
@@ -172,20 +278,138 @@ func FromConfig(cfg *OnlineDataConfig) *PersistedSettings {
 		return &PersistedSettings{}
 	}
 	return &PersistedSettings{
-		KubeconfigPath: cfg.Kubernetes.Config,
-		Context:        cfg.Kubernetes.Context,
-		Namespace:      cfg.Kubernetes.Namespace,
-		DeepSeekAPIKey:   cfg.AI.DeepSeekAPIKey,
+		KubeconfigPath:    cfg.Kubernetes.Config,
+		Context:           cfg.Kubernetes.Context,
+		Namespace:         cfg.Kubernetes.Namespace,
+		DeepSeekAPIKey:    cfg.AI.DeepSeekAPIKey,
+		LLMBaseURL:        cfg.AI.LLMBaseURL,
+		LLMModel:          cfg.AI.LLMModel,
 		AnomstackURL:      cfg.AI.AnomstackURL,
 		MCPServersConfig:  cfg.AI.MCPServersConfig,
 		AgentInstructions: cfg.AI.AgentInstructions,
 		PrometheusURL:     cfg.AI.PrometheusURL,
-		ArgoCDURL:      cfg.ArgoCD.URL,
-		ArgoCDToken:    cfg.ArgoCD.Token,
-		ArgoCDInsecure: cfg.ArgoCD.Insecure,
-		SnykToken:      cfg.Security.SnykToken,
-		TrivyBinary:    cfg.Security.TrivyBinary,
-		FalcoURL:       cfg.Security.FalcoURL,
-		LogLevel:       cfg.Logging.Level,
+		ArgoCDURL:         cfg.ArgoCD.URL,
+		ArgoCDToken:       cfg.ArgoCD.Token,
+		ArgoCDInsecure:    cfg.ArgoCD.Insecure,
+		SnykToken:         cfg.Security.SnykToken,
+		TrivyBinary:       cfg.Security.TrivyBinary,
+		FalcoURL:          cfg.Security.FalcoURL,
+		HasPipelines:      true, // any save through this path is a user action
+		Pipelines:         pipelinesFromConfig(cfg.Pipelines),
+		LogLevel:          cfg.Logging.Level,
+	}
+}
+
+func pipelinesFromConfig(p PipelinesConfig) PersistedPipelinesSettings {
+	return PersistedPipelinesSettings{
+		Enabled:                p.Enabled,
+		Provider:               p.Provider,
+		GitHubToken:            p.GitHubToken,
+		GitHubOwner:            p.GitHubOwner,
+		GitHubRepo:             p.GitHubRepo,
+		GitHubWorkflow:         p.GitHubWorkflow,
+		GitLabURL:              p.GitLabURL,
+		GitLabToken:            p.GitLabToken,
+		GitLabProjectID:        p.GitLabProjectID,
+		GitLabRef:              p.GitLabRef,
+		AWSRegion:              p.AWSRegion,
+		AWSAccessKey:           p.AWSAccessKey,
+		AWSSecretKey:           p.AWSSecretKey,
+		AWSProject:             p.AWSProject,
+		GCPProject:             p.GCPProject,
+		GCPRegion:              p.GCPRegion,
+		GCPCredentials:         p.GCPCredentials,
+		CircleCIToken:          p.CircleCIToken,
+		CircleCIProjectSlug:    p.CircleCIProjectSlug,
+		AzureOrganization:      p.AzureOrganization,
+		AzureProject:           p.AzureProject,
+		AzurePipelineID:        p.AzurePipelineID,
+		AzureToken:             p.AzureToken,
+		AzureBranch:            p.AzureBranch,
+		NotifyOnPROpened:       p.NotifyOnPROpened,
+		NotifyOnPRUpdated:      p.NotifyOnPRUpdated,
+		NotifyOnPRCommented:    p.NotifyOnPRCommented,
+		NotifyOnPRMerged:       p.NotifyOnPRMerged,
+		AutoCodeReview:         p.AutoCodeReview,
+		CodeReviewDestination:  p.CodeReviewDestination,
+		GDriveFolderID:         p.GDriveFolderID,
+		CodeReviewS3Prefix:     p.CodeReviewS3Prefix,
+		CodeReviewEmailTo:      p.CodeReviewEmailTo,
+		ConfluenceURL:          p.ConfluenceURL,
+		ConfluenceEmail:        p.ConfluenceEmail,
+		ConfluenceToken:        p.ConfluenceToken,
+		ConfluenceSpaceKey:     p.ConfluenceSpaceKey,
+		ConfluenceParentPageID: p.ConfluenceParentPageID,
+		NotionToken:            p.NotionToken,
+		NotionDatabaseID:       p.NotionDatabaseID,
+		EvernoteToken:          p.EvernoteToken,
+		EvernoteNotebookGUID:   p.EvernoteNotebookGUID,
+		OneNoteToken:           p.OneNoteToken,
+		OneNoteSectionID:       p.OneNoteSectionID,
+		AmplenoteAPIKey:        p.AmplenoteAPIKey,
+		StandardNotesURL:       p.StandardNotesURL,
+		StandardNotesToken:     p.StandardNotesToken,
+		ObsidianVaultPath:      p.ObsidianVaultPath,
+		JoplinURL:              p.JoplinURL,
+		JoplinToken:            p.JoplinToken,
+		LogseqGraphPath:        p.LogseqGraphPath,
+		BearToken:              p.BearToken,
+	}
+}
+
+func (p PersistedPipelinesSettings) toConfig() PipelinesConfig {
+	return PipelinesConfig{
+		Enabled:                p.Enabled,
+		Provider:               p.Provider,
+		GitHubToken:            p.GitHubToken,
+		GitHubOwner:            p.GitHubOwner,
+		GitHubRepo:             p.GitHubRepo,
+		GitHubWorkflow:         p.GitHubWorkflow,
+		GitLabURL:              p.GitLabURL,
+		GitLabToken:            p.GitLabToken,
+		GitLabProjectID:        p.GitLabProjectID,
+		GitLabRef:              p.GitLabRef,
+		AWSRegion:              p.AWSRegion,
+		AWSAccessKey:           p.AWSAccessKey,
+		AWSSecretKey:           p.AWSSecretKey,
+		AWSProject:             p.AWSProject,
+		GCPProject:             p.GCPProject,
+		GCPRegion:              p.GCPRegion,
+		GCPCredentials:         p.GCPCredentials,
+		CircleCIToken:          p.CircleCIToken,
+		CircleCIProjectSlug:    p.CircleCIProjectSlug,
+		AzureOrganization:      p.AzureOrganization,
+		AzureProject:           p.AzureProject,
+		AzurePipelineID:        p.AzurePipelineID,
+		AzureToken:             p.AzureToken,
+		AzureBranch:            p.AzureBranch,
+		NotifyOnPROpened:       p.NotifyOnPROpened,
+		NotifyOnPRUpdated:      p.NotifyOnPRUpdated,
+		NotifyOnPRCommented:    p.NotifyOnPRCommented,
+		NotifyOnPRMerged:       p.NotifyOnPRMerged,
+		AutoCodeReview:         p.AutoCodeReview,
+		CodeReviewDestination:  p.CodeReviewDestination,
+		GDriveFolderID:         p.GDriveFolderID,
+		CodeReviewS3Prefix:     p.CodeReviewS3Prefix,
+		CodeReviewEmailTo:      p.CodeReviewEmailTo,
+		ConfluenceURL:          p.ConfluenceURL,
+		ConfluenceEmail:        p.ConfluenceEmail,
+		ConfluenceToken:        p.ConfluenceToken,
+		ConfluenceSpaceKey:     p.ConfluenceSpaceKey,
+		ConfluenceParentPageID: p.ConfluenceParentPageID,
+		NotionToken:            p.NotionToken,
+		NotionDatabaseID:       p.NotionDatabaseID,
+		EvernoteToken:          p.EvernoteToken,
+		EvernoteNotebookGUID:   p.EvernoteNotebookGUID,
+		OneNoteToken:           p.OneNoteToken,
+		OneNoteSectionID:       p.OneNoteSectionID,
+		AmplenoteAPIKey:        p.AmplenoteAPIKey,
+		StandardNotesURL:       p.StandardNotesURL,
+		StandardNotesToken:     p.StandardNotesToken,
+		ObsidianVaultPath:      p.ObsidianVaultPath,
+		JoplinURL:              p.JoplinURL,
+		JoplinToken:            p.JoplinToken,
+		LogseqGraphPath:        p.LogseqGraphPath,
+		BearToken:              p.BearToken,
 	}
 }
