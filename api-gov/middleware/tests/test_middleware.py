@@ -61,6 +61,18 @@ class RecordingTransport(httpx.MockTransport):
     def calls_to(self, path: str) -> list[httpx.Request]:
         return [r for r in self.recorded if r.url.path == path]
 
+    def traffic_samples(self) -> list[dict[str, Any]]:
+        """Flatten every batched traffic POST into a list of individual
+        samples — the shape every traffic-flavoured assertion in this
+        file wants to reason about. Each entry is the wire-format sample
+        the middleware sends inside the batch payload."""
+        out: list[dict[str, Any]] = []
+        for r in self.calls_to("/api/v1/traffic/batch"):
+            payload = json.loads(r.content)
+            for s in payload.get("samples", []):
+                out.append(s)
+        return out
+
 
 def _make_client(transport: httpx.MockTransport) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=transport, base_url="http://gov.test")
@@ -125,10 +137,9 @@ def test_body_over_limit_is_passed_through_not_captured(app_with_body_echo: Fast
     _drain_queue(mw)
     # The traffic body for an oversize request should be null/None, not the
     # raw bytes — we never want the gov DB to store oversize payloads.
-    traffic_calls = transport.calls_to("/api/v1/traffic")
-    if traffic_calls:
-        payload = json.loads(traffic_calls[-1].content)
-        assert payload["request"] is None
+    samples = transport.traffic_samples()
+    if samples:
+        assert samples[-1]["request"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -186,10 +197,9 @@ def test_authorization_and_hop_by_hop_headers_are_stripped(app_with_body_echo: F
     assert resp.status_code == 200
     _drain_queue(mw)
 
-    traffic_calls = transport.calls_to("/api/v1/traffic")
-    assert traffic_calls, "expected a traffic ingest call"
-    payload = json.loads(traffic_calls[-1].content)
-    captured = payload["headers"]
+    samples = transport.traffic_samples()
+    assert samples, "expected a traffic ingest call"
+    captured = samples[-1]["headers"]
     assert "authorization" not in captured
     assert "cookie" not in captured
     assert "connection" not in captured
@@ -255,6 +265,165 @@ async def test_push_spec_retries_on_request_error(app_with_body_echo: FastAPI) -
 # ---------------------------------------------------------------------------
 # 6. _sanitize_headers is the contract surface for header filtering.
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# 7. Batching — the headline perf change. The worker must:
+#    * post to /api/v1/traffic/batch, not /api/v1/traffic (per sample)
+#    * pack multiple samples into one HTTP request
+#    * include spec_id once, samples as a list
+#    * fall back to short flushes when batch_max_wait_ms elapses
+# ---------------------------------------------------------------------------
+
+
+def test_worker_posts_to_batch_endpoint_with_samples_list(app_with_body_echo: FastAPI) -> None:
+    transport = RecordingTransport()
+    client = _make_client(transport)
+    mw = register(
+        app_with_body_echo,
+        APIGovConfig(api_url="http://gov.test", spec_id="spec-1"),
+        http_client=client,
+    )
+    with TestClient(app_with_body_echo) as test_client:
+        for _ in range(3):
+            test_client.post("/echo", json={"i": 1})
+        _drain_queue(mw)
+
+    # No single-sample POSTs allowed — batch is the only ingest path.
+    assert transport.calls_to("/api/v1/traffic") == []
+    batches = transport.calls_to("/api/v1/traffic/batch")
+    assert batches, "worker must POST at least one batch"
+    payload = json.loads(batches[0].content)
+    # The startup spec push overwrites config.spec_id with whatever the
+    # mock backend returned — we only care that SOME non-empty id flowed
+    # through, not which one.
+    assert payload["spec_id"]
+    assert isinstance(payload["samples"], list)
+    assert len(payload["samples"]) >= 1
+    sample = payload["samples"][0]
+    # Each sample carries the same shape the legacy endpoint accepted.
+    for key in ("method", "path", "status_code", "request", "response", "headers"):
+        assert key in sample
+
+
+def test_worker_coalesces_burst_into_one_batch(app_with_body_echo: FastAPI) -> None:
+    """Under burst the worker should NOT send 10 batches of 1 — that
+    would defeat the whole point of batching."""
+    transport = RecordingTransport()
+    client = _make_client(transport)
+    mw = register(
+        app_with_body_echo,
+        APIGovConfig(
+            api_url="http://gov.test",
+            spec_id="spec-1",
+            batch_max_size=50,
+            batch_max_wait_ms=200,
+            queue_size=256,
+        ),
+        http_client=client,
+    )
+
+    N = 20
+    with TestClient(app_with_body_echo) as test_client:
+        for _ in range(N):
+            test_client.post("/echo", json={"i": 1})
+        _drain_queue(mw)
+
+    samples = transport.traffic_samples()
+    assert len(samples) == N, f"expected every sample to be ingested, got {len(samples)}"
+    # And we did it in dramatically fewer HTTP requests than N.
+    batches = transport.calls_to("/api/v1/traffic/batch")
+    assert len(batches) < N, (
+        f"batching should coalesce {N} samples; saw {len(batches)} batch requests"
+    )
+
+
+@pytest.mark.asyncio
+async def test_flush_batch_is_a_no_op_on_empty_input(app_with_body_echo: FastAPI) -> None:
+    transport = RecordingTransport()
+    client = _make_client(transport)
+    mw = APIGovMiddleware(
+        app_with_body_echo,
+        APIGovConfig(api_url="http://gov.test", spec_id="spec-1"),
+        http_client=client,
+    )
+    await mw._flush_batch([])
+    assert transport.calls_to("/api/v1/traffic/batch") == []
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_flush_batch_survives_backend_500(app_with_body_echo: FastAPI) -> None:
+    """A non-2xx response from the backend must NOT crash the worker — it
+    logs and moves on. We exercise the helper directly to keep the assert
+    tight on this behaviour."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"error": "boom"})
+
+    transport = httpx.MockTransport(handler)
+    client = _make_client(transport)
+    mw = APIGovMiddleware(
+        app_with_body_echo,
+        APIGovConfig(api_url="http://gov.test", spec_id="spec-1"),
+        http_client=client,
+    )
+    # No exception should bubble out.
+    await mw._flush_batch([{
+        "method": "GET", "path": "/x", "status_code": 200,
+        "request_body": None, "headers": {},
+    }])
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_flush_batch_survives_network_error(app_with_body_echo: FastAPI) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("simulated")
+
+    transport = httpx.MockTransport(handler)
+    client = _make_client(transport)
+    mw = APIGovMiddleware(
+        app_with_body_echo,
+        APIGovConfig(api_url="http://gov.test", spec_id="spec-1"),
+        http_client=client,
+    )
+    await mw._flush_batch([{
+        "method": "GET", "path": "/x", "status_code": 200,
+        "request_body": None, "headers": {},
+    }])
+    await client.aclose()
+
+
+def test_sample_to_wire_drops_internal_fields() -> None:
+    """The on-disk shape must match what the backend handler decodes."""
+    wire = APIGovMiddleware._sample_to_wire({
+        "method": "POST",
+        "path": "/users",
+        "status_code": 201,
+        "request_body": {"name": "alice"},
+        "headers": {"x-custom": "yes"},
+        # Extra fields the worker may carry internally — must not leak.
+        "_internal": "shouldnt-be-here",
+    })
+    assert wire == {
+        "method": "POST",
+        "path": "/users",
+        "status_code": 201,
+        "request": {"name": "alice"},
+        "response": {"status_code": 201},
+        "headers": {"x-custom": "yes"},
+    }
+
+
+def test_config_from_env_reads_batch_knobs(monkeypatch) -> None:
+    """API_GOV_BATCH_* env vars must reach the config so deployments can
+    tune throughput vs latency without redeploying code."""
+    monkeypatch.setenv("API_GOV_BATCH_MAX_SIZE", "75")
+    monkeypatch.setenv("API_GOV_BATCH_MAX_WAIT_MS", "1500")
+    cfg = APIGovConfig.from_env()
+    assert cfg.batch_max_size == 75
+    assert cfg.batch_max_wait_ms == 1500
 
 
 def test_sanitize_headers_lowercases_and_filters() -> None:

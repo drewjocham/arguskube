@@ -109,6 +109,7 @@ func (a *API) Routes() http.Handler {
 		r.Post("/specs/{specID}/drift/scan", a.handleRequestDriftScan)
 		r.Post("/specs/{specID}/drift/resolve/{reportID}", a.handleResolveDrift)
 		r.Post("/traffic", a.handleIngestTraffic)
+		r.Post("/traffic/batch", a.handleIngestTrafficBatch)
 		r.Post("/analyze/{specID}", a.handleAgentAnalyze)
 		r.Post("/tests/generate/{specID}", a.handleAgentGenerateTests)
 
