@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ include "kubewatcher-agent.fullname" . }}-config
-  labels:
-    {{- include "kubewatcher-agent.labels" . | nindent 4 }}
-data:
-  PORT: {{ .Values.service.port | default "8080" | quote }}

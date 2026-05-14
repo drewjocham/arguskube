@@ -1,2 +1,0 @@
-[console_scripts]
-argus-agent = argus_agents.cli:main
