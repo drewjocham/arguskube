@@ -261,7 +261,7 @@ func (s *Store) loadMonth(monthKey string) error {
 	path := filepath.Join(s.dir, monthKey+".jsonl")
 	f, err := os.Open(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("open usage file %s: %w", monthKey, err)
 	}
 	defer f.Close()
 
@@ -330,7 +330,7 @@ func (s *Store) readMonthFile(monthKey string) ([]Record, error) {
 	path := filepath.Join(s.dir, monthKey+".jsonl")
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open usage file %s: %w", monthKey, err)
 	}
 	defer f.Close()
 	var out []Record

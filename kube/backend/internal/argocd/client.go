@@ -286,7 +286,7 @@ func (c *Client) get(ctx context.Context, path string, out interface{}) error {
 	url := strings.TrimRight(c.cfg.URL, "/") + path
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("build GET request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.cfg.Token)
 
@@ -311,7 +311,7 @@ func (c *Client) post(ctx context.Context, path, body string, out interface{}) e
 	url := strings.TrimRight(c.cfg.URL, "/") + path
 	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(body))
 	if err != nil {
-		return err
+		return fmt.Errorf("build POST request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.cfg.Token)
 	req.Header.Set("Content-Type", "application/json")

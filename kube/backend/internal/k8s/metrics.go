@@ -68,6 +68,13 @@ func (c *Client) QueryPromQL(ctx context.Context, promql string, duration string
 		step = 15 * time.Second
 	}
 
+	// Delegates to the configured metrics provider (Prometheus /
+	// VictoriaMetrics / metrics-server adapter). The previous inline
+	// HTTP call against the API-server metrics endpoint was replaced by
+	// the provider abstraction on main; the error-wrapping work my
+	// branch had on those HTTP call sites no longer applies because the
+	// surface is gone — provider.QueryPromQL already returns wrapped
+	// errors.
 	return provider.QueryPromQL(ctx, promql, start, end, step)
 }
 

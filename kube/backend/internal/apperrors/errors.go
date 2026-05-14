@@ -98,10 +98,14 @@ func WriteHTTPResponse(ctx context.Context, w http.ResponseWriter, logger *slog.
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{
+	if encErr := json.NewEncoder(w).Encode(map[string]string{
 		"error":       err.Error(),
 		"disposition": string(disp),
-	})
+	}); encErr != nil {
+		logger.WarnContext(ctx, "encode response failed",
+			slog.String("error", encErr.Error()),
+		)
+	}
 }
 
 const logKeyError = "error"

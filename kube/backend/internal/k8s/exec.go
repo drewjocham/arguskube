@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
@@ -49,7 +50,7 @@ func (c *Client) ExecPodShell(ctx context.Context, namespace, podName, container
 		// Pick the first container.
 		pod, err := c.cs.CoreV1().Pods(namespace).Get(ctx, podName, metav1.GetOptions{})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("get pod %s/%s: %w", namespace, podName, err)
 		}
 		if len(pod.Spec.Containers) > 0 {
 			container = pod.Spec.Containers[0].Name
@@ -76,7 +77,7 @@ func (c *Client) ExecPodShell(ctx context.Context, namespace, podName, container
 
 	exec, err := remotecommand.NewSPDYExecutor(c.restCfg, "POST", req.URL())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create SPDY executor: %w", err)
 	}
 
 	stdinPipe := newExecPipe()

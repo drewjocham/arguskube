@@ -1,8 +1,10 @@
 package pkg
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -132,7 +134,11 @@ func (a *App) authPreflight(w http.ResponseWriter, r *http.Request) bool {
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
+	if err := json.NewEncoder(w).Encode(body); err != nil {
+		slog.Default().WarnContext(context.Background(), "encode response failed",
+			slog.String("error", err.Error()),
+		)
+	}
 }
 
 func (a *App) handleAuthProviders(w http.ResponseWriter, r *http.Request) {

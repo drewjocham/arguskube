@@ -110,11 +110,6 @@ export const useAppearanceStore = defineStore('appearance', () => {
     //
     // Brightness / contrast / saturation knobs still apply via the
     // existing #app rule (`#app { filter: var(--ui-filter, none) }`).
-    const filterParts = []
-    if (brightness.value !== 100) filterParts.push(`brightness(${brightness.value}%)`)
-    if (contrast.value !== 100) filterParts.push(`contrast(${contrast.value}%)`)
-    if (saturation.value !== 100) filterParts.push(`saturate(${saturation.value}%)`)
-    root.style.setProperty('--ui-filter', filterParts.length ? filterParts.join(' ') : 'none')
 
     // Clear any filter inline styles left over from previous builds
     // so they don't accumulate.

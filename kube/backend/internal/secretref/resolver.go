@@ -321,15 +321,15 @@ func assertWithinRoot(root, path string) error {
 	}
 	rootAbs, err := filepath.Abs(filepath.Clean(root))
 	if err != nil {
-		return err
+		return fmt.Errorf("resolve root path: %w", err)
 	}
 	pathAbs, err := filepath.Abs(filepath.Clean(path))
 	if err != nil {
-		return err
+		return fmt.Errorf("resolve secret path: %w", err)
 	}
 	rel, err := filepath.Rel(rootAbs, pathAbs)
 	if err != nil {
-		return err
+		return fmt.Errorf("compute relative path: %w", err)
 	}
 	if strings.HasPrefix(rel, "..") {
 		return fmt.Errorf("%w: %s", ErrUnsafePath, path)

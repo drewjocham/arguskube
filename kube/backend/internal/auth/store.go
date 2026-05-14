@@ -222,7 +222,10 @@ func (s *Store) RevokeSession(token string) error {
 		return nil
 	}
 	_, err := s.db.Exec(`DELETE FROM sessions WHERE token_hash = ?`, hashToken(token))
-	return err
+	if err != nil {
+		return fmt.Errorf("revoke session: %w", err)
+	}
+	return nil
 }
 
 // PurgeExpired runs a best-effort cleanup of stale sessions and pending OAuth states.
