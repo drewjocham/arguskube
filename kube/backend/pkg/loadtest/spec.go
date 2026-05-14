@@ -1,4 +1,8 @@
-// Package loadtest is the broker-agnostic load-test engine.
+// Package loadtest is the broker-agnostic load-test engine that powers
+// the local-runner branch of the Distributed Load Test feature. It is
+// not a standalone product surface; the App's Wails bindings in
+// api/pkg/app_distload.go select this engine when DistLoadSpec.Runner
+// == "local".
 //
 // What it does:
 //
@@ -133,7 +137,8 @@ type ScalePlan struct {
 }
 
 // RunSpec is the full description of a load test, end to end. Built
-// by the frontend and posted to PR-C's StartLoadTest Wails binding.
+// by the local dispatcher in api/pkg/app_distload_local.go (from a
+// saasapi.DistLoadSpec with Runner=="local") before the engine runs.
 type RunSpec struct {
 	// Name is a human-readable label — appears in the Notebook
 	// filename and the run-record. Optional; engine falls back to

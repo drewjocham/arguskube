@@ -405,15 +405,15 @@ var httpExposedMethods = map[string]struct{}{
 	// client. All read-only — no cluster mutations.
 	"TestSecretsTool":            {},
 	"ListEncryptedSecretSources": {},
-	// Load tester: list-only + status RPCs are safe over HTTP. The
-	// destructive operations (StartLoadTest, CancelLoadTest) are
-	// INTENTIONALLY NOT exposed — those scale Deployments and
-	// publish to brokers, so they remain Wails-only where the user
-	// is the operator on the same machine.
-	"ListLoadTestPresets": {},
-	"ListBrokerKinds":     {},
-	"GetLoadTestStatus":   {},
-	"GetLoadTestRecord":   {},
+	// Distributed Load Test: list-only + status RPCs are safe over
+	// HTTP. The destructive operations (StartDistributedLoadTest,
+	// CancelDistributedLoadTest) are INTENTIONALLY NOT exposed —
+	// those scale Deployments / spend SaaS credits, so they remain
+	// Wails-only where the user is the operator on the same machine.
+	"ListDistLoadPresets":              {},
+	"ListDistLoadBrokerKinds":          {},
+	"GetDistributedLoadTestStatus":     {},
+	"GetDistributedLoadTestRecord":     {},
 }
 
 func methodAllowedOverHTTP(name string) bool {

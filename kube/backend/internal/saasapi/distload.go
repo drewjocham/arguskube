@@ -20,6 +20,19 @@ type DistLoadSpec struct {
 	RampProfile string          `json:"rampProfile"`
 	RampRate    int             `json:"rampRate"`
 	TimeoutMins int             `json:"timeoutMins"`
+
+	// Runner selects where the engine actually runs.
+	//   "local" — the desktop runs pkg/loadtest in-process.
+	//   "cloud" — the SaaS API provisions VMs and runs there.
+	// Empty defaults to "cloud" at the dispatch layer for back-compat
+	// with older frontends that posted no runner field.
+	Runner string `json:"runner,omitempty"`
+
+	// PresetID is the optional starting-point preset the user picked
+	// (matches loadtest.Preset.ID). The frontend applies the preset's
+	// fields before submission; this field carries the choice through
+	// for audit/log purposes (and lets a local dispatcher record it).
+	PresetID string `json:"presetId,omitempty"`
 }
 
 type RegionSpec struct {
