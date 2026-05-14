@@ -1,7 +1,6 @@
 package pkg
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -84,7 +83,7 @@ func (a *App) ListWorkspaceServices() []string {
 
 // ListWorkspaceConnections returns every connection the calling user
 // owns. Tokens are NOT included.
-func (a *App) ListWorkspaceConnections(ctx context.Context, sessionToken string) ([]WorkspaceConnectionView, error) {
+func (a *App) ListWorkspaceConnections(sessionToken string) ([]WorkspaceConnectionView, error) {
 	if !a.workspaceAvailable() {
 		return nil, errors.New("workspace: not configured in this build mode")
 	}
@@ -92,7 +91,7 @@ func (a *App) ListWorkspaceConnections(ctx context.Context, sessionToken string)
 	if err != nil {
 		return nil, err
 	}
-	conns, err := a.workspace.List(ctx, userID)
+	conns, err := a.workspace.List(a.ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +105,7 @@ func (a *App) ListWorkspaceConnections(ctx context.Context, sessionToken string)
 // StartWorkspaceConnect kicks off an OAuth flow for the given service.
 // Returns the URL the desktop must open in the browser and the state
 // nonce the callback will carry.
-func (a *App) StartWorkspaceConnect(ctx context.Context, sessionToken, service, redirectURL string) (workspace.AuthURL, error) {
+func (a *App) StartWorkspaceConnect(sessionToken, service, redirectURL string) (workspace.AuthURL, error) {
 	if !a.workspaceAvailable() {
 		return workspace.AuthURL{}, errors.New("workspace: not configured")
 	}
@@ -114,17 +113,17 @@ func (a *App) StartWorkspaceConnect(ctx context.Context, sessionToken, service, 
 	if err != nil {
 		return workspace.AuthURL{}, err
 	}
-	return a.workspace.Start(ctx, userID, workspace.Service(service), redirectURL)
+	return a.workspace.Start(a.ctx, userID, workspace.Service(service), redirectURL)
 }
 
 // CompleteWorkspaceConnect is the callback handler. The frontend
 // (after the system browser redirects back to the local listener)
 // hands us the state + code; we exchange and persist.
-func (a *App) CompleteWorkspaceConnect(ctx context.Context, service, state, code string) (WorkspaceConnectionView, error) {
+func (a *App) CompleteWorkspaceConnect(service, state, code string) (WorkspaceConnectionView, error) {
 	if !a.workspaceAvailable() {
 		return WorkspaceConnectionView{}, errors.New("workspace: not configured")
 	}
-	c, err := a.workspace.Complete(ctx, workspace.Service(service), state, code)
+	c, err := a.workspace.Complete(a.ctx, workspace.Service(service), state, code)
 	if err != nil {
 		return WorkspaceConnectionView{}, fmt.Errorf("workspace: %w", err)
 	}
@@ -133,14 +132,14 @@ func (a *App) CompleteWorkspaceConnect(ctx context.Context, service, state, code
 
 // DeleteWorkspaceConnection removes a connection. Idempotent — a
 // missing id returns nil so double-clicks don't trip.
-func (a *App) DeleteWorkspaceConnection(ctx context.Context, sessionToken, id string) error {
+func (a *App) DeleteWorkspaceConnection(sessionToken, id string) error {
 	if !a.workspaceAvailable() {
 		return errors.New("workspace: not configured")
 	}
 	if _, err := a.workspaceUserID(sessionToken); err != nil {
 		return err
 	}
-	if err := a.workspace.Delete(ctx, id); err != nil && !errors.Is(err, workspace.ErrNotFound) {
+	if err := a.workspace.Delete(a.ctx, id); err != nil && !errors.Is(err, workspace.ErrNotFound) {
 		return err
 	}
 	return nil

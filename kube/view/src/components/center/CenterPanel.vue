@@ -52,8 +52,8 @@ import RBACView from './RBACView.vue'
 import SetupPanel from '../setup/SetupPanel.vue'
 import SettingsPanel from '../setup/SettingsPanel.vue'
 import ArgusAIChat from '../ai/ArgusAIChat.vue'
-import WorkspaceSection from '../workspace/WorkspaceSection.vue'
 import SectionTabs from '../shared/SectionTabs.vue'
+import FeatureSection from '../../features/FeatureSection.vue'
 import { useArgusScan } from '../../composables/useWails'
 import { useBackgroundTasks } from '../../composables/useBackgroundTasks'
 import { useAppNavStore } from '../../stores/appNav'
@@ -479,11 +479,6 @@ const adminTabs = SECTIONS.admin.tabs
       <DocumentsView v-else-if="currentTab === 'documents'" />
     </template>
 
-    <!-- ============ WORKSPACE ============ -->
-    <template v-else-if="activeNav === 'workspace'">
-      <WorkspaceSection />
-    </template>
-
     <!-- ============ ADMIN ============ -->
     <template v-else-if="activeNav === 'admin'">
       <SectionTabs
@@ -496,6 +491,16 @@ const adminTabs = SECTIONS.admin.tabs
         <SettingsPanel v-else-if="currentTab === 'settings'" />
         <RBACView v-else-if="currentTab === 'rbac'" />
       </div>
+    </template>
+
+    <!-- ============ REGISTRY FALLTHROUGH ============
+         Any section not handled by the hard-coded chain above is rendered
+         by the feature registry. As sections migrate into src/features/,
+         their v-else-if block disappears from this file and the manifest
+         takes over. Once every section is migrated, the whole chain
+         above collapses to just this fallthrough. -->
+    <template v-else>
+      <FeatureSection :section-id="activeNav" />
     </template>
   </div>
 </template>
