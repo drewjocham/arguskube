@@ -20,6 +20,8 @@ import (
 	"github.com/argues/argus/internal/auth"
 	"github.com/argues/argus/internal/config"
 	ctxassembly "github.com/argues/argus/internal/context"
+	"github.com/argues/argus/internal/dbagent/connector"
+	"github.com/argues/argus/internal/dbconfig"
 	"github.com/argues/argus/internal/features"
 	"github.com/argues/argus/internal/incidents"
 	"github.com/argues/argus/internal/k8s"
@@ -28,6 +30,7 @@ import (
 	"github.com/argues/argus/internal/popeye"
 	"github.com/argues/argus/internal/runbooks"
 	"github.com/argues/argus/internal/saasapi"
+	"github.com/argues/argus/internal/secretstore"
 	"github.com/argues/argus/internal/setup"
 	"github.com/argues/argus/internal/sqlitedb"
 	"github.com/argues/argus/internal/vulnscan"
@@ -175,6 +178,12 @@ func run() error {
 		logger.Warn("anomaly settings store initialization failed", slog.String("error", err.Error()))
 	}
 
+	// DBAgent — registered DB connections + cached pools. The crypto
+	// master key lives in the OS keychain (or in-memory on Linux/SaaS),
+	// reusing the same secretstore that backs auth.
+	dbConfigStore := dbconfig.NewStore(db.DB, dbconfig.NewCrypto(secretstore.New("Argus")))
+	dbPool := connector.New(dbConfigStore, 0, 0)
+
 	setupMgr := setup.NewManager(
 		cfg.Kubernetes.Config,
 		cfg.Kubernetes.Context,
@@ -218,6 +227,8 @@ func run() error {
 		Usage:           nil, // usage store configured elsewhere
 		SaaSClient:      saasClient,
 		DB:              db.DB,
+		DBConfigs:       dbConfigStore,
+		DBPool:          dbPool,
 		AppMode:         appMode,
 	})
 
