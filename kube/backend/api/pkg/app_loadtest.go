@@ -14,6 +14,7 @@ import (
 
 	"github.com/argues/argus/pkg/broker"
 	"github.com/argues/argus/pkg/loadtest"
+	"github.com/argues/argus/pkg/loadtest/analysis"
 )
 
 // app_loadtest.go — Wails bindings for the load-test feature.
@@ -391,11 +392,46 @@ func (a *App) exportLoadTestReport(rec *loadtest.RunRecord) (string, error) {
 	ts := rec.Started.UTC().Format("20060102-150405")
 	path := fmt.Sprintf("loadtest/%s-%s.md", safe, ts)
 
-	md := renderLoadTestMarkdown(rec)
+	// PR-E: try to generate an LLM-authored narrative. Best-effort —
+	// failures (no client, rate limit, network blip) degrade silently
+	// to the deterministic render so the operator always gets a
+	// report.
+	narrative := a.tryNarrateLoadTest(rec)
+
+	md := renderLoadTestMarkdown(rec, narrative)
 	if err := a.notebooks.SaveFile(a.appCtx(), path, md); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+// tryNarrateLoadTest is the bridge from the App's ai.Agent to the
+// loadtest analysis package. Returns an empty string when no client
+// is configured or the LLM call fails — the caller renders without
+// a Narrative section in that case.
+//
+// The call uses a 30-second timeout independent of the App context.
+// A slow LLM endpoint should never delay the report past half a
+// minute; the operator can re-narrate later via a future "Re-analyze"
+// button (out of scope for PR-E).
+func (a *App) tryNarrateLoadTest(rec *loadtest.RunRecord) string {
+	if a.agent == nil {
+		return ""
+	}
+	client := a.agent.Client()
+	if client == nil {
+		return ""
+	}
+	narrator := analysis.New(client)
+	ctx, cancel := context.WithTimeout(a.appCtx(), 30*time.Second)
+	defer cancel()
+	out, err := narrator.Narrate(ctx, rec)
+	if err != nil {
+		a.logger.Info("loadtest: narrative skipped",
+			slog.String("reason", err.Error()))
+		return ""
+	}
+	return out
 }
 
 // sanitizeNotebookName removes filesystem-hostile characters and caps
@@ -427,11 +463,13 @@ func sanitizeNotebookName(s string) string {
 	return out
 }
 
-// renderLoadTestMarkdown builds the on-disk report. Plain-prose
-// rendering — PR-E replaces this body with the agent narrative but
-// keeps the same file shape (frontmatter + sections) so PR-D's
-// "view report" panel doesn't care which produced it.
-func renderLoadTestMarkdown(rec *loadtest.RunRecord) string {
+// renderLoadTestMarkdown builds the on-disk report.
+//
+// narrative is the optional LLM-authored prose block from PR-E. When
+// empty, the report omits the Narrative section entirely — frontmatter
+// + structured sections remain so the file is still useful even with
+// no AI client configured.
+func renderLoadTestMarkdown(rec *loadtest.RunRecord, narrative string) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	b.WriteString("type: loadtest-report\n")
@@ -450,6 +488,15 @@ func renderLoadTestMarkdown(rec *loadtest.RunRecord) string {
 	b.WriteString(fmt.Sprintf("**Destination:** `%s`\n\n", rec.Spec.Destination))
 	b.WriteString(fmt.Sprintf("**Payload:** %s, %d bytes\n\n", rec.Spec.Payload.Kind, rec.Spec.Payload.Size))
 	b.WriteString(fmt.Sprintf("**Ramp:** %s\n\n", rec.Spec.Ramp.Kind))
+
+	if narrative != "" {
+		b.WriteString("## Narrative\n\n")
+		b.WriteString(narrative)
+		if !strings.HasSuffix(narrative, "\n") {
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
+	}
 
 	b.WriteString("## Summary\n\n")
 	b.WriteString(fmt.Sprintf("- Sent: **%d**\n", rec.Summary.Sent))
