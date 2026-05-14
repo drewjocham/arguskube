@@ -14,6 +14,10 @@ export function AlertInvestigations(arg1, arg2) {
   return window['go']['pkg']['App']['AlertInvestigations'](arg1, arg2);
 }
 
+export function AnalyzeDB(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['AnalyzeDB'](arg1, arg2, arg3);
+}
+
 export function AnalyzeEndpointReadiness(arg1, arg2) {
   return window['go']['pkg']['App']['AnalyzeEndpointReadiness'](arg1, arg2);
 }
@@ -38,8 +42,8 @@ export function BatchCheckCanI(arg1, arg2) {
   return window['go']['pkg']['App']['BatchCheckCanI'](arg1, arg2);
 }
 
-export function CancelLoadTest(arg1) {
-  return window['go']['pkg']['App']['CancelLoadTest'](arg1);
+export function CancelDistributedLoadTest(arg1) {
+  return window['go']['pkg']['App']['CancelDistributedLoadTest'](arg1);
 }
 
 export function CancelOAuthFlow(arg1) {
@@ -122,6 +126,10 @@ export function DeleteCodeReviewReport(arg1, arg2) {
   return window['go']['pkg']['App']['DeleteCodeReviewReport'](arg1, arg2);
 }
 
+export function DeleteDBConnection(arg1, arg2) {
+  return window['go']['pkg']['App']['DeleteDBConnection'](arg1, arg2);
+}
+
 export function DeleteIncident(arg1) {
   return window['go']['pkg']['App']['DeleteIncident'](arg1);
 }
@@ -178,12 +186,20 @@ export function EstimateCosts(arg1) {
   return window['go']['pkg']['App']['EstimateCosts'](arg1);
 }
 
+export function EstimateDistLoadCost(arg1) {
+  return window['go']['pkg']['App']['EstimateDistLoadCost'](arg1);
+}
+
 export function ExecPodShell(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['pkg']['App']['ExecPodShell'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function FindOrphanedEndpoints(arg1) {
   return window['go']['pkg']['App']['FindOrphanedEndpoints'](arg1);
+}
+
+export function GenerateLoadTestPayload(arg1, arg2) {
+  return window['go']['pkg']['App']['GenerateLoadTestPayload'](arg1, arg2);
 }
 
 export function GenerateTrafficSplitHTTPRoute(arg1, arg2, arg3, arg4, arg5) {
@@ -274,6 +290,10 @@ export function GetCrashLogs(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['GetCrashLogs'](arg1, arg2, arg3);
 }
 
+export function GetDBConnection(arg1, arg2) {
+  return window['go']['pkg']['App']['GetDBConnection'](arg1, arg2);
+}
+
 export function GetDeployArtifact(arg1, arg2) {
   return window['go']['pkg']['App']['GetDeployArtifact'](arg1, arg2);
 }
@@ -286,6 +306,34 @@ export function GetDeploymentRevisions(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['GetDeploymentRevisions'](arg1, arg2, arg3);
 }
 
+export function GetDistLoadCreditBalance() {
+  return window['go']['pkg']['App']['GetDistLoadCreditBalance']();
+}
+
+export function GetDistLoadCreditHistory() {
+  return window['go']['pkg']['App']['GetDistLoadCreditHistory']();
+}
+
+export function GetDistLoadHistory() {
+  return window['go']['pkg']['App']['GetDistLoadHistory']();
+}
+
+export function GetDistLoadUsage() {
+  return window['go']['pkg']['App']['GetDistLoadUsage']();
+}
+
+export function GetDistributedLoadTestRecord(arg1) {
+  return window['go']['pkg']['App']['GetDistributedLoadTestRecord'](arg1);
+}
+
+export function GetDistributedLoadTestResult(arg1) {
+  return window['go']['pkg']['App']['GetDistributedLoadTestResult'](arg1);
+}
+
+export function GetDistributedLoadTestStatus(arg1) {
+  return window['go']['pkg']['App']['GetDistributedLoadTestStatus'](arg1);
+}
+
 export function GetFeatures() {
   return window['go']['pkg']['App']['GetFeatures']();
 }
@@ -294,12 +342,8 @@ export function GetGatewayStatusByRole(arg1) {
   return window['go']['pkg']['App']['GetGatewayStatusByRole'](arg1);
 }
 
-export function GetLoadTestRecord(arg1) {
-  return window['go']['pkg']['App']['GetLoadTestRecord'](arg1);
-}
-
-export function GetLoadTestStatus(arg1) {
-  return window['go']['pkg']['App']['GetLoadTestStatus'](arg1);
+export function GetLocalDistLoadQuota() {
+  return window['go']['pkg']['App']['GetLocalDistLoadQuota']();
 }
 
 export function GetMetrics() {
@@ -438,16 +482,28 @@ export function ListArgusCDProjects() {
   return window['go']['pkg']['App']['ListArgusCDProjects']();
 }
 
-export function ListBrokerKinds() {
-  return window['go']['pkg']['App']['ListBrokerKinds']();
-}
-
 export function ListCodeReviewReports(arg1) {
   return window['go']['pkg']['App']['ListCodeReviewReports'](arg1);
 }
 
 export function ListContexts() {
   return window['go']['pkg']['App']['ListContexts']();
+}
+
+export function ListDBConnections(arg1) {
+  return window['go']['pkg']['App']['ListDBConnections'](arg1);
+}
+
+export function ListDistLoadBrokerKinds() {
+  return window['go']['pkg']['App']['ListDistLoadBrokerKinds']();
+}
+
+export function ListDistLoadPresets() {
+  return window['go']['pkg']['App']['ListDistLoadPresets']();
+}
+
+export function ListDistLoadRegions() {
+  return window['go']['pkg']['App']['ListDistLoadRegions']();
 }
 
 export function ListEncryptedSecretSources(arg1) {
@@ -484,10 +540,6 @@ export function ListHTTPRoutes(arg1) {
 
 export function ListIncidents() {
   return window['go']['pkg']['App']['ListIncidents']();
-}
-
-export function ListLoadTestPresets() {
-  return window['go']['pkg']['App']['ListLoadTestPresets']();
 }
 
 export function ListNamespaces() {
@@ -588,6 +640,10 @@ export function ResizeExec(arg1, arg2) {
 
 export function ResizeTerminal(arg1, arg2) {
   return window['go']['pkg']['App']['ResizeTerminal'](arg1, arg2);
+}
+
+export function ResolveLocalPayloadPath(arg1) {
+  return window['go']['pkg']['App']['ResolveLocalPayloadPath'](arg1);
 }
 
 export function ResolveSecretRef(arg1) {
@@ -702,6 +758,10 @@ export function SilenceAlert(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['SilenceAlert'](arg1, arg2, arg3);
 }
 
+export function StartDistributedLoadTest(arg1) {
+  return window['go']['pkg']['App']['StartDistributedLoadTest'](arg1);
+}
+
 export function StartEnvProbeLoop(arg1) {
   return window['go']['pkg']['App']['StartEnvProbeLoop'](arg1);
 }
@@ -712,10 +772,6 @@ export function StartEventLoop(arg1) {
 
 export function StartHTTPServer(arg1) {
   return window['go']['pkg']['App']['StartHTTPServer'](arg1);
-}
-
-export function StartLoadTest(arg1) {
-  return window['go']['pkg']['App']['StartLoadTest'](arg1);
 }
 
 export function StartOAuthFlow(arg1) {
@@ -744,6 +800,10 @@ export function SyncArgusCDApp(arg1, arg2) {
 
 export function TestArgusCDConnection() {
   return window['go']['pkg']['App']['TestArgusCDConnection']();
+}
+
+export function TestDBConnection(arg1, arg2) {
+  return window['go']['pkg']['App']['TestDBConnection'](arg1, arg2);
 }
 
 export function TestS3Connection() {
@@ -780,6 +840,10 @@ export function UpdateIncident(arg1, arg2, arg3) {
 
 export function UpdateSettings(arg1) {
   return window['go']['pkg']['App']['UpdateSettings'](arg1);
+}
+
+export function UpsertDBConnection(arg1, arg2) {
+  return window['go']['pkg']['App']['UpsertDBConnection'](arg1, arg2);
 }
 
 export function ValidateEnvFile(arg1, arg2, arg3) {

@@ -1,0 +1,27 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/argus/argus-runner
+  tag: latest
+  pullPolicy: Always
+
+service:
+  port: 8080
+
+env:
+  GCP_PROJECT: ""
+  RUNNER_API_KEY: ""
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+  requests:
+    cpu: 500m
+    memory: 256Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

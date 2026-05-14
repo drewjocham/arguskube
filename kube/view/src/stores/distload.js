@@ -211,10 +211,10 @@ export const useDistLoadStore = defineStore('distload', () => {
     }
   }
 
+  // SSE connection for runner-mode runs.
+  let sseConnection = null
+
   async function start(spec) {
-    // Concurrent-run guard: orphaning a real cloud run silently
-    // would burn credits on VMs nobody is watching. Reject the
-    // second Start so the user has to explicitly Cancel first.
     if (activeRunId.value && isRunning.value) {
       const msg = `A distributed load test is already running (${activeRunId.value}). Cancel it before starting another.`
       error.value = msg
@@ -227,9 +227,13 @@ export const useDistLoadStore = defineStore('distload', () => {
       activeRunId.value = runId
       status.value = { runId, state: 'provisioning', startedAt: new Date().toISOString() }
       savePersistedActiveRun(status.value)
-      startPolling(runId)
-      // Refresh the local-run quota after a successful local start so
-      // the badge in the form reflects the just-consumed run.
+
+      if (spec?.runner === 'runner') {
+        startSSE(runId)
+      } else {
+        startPolling(runId)
+      }
+
       if (spec?.runner === 'local') {
         loadLocalQuota().catch(() => {})
       }
@@ -239,6 +243,102 @@ export const useDistLoadStore = defineStore('distload', () => {
       throw e
     } finally {
       loading.value = false
+    }
+  }
+
+  function startSSE(runId) {
+    stopSSE()
+    // The desktop app fetches the SSE URL from the backend, which
+    // returns the proxied SaaS endpoint.
+    callGo('GetRunnerStreamURL', runId).then(url => {
+      if (!url) {
+        startPolling(runId)
+        return
+      }
+      const source = new EventSource(url)
+      sseConnection = source
+
+      source.addEventListener('provisioning', (e) => {
+        try { onRunnerEvent(JSON.parse(e.data)) } catch {}
+      })
+      source.addEventListener('provisioned', (e) => {
+        try { onRunnerEvent(JSON.parse(e.data)) } catch {}
+      })
+      source.addEventListener('progress', (e) => {
+        try { onRunnerEvent(JSON.parse(e.data)) } catch {}
+      })
+      source.addEventListener('scale', (e) => {
+        try { onRunnerEvent(JSON.parse(e.data)) } catch {}
+      })
+      source.addEventListener('region_done', (e) => {
+        try { onRunnerEvent(JSON.parse(e.data)) } catch {}
+      })
+      source.addEventListener('complete', (e) => {
+        try {
+          onRunnerEvent(JSON.parse(e.data))
+          stopSSE()
+        } catch {}
+      })
+      source.addEventListener('canceling', () => {
+        status.value = { ...status.value, state: 'canceled' }
+        stopSSE()
+        savePersistedActiveRun(null)
+      })
+      source.onerror = () => {
+        // Fall back to polling when SSE fails.
+        stopSSE()
+        startPolling(runId)
+      }
+    }).catch(() => {
+      startPolling(runId)
+    })
+  }
+
+  function stopSSE() {
+    if (sseConnection) {
+      sseConnection.close()
+      sseConnection = null
+    }
+  }
+
+  function onRunnerEvent(evt) {
+    if (!evt || !activeRunId.value) return
+    if (evt.type === 'complete') {
+      status.value = {
+        ...status.value,
+        state: 'done',
+        summary: evt.summary,
+        finishedAt: evt.ts,
+      }
+      savePersistedActiveRun(null)
+      return
+    }
+    if (evt.type === 'provisioning') {
+      status.value = { ...status.value, state: 'provisioning' }
+    }
+    if (evt.type === 'provisioned') {
+      status.value = { ...status.value, state: 'running' }
+    }
+    if (evt.type === 'progress' && evt.progress) {
+      const current = status.value?.workers ?? []
+      const idx = current.findIndex(w => w.region === evt.region)
+      if (idx >= 0) {
+        current[idx] = { ...current[idx], ...evt.progress }
+      } else {
+        current.push(evt.progress)
+      }
+      status.value = { ...status.value, workers: current }
+    }
+    if (evt.type === 'region_done' && evt.summary) {
+      const current = status.value?.regions ?? []
+      const idx = current.findIndex(r => r.region === evt.region)
+      if (idx < 0) {
+        current.push({ region: evt.region, summary: evt.summary })
+      }
+      status.value = { ...status.value, regions: current }
+    }
+    if (evt.type === 'error') {
+      error.value = evt.error || evt.message || 'Runner error'
     }
   }
 
@@ -313,6 +413,7 @@ export const useDistLoadStore = defineStore('distload', () => {
       error.value = e.message ?? String(e)
     } finally {
       stopPolling()
+      stopSSE()
       if (status.value) {
         status.value = { ...status.value, state: 'canceled' }
       }
@@ -349,6 +450,7 @@ export const useDistLoadStore = defineStore('distload', () => {
 
   function reset() {
     stopPolling()
+    stopSSE()
     activeRunId.value = null
     status.value = null
     error.value = null
