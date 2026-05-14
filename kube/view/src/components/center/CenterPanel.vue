@@ -13,6 +13,10 @@ import ConfigAudit from '../operations/ConfigAudit.vue'
 import ArgusCDList from '../operations/ArgusCDList.vue'
 import PipelinesView from '../operations/PipelinesView.vue'
 import LoadTestPanel from '../operations/LoadTestPanel.vue'
+import DistLoadForm from '../loadtest/DistLoadForm.vue'
+import DistLoadDashboard from '../loadtest/DistLoadDashboard.vue'
+import DistLoadHistory from '../loadtest/DistLoadHistory.vue'
+import DistLoadCredits from '../loadtest/DistLoadCredits.vue'
 import LogExplorer from './LogExplorer.vue'
 import AnomalyDetection from './AnomalyDetection.vue'
 import MetricsExplorer from './MetricsExplorer.vue'
@@ -75,6 +79,8 @@ import { SECTIONS } from '../../lib/sectionTabs'
 const { report: argusScanReport, loading: argusScanLoading, error: argusScanError, runScan: runArgusScanReal } = useArgusScan()
 const { startTask, completeTask, failTask, getTask } = useBackgroundTasks()
 const ARGUS_SCAN_KEY = 'argus-scan'
+
+const distLoadTab = ref('form')
 
 const props = defineProps({
   metrics: { type: Object, default: null },
@@ -448,6 +454,20 @@ const adminTabs = SECTIONS.admin.tabs
         <ArgusCDList v-else-if="currentTab === 'arguscd'" />
         <PipelinesView v-else-if="currentTab === 'pipelines'" />
         <LoadTestPanel v-else-if="currentTab === 'loadtest'" />
+        <template v-else-if="currentTab === 'distload'">
+          <div class="tabs sub-tabs">
+            <div class="tab" :class="{ active: distLoadTab === 'form' }" @click="distLoadTab = 'form'">New Test</div>
+            <div class="tab" :class="{ active: distLoadTab === 'dashboard' }" @click="distLoadTab = 'dashboard'">Active Run</div>
+            <div class="tab" :class="{ active: distLoadTab === 'history' }" @click="distLoadTab = 'history'">History</div>
+            <div class="tab" :class="{ active: distLoadTab === 'credits' }" @click="distLoadTab = 'credits'">Credits</div>
+            <div class="tab-spacer"></div>
+            <div class="tab-pro-badge">PRO</div>
+          </div>
+          <DistLoadForm v-if="distLoadTab === 'form'" />
+          <DistLoadDashboard v-else-if="distLoadTab === 'dashboard'" />
+          <DistLoadHistory v-else-if="distLoadTab === 'history'" />
+          <DistLoadCredits v-else-if="distLoadTab === 'credits'" />
+        </template>
       </div>
     </template>
 
@@ -504,6 +524,13 @@ const adminTabs = SECTIONS.admin.tabs
   font-size: 11px; color: var(--text3);
   margin: 0 6px;
   white-space: nowrap;
+}
+
+.tab-pro-badge {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.04em;
+  padding: 2px 6px; border-radius: 3px;
+  background: rgba(208, 156, 88, 0.16); color: #d09c58;
+  margin-left: 4px;
 }
 
 .toolbar-btn {

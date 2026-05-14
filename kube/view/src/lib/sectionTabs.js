@@ -134,6 +134,7 @@ export const SECTIONS = Object.freeze({
       { id: 'arguscd', label: 'ArgusCD', pro: true },
       { id: 'pipelines', label: 'Pipelines' },
       { id: 'loadtest', label: 'Load Test' },
+      { id: 'distload', label: 'Distributed Test', pro: true },
     ],
   },
   knowledge: {
