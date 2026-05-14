@@ -29,6 +29,7 @@ type OnlineDataConfig struct {
 	Logging     LoggingConfig
 	DecisionLog DecisionLogConfig
 	S3          S3Config
+	SaaS        SaaSConfig
 	Auth        AuthConfig
 }
 
@@ -223,6 +224,12 @@ type DecisionLogConfig struct {
 	Path string `env:"ARGUS_DECISION_LOG"`
 }
 
+// SaaSConfig holds connection settings for the Argus SaaS platform.
+type SaaSConfig struct {
+	BaseURL string `env:"ARGUS_SAAS_BASE_URL"`
+	APIKey  string `env:"ARGUS_SAAS_API_KEY"`
+}
+
 // S3Config holds S3 bucket settings for notebook storage.
 type S3Config struct {
 	Bucket    string `env:"ARGUS_S3_BUCKET"`
@@ -349,6 +356,10 @@ func New() (*OnlineDataConfig, error) {
 			Endpoint:  env("ARGUS_S3_ENDPOINT", ""),
 			AccessKey: env("ARGUS_S3_ACCESS_KEY", ""),
 			SecretKey: env("ARGUS_S3_SECRET_KEY", ""),
+		},
+		SaaS: SaaSConfig{
+			BaseURL: env("ARGUS_SAAS_BASE_URL", "https://api.argusplatform.dev"),
+			APIKey:  env("ARGUS_SAAS_API_KEY", ""),
 		},
 		Auth: AuthConfig{
 			PublicBaseURL:      env("ARGUS_AUTH_BASE_URL", "http://127.0.0.1:8080"),

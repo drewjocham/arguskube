@@ -24,6 +24,7 @@ import (
 	"github.com/argues/argus/internal/popeye"
 	"github.com/argues/argus/internal/oauthproviders"
 	"github.com/argues/argus/internal/runbooks"
+	"github.com/argues/argus/internal/saasapi"
 	"github.com/argues/argus/internal/secretref"
 	"github.com/argues/argus/internal/setup"
 	"github.com/argues/argus/internal/spotcheck"
@@ -52,6 +53,7 @@ type AppConfig struct {
 	Incidents       *incidents.Store
 	Workflows       *workflows.Store
 	Usage           *usage.Store
+	SaaSClient      *saasapi.Client
 	DB              *sql.DB
 	AppMode         string
 }
@@ -80,6 +82,7 @@ type App struct {
 	hub             *Hub
 	workflows       *workflows.Store
 	usage           *usage.Store
+	saasClient      *saasapi.Client
 
 	appMode string
 
@@ -152,6 +155,7 @@ func NewApp(ac AppConfig) *App {
 		workflows:       ac.Workflows,
 		db:              ac.DB,
 		usage:           ac.Usage,
+		saasClient:      ac.SaaSClient,
 		appMode:         ac.AppMode,
 		hub:             NewHub(ac.Logger.With("component", "saas-hub")),
 	}

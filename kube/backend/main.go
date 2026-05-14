@@ -27,6 +27,7 @@ import (
 	"github.com/argues/argus/internal/notebooks"
 	"github.com/argues/argus/internal/popeye"
 	"github.com/argues/argus/internal/runbooks"
+	"github.com/argues/argus/internal/saasapi"
 	"github.com/argues/argus/internal/setup"
 	"github.com/argues/argus/internal/sqlitedb"
 	"github.com/argues/argus/internal/vulnscan"
@@ -122,6 +123,13 @@ func run() error {
 		scanner = vulnscan.New(k8sClient.GetClientset(), logger)
 	}
 
+	saasClient := saasapi.NewClient(cfg.SaaS.BaseURL, cfg.SaaS.APIKey, logger)
+	if cfg.SaaS.APIKey != "" {
+		logger.Info("SaaS client initialized", slog.String("baseURL", cfg.SaaS.BaseURL))
+	} else {
+		logger.Warn("SaaS client disabled — set ARGUS_SAAS_API_KEY to enable distributed load testing")
+	}
+
 	// Argo CD client — nil if not configured.
 	argoCDClient := argocd.New(argocd.Config{
 		URL:      cfg.ArgoCD.URL,
@@ -207,6 +215,8 @@ func run() error {
 		Incidents:       incidentStore,
 		Workflows:       workflowStore,
 		Setup:           setupMgr,
+		Usage:           nil, // usage store configured elsewhere
+		SaaSClient:      saasClient,
 		DB:              db.DB,
 		AppMode:         appMode,
 	})

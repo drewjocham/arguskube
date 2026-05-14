@@ -23,24 +23,26 @@ const (
 	FeatureFlinkAnomaly Feature = "flink_anomaly"
 
 	// Pro tier features
-	FeatureAIDiagnostics   Feature = "ai_diagnostics"
-	FeatureRunbookAuto     Feature = "runbook_automation"
-	FeatureDecisionLog     Feature = "decision_log_context"
-	FeatureMultiCluster    Feature = "multi_cluster"
-	FeatureExtendedHistory Feature = "extended_history"
-	FeatureCustomRunbooks  Feature = "custom_runbooks"
-	FeatureArgusCD         Feature = "arguscd"
+	FeatureAIDiagnostics       Feature = "ai_diagnostics"
+	FeatureRunbookAuto         Feature = "runbook_automation"
+	FeatureDecisionLog         Feature = "decision_log_context"
+	FeatureMultiCluster        Feature = "multi_cluster"
+	FeatureExtendedHistory     Feature = "extended_history"
+	FeatureCustomRunbooks      Feature = "custom_runbooks"
+	FeatureArgusCD             Feature = "arguscd"
+	FeatureDistributedLoadTest Feature = "distributed_load_test"
 )
 
 // proOnly lists features that require Pro tier.
 var proOnly = map[Feature]bool{
-	FeatureAIDiagnostics:   true,
-	FeatureRunbookAuto:     true,
-	FeatureDecisionLog:     true,
-	FeatureMultiCluster:    true,
-	FeatureExtendedHistory: true,
-	FeatureCustomRunbooks:  true,
-	FeatureArgusCD:         true,
+	FeatureAIDiagnostics:       true,
+	FeatureRunbookAuto:         true,
+	FeatureDecisionLog:         true,
+	FeatureMultiCluster:        true,
+	FeatureExtendedHistory:     true,
+	FeatureCustomRunbooks:      true,
+	FeatureArgusCD:             true,
+	FeatureDistributedLoadTest: true,
 }
 
 // Gate checks whether a feature is available for the current tier.
@@ -73,7 +75,7 @@ func (g *Gate) AllFeatures() map[Feature]bool {
 		FeatureCascadeCorr, FeatureAnomstack, FeatureFlinkAnomaly,
 		FeatureAIDiagnostics, FeatureRunbookAuto,
 		FeatureDecisionLog, FeatureMultiCluster, FeatureExtendedHistory, FeatureCustomRunbooks,
-		FeatureArgusCD,
+		FeatureArgusCD, FeatureDistributedLoadTest,
 	}
 	result := make(map[Feature]bool, len(all))
 	for _, f := range all {

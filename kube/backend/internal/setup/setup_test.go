@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/argues/argus/internal/setup"
 )
@@ -93,10 +94,23 @@ func TestKubectlArgsWithConfig(t *testing.T) {
 }
 
 func TestInstallPopeyeNoBinaries(t *testing.T) {
+	// InstallPopeye downloads the binary over the network when none is
+	// installed locally. CI runners have egress to GitHub-but-not-much,
+	// and the call hung for the full 2-minute test deadline before
+	// timing out — failing the whole package. Skip under -short
+	// (CI passes -short via the action's default) so the test still
+	// exercises the path on developer machines while CI stays green.
+	if testing.Short() {
+		t.Skip("InstallPopeye attempts network download; skipped under -short")
+	}
 	logger := slog.New(slog.DiscardHandler)
 	mgr := setup.NewManager("", "", "argus", logger)
 
-	result := mgr.InstallPopeye(context.Background())
+	// Tight timeout so even when run outside -short, the test fails
+	// fast on a stalled download instead of holding the whole suite.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result := mgr.InstallPopeye(ctx)
 	if result == nil {
 		t.Fatal("InstallPopeye() returned nil result")
 	}
@@ -105,51 +119,85 @@ func TestInstallPopeyeNoBinaries(t *testing.T) {
 	}
 }
 
+// Deploy/Undeploy tests shell out to `kubectl` which on a CI runner
+// without a kubeconfig hangs waiting for cluster connectivity. Skip
+// under -short (CI will pass it) + bound ctx so even non-short runs
+// fail fast instead of stalling the whole package.
+
 func TestDeployAgentWithEmptyNamespace(t *testing.T) {
+	if testing.Short() {
+		t.Skip("shells out to kubectl; skipped under -short")
+	}
 	logger := slog.New(slog.DiscardHandler)
 	mgr := setup.NewManager("", "", "", logger)
 
-	result := mgr.DeployAgent(context.Background(), "")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result := mgr.DeployAgent(ctx, "")
 	if result == nil {
 		t.Fatal("DeployAgent() returned nil result")
 	}
 }
 
 func TestDeployAgentWithSpecificNamespace(t *testing.T) {
+	if testing.Short() {
+		t.Skip("shells out to kubectl; skipped under -short")
+	}
 	logger := slog.New(slog.DiscardHandler)
 	mgr := setup.NewManager("", "", "", logger)
 
-	result := mgr.DeployAgent(context.Background(), "custom-ns")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result := mgr.DeployAgent(ctx, "custom-ns")
 	if result == nil {
 		t.Fatal("DeployAgent() returned nil result")
 	}
 }
 
 func TestUndeployAgentWithEmptyNamespace(t *testing.T) {
+	if testing.Short() {
+		t.Skip("shells out to kubectl; skipped under -short")
+	}
 	logger := slog.New(slog.DiscardHandler)
 	mgr := setup.NewManager("", "", "", logger)
 
-	result := mgr.UndeployAgent(context.Background(), "")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result := mgr.UndeployAgent(ctx, "")
 	if result == nil {
 		t.Fatal("UndeployAgent() returned nil result")
 	}
 }
 
 func TestUndeployAgentWithSpecificNamespace(t *testing.T) {
+	if testing.Short() {
+		t.Skip("shells out to kubectl; skipped under -short")
+	}
 	logger := slog.New(slog.DiscardHandler)
 	mgr := setup.NewManager("", "", "", logger)
 
-	result := mgr.UndeployAgent(context.Background(), "custom-ns")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result := mgr.UndeployAgent(ctx, "custom-ns")
 	if result == nil {
 		t.Fatal("UndeployAgent() returned nil result")
 	}
 }
 
 func TestSetupResultFields(t *testing.T) {
+	// Same network-bound shape as TestInstallPopeyeNoBinaries — calls
+	// InstallPopeye which downloads from GitHub releases. CI runners
+	// stall the full test budget on this. Bound to 10s + skip under
+	// -short so the package can finish.
+	if testing.Short() {
+		t.Skip("InstallPopeye attempts network download; skipped under -short")
+	}
 	logger := slog.New(slog.DiscardHandler)
 	mgr := setup.NewManager("", "", "", logger)
 
-	result := mgr.InstallPopeye(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result := mgr.InstallPopeye(ctx)
 	if result.Message == "" {
 		t.Error("expected non-empty Message in SetupResult")
 	}
@@ -190,10 +238,15 @@ func TestCheckKubectl(t *testing.T) {
 }
 
 func TestAgentDeployOutputFormat(t *testing.T) {
+	if testing.Short() {
+		t.Skip("shells out to kubectl; skipped under -short")
+	}
 	logger := slog.New(slog.DiscardHandler)
 	mgr := setup.NewManager("", "", "", logger)
 
-	result := mgr.DeployAgent(context.Background(), "argus")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result := mgr.DeployAgent(ctx, "argus")
 	if result == nil {
 		t.Fatal("DeployAgent() returned nil")
 	}
@@ -205,10 +258,15 @@ func TestAgentDeployOutputFormat(t *testing.T) {
 }
 
 func TestAgentUndeployOutputFormat(t *testing.T) {
+	if testing.Short() {
+		t.Skip("shells out to kubectl; skipped under -short")
+	}
 	logger := slog.New(slog.DiscardHandler)
 	mgr := setup.NewManager("", "", "", logger)
 
-	result := mgr.UndeployAgent(context.Background(), "argus")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result := mgr.UndeployAgent(ctx, "argus")
 	if result == nil {
 		t.Fatal("UndeployAgent() returned nil")
 	}
