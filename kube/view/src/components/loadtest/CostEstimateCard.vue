@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, onUnmounted } from 'vue'
+import { useDebounceFn } from '@vueuse/core'
 import { useDistLoadStore } from '../../stores/distload'
 
 const props = defineProps({
@@ -10,44 +11,42 @@ const store = useDistLoadStore()
 const estimatedCost = ref(null)
 const estimating = ref(false)
 const error = ref(null)
-let debounceTimer = null
 
-const debouncedEstimate = (spec) => {
-  if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(async () => {
-    if (!spec.regions?.length) {
-      estimatedCost.value = null
-      return
-    }
-    estimating.value = true
-    error.value = null
-    try {
-      const cost = await store.estimateCost(spec)
-      estimatedCost.value = cost
-    } catch (e) {
-      error.value = e.message ?? String(e)
-      estimatedCost.value = null
-    } finally {
-      estimating.value = false
-    }
-  }, 500)
-}
+// alive guards against the debounced callback firing after the
+// component unmounts. useDebounceFn (VueUse) does NOT cancel pending
+// timers on scope dispose — the returned function is a simple
+// debounce wrapper without a cancel method exposed. Rather than
+// re-implement timer tracking, we let the timer fire but no-op the
+// callback when alive=false. Net effect: no network call after
+// unmount, which is what the audit's CostEstimateCard finding
+// required.
+const alive = ref(true)
+onUnmounted(() => { alive.value = false })
+
+const debouncedEstimate = useDebounceFn(async (spec) => {
+  if (!alive.value) return
+  if (!spec.regions?.length) {
+    estimatedCost.value = null
+    return
+  }
+  estimating.value = true
+  error.value = null
+  try {
+    const cost = await store.estimateCost(spec)
+    if (!alive.value) return
+    estimatedCost.value = cost
+  } catch (e) {
+    if (!alive.value) return
+    error.value = e.message ?? String(e)
+    estimatedCost.value = null
+  } finally {
+    if (alive.value) estimating.value = false
+  }
+}, 500)
 
 watch(() => props.spec, (spec) => {
   debouncedEstimate(spec)
 }, { deep: true, immediate: false })
-
-// Without this, a debounce armed just before navigation fires AFTER
-// the component is gone — and its callback writes to refs that no
-// longer have observers but still hold a reference to the SaaS store,
-// which can then trigger a redundant network call on a teardown
-// path. Clear the timer on unmount.
-onUnmounted(() => {
-  if (debounceTimer) {
-    clearTimeout(debounceTimer)
-    debounceTimer = null
-  }
-})
 </script>
 
 <template>
