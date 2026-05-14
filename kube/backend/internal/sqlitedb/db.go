@@ -244,4 +244,30 @@ var migrations = []migration{
 		name: "create_user_suggestion_log_index",
 		sql:  `CREATE INDEX idx_user_suggestion_log_created ON user_suggestion_log(created_at DESC)`,
 	},
+	{
+		// User-registered database connections for DBAgent. password_enc
+		// is base64(AES-256-GCM(nonce||ct||tag)); the master key lives
+		// in secretstore so a stolen argus.db is useless on its own.
+		name: "create_db_connections",
+		sql: `CREATE TABLE db_connections (
+			id            TEXT    PRIMARY KEY,
+			name          TEXT    NOT NULL,
+			db_type       TEXT    NOT NULL,
+			host          TEXT    NOT NULL DEFAULT '',
+			port          INTEGER NOT NULL DEFAULT 0,
+			user_name     TEXT    NOT NULL DEFAULT '',
+			password_enc  TEXT    NOT NULL DEFAULT '',
+			db_name       TEXT    NOT NULL DEFAULT '',
+			ssl_mode      TEXT    NOT NULL DEFAULT '',
+			pool_size     INTEGER NOT NULL DEFAULT 0,
+			tags          TEXT    NOT NULL DEFAULT '[]',
+			enabled       INTEGER NOT NULL DEFAULT 1,
+			created_at    INTEGER NOT NULL,
+			updated_at    INTEGER NOT NULL
+		)`,
+	},
+	{
+		name: "create_db_connections_name_index",
+		sql:  `CREATE UNIQUE INDEX idx_db_connections_name ON db_connections(name)`,
+	},
 }
