@@ -130,10 +130,110 @@ func TestClient_Do_500_IncludesBody(t *testing.T) {
 func TestClient_Do_NetworkError_WrappedUnreachable(t *testing.T) {
 	// Loopback port 1 is not listening; the dial fails. The
 	// frontend uses this to render "platform unreachable" instead
-	// of a raw Go error.
+	// of a raw Go error. Note: with backoff retries enabled, this
+	// now takes ~3.5s (3 retries with jitter) — acceptable cost
+	// for "this is genuinely down" feedback.
 	cli := NewClient("http://127.0.0.1:1", "k", testLogger())
 	err := cli.do(context.Background(), http.MethodGet, "/x", nil, nil)
 	if !errors.Is(err, ErrUnreachable) {
 		t.Errorf("err = %v, want wrapping ErrUnreachable", err)
+	}
+}
+
+// --- Retry + circuit-breaker tests -----------------------------------------
+
+// 5xx is retryable. We use a counter to simulate "second attempt
+// succeeds" — the client should NOT propagate the first 503 to the
+// caller.
+func TestClient_Do_RetriesOn5xx(t *testing.T) {
+	var attempts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		if attempts == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	cli := NewClient(srv.URL, "k", testLogger())
+	if err := cli.do(context.Background(), http.MethodGet, "/x", nil, nil); err != nil {
+		t.Fatalf("expected eventual success, got %v", err)
+	}
+	if attempts < 2 {
+		t.Errorf("attempts = %d, want >=2 (one retry)", attempts)
+	}
+}
+
+// 429 is retryable.
+func TestClient_Do_RetriesOn429(t *testing.T) {
+	var attempts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		if attempts < 2 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	cli := NewClient(srv.URL, "k", testLogger())
+	if err := cli.do(context.Background(), http.MethodGet, "/x", nil, nil); err != nil {
+		t.Fatalf("expected eventual success, got %v", err)
+	}
+	if attempts < 2 {
+		t.Errorf("attempts = %d, want >=2", attempts)
+	}
+}
+
+// 401 is permanent — must NOT retry. Auth errors don't fix themselves
+// in a few hundred milliseconds, and retrying would burn time on every
+// startup before the user has set their key.
+func TestClient_Do_NoRetryOnPermanent4xx(t *testing.T) {
+	var attempts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+
+	cli := NewClient(srv.URL, "k", testLogger())
+	err := cli.do(context.Background(), http.MethodGet, "/x", nil, nil)
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Errorf("err = %v, want ErrUnauthorized", err)
+	}
+	if attempts != 1 {
+		t.Errorf("attempts = %d, want 1 (no retry on 401)", attempts)
+	}
+}
+
+// After 5 consecutive failures, the breaker opens and subsequent
+// calls fail fast with ErrCircuitOpen — no longer hitting the server.
+func TestClient_Do_BreakerOpensAfterConsecutiveFailures(t *testing.T) {
+	var attempts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	cli := NewClient(srv.URL, "k", testLogger())
+	// Each do() retries 3 times internally, so 5 do() calls is 5
+	// "logical" failures from the breaker's perspective (each
+	// retry chain returns one final failure to Execute()).
+	for i := 0; i < 5; i++ {
+		_ = cli.do(context.Background(), http.MethodGet, "/x", nil, nil)
+	}
+	// 6th call should fail fast.
+	beforeAttempts := attempts
+	err := cli.do(context.Background(), http.MethodGet, "/x", nil, nil)
+	if !errors.Is(err, ErrCircuitOpen) {
+		t.Errorf("err = %v, want ErrCircuitOpen", err)
+	}
+	if attempts != beforeAttempts {
+		t.Errorf("server received %d attempts after breaker open; should be %d (no new requests)", attempts, beforeAttempts)
 	}
 }

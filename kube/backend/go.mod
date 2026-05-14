@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.16
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.15
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.100.0
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/creack/pty v1.1.21
 	github.com/google/uuid v1.6.0
@@ -17,6 +18,7 @@ require (
 	github.com/nats-io/nats-server/v2 v2.14.0
 	github.com/nats-io/nats.go v1.52.0
 	github.com/rabbitmq/amqp091-go v1.11.0
+	github.com/sony/gobreaker v1.0.0
 	github.com/twmb/franz-go v1.21.1
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260504210720-963be6fd5989
 	github.com/wailsapp/wails/v2 v2.12.0
