@@ -27,6 +27,15 @@ const {
 // ── form state ────────────────────────────────────────────────────────
 const testName = ref('')
 const runner = ref('local') // 'local' | 'cloud'
+// testType separates the two genuinely different shapes of test:
+//   - 'eventbus' → publishing to Kafka / NATS / RabbitMQ / Pub-Sub / AMQP-1.0.
+//     Needs a destination (topic / subject / queue / target).
+//   - 'rest'     → directly hitting an HTTP endpoint. URL and verb live on
+//     the REST sub-form; no broker destination applies.
+// We remember the user's eventbus selection so flipping rest→eventbus
+// doesn't lose their choice.
+const testType = ref('eventbus') // 'eventbus' | 'rest'
+const lastEventBusKind = ref('kafka')
 const selectedPresetId = ref('')
 const brokerKind = ref('kafka')
 const brokerConfig = ref(defaultBrokerConfig('kafka'))
@@ -73,10 +82,15 @@ const BROKER_LABELS = {
   amqp1: 'Solace / AMQP 1.0',
   rest: 'REST / HTTP',
 }
-const brokerKindOptions = computed(() =>
-  (brokerKinds.value?.length ? brokerKinds.value : Object.keys(BROKER_LABELS))
+// The protocol dropdown is only shown in 'eventbus' mode and hides
+// REST from the list — REST is reached via the top-level test-type
+// toggle so it can't be a sub-option here too.
+const brokerKindOptions = computed(() => {
+  const base = brokerKinds.value?.length ? brokerKinds.value : Object.keys(BROKER_LABELS)
+  return base
+    .filter((k) => k !== 'rest')
     .map((k) => ({ value: k, label: BROKER_LABELS[k] ?? k }))
-)
+})
 
 const presetOptions = computed(() => [
   { value: '', label: 'No preset — configure manually' },
@@ -109,6 +123,19 @@ function defaultBrokerConfig(kind) {
 }
 
 watch(brokerKind, (k) => { brokerConfig.value = defaultBrokerConfig(k) })
+
+// Top-level test-type toggle drives brokerKind. Switching to REST forces
+// brokerKind='rest' and stashes the previous eventbus kind so flipping
+// back restores it. Switching to Event Bus restores the remembered
+// kind (or 'kafka' on first ever switch).
+watch(testType, (t) => {
+  if (t === 'rest') {
+    if (brokerKind.value !== 'rest') lastEventBusKind.value = brokerKind.value
+    brokerKind.value = 'rest'
+  } else {
+    brokerKind.value = lastEventBusKind.value || 'kafka'
+  }
+})
 
 // ── preset apply ──────────────────────────────────────────────────────
 function applyPreset(id) {
@@ -185,14 +212,25 @@ const spec = computed(() => ({
 // ── validation ───────────────────────────────────────────────────────
 function validate() {
   const errs = []
-  if (!destination.value) errs.push('Destination is required')
+  // Event Bus needs a destination on the topic/queue/subject field;
+  // REST has no analogous concept — its URL lives in the broker form.
+  if (testType.value === 'eventbus') {
+    if (!destination.value) errs.push('Destination is required')
+  } else if (testType.value === 'rest') {
+    if (!brokerConfig.value?.baseURL) errs.push('Base URL is required for REST tests')
+  }
   if (effectiveCount.value <= 0 || effectiveCount.value > 10_000_000) errs.push('Message count must be between 1 and 10M')
   if (workers.value <= 0) errs.push('Workers must be > 0')
   if (runner.value === 'cloud') {
     if (selectedRegions.value.length === 0) errs.push('Select at least one region')
-    const privateReason = isPrivateOrLoopback(destination.value)
+    // The cloud-reachability check applies to whichever endpoint the
+    // worker will actually dial — destination for brokers, baseURL for
+    // REST. Both end up as a hostname the user must expose to VMs.
+    const target = testType.value === 'rest' ? brokerConfig.value?.baseURL : destination.value
+    const privateReason = isPrivateOrLoopback(target)
     if (privateReason) {
-      errs.push(`Destination is ${privateReason} — cloud VMs can't reach it. Use a public hostname or a VPN-accessible endpoint.`)
+      const label = testType.value === 'rest' ? 'Base URL' : 'Destination'
+      errs.push(`${label} is ${privateReason} — cloud VMs can't reach it. Use a public hostname or a VPN-accessible endpoint.`)
     }
   }
   validationErrors.value = errs
@@ -204,7 +242,10 @@ const canStart = computed(() => {
   if (validationErrors.value.length > 0) return false
   if (runner.value === 'local' && quotaExceeded.value) return false
   if (runner.value === 'cloud' && selectedRegions.value.length === 0) return false
-  if (!destination.value) return false
+  // Endpoint check varies by test type — destination for brokers,
+  // baseURL on the REST config sub-form.
+  if (testType.value === 'eventbus' && !destination.value) return false
+  if (testType.value === 'rest' && !brokerConfig.value?.baseURL) return false
   return true
 })
 
@@ -271,6 +312,22 @@ onMounted(() => {
       </div>
     </section>
 
+    <!-- Test type toggle — defines what kind of test this is. The two
+         shapes drive different forms below, so it's a top-level choice
+         rather than a buried "rest" option in the protocol dropdown. -->
+    <section class="section">
+      <label class="field-label">Test type</label>
+      <div class="seg" role="radiogroup" aria-label="Test type">
+        <button type="button" class="seg-btn" :class="{ active: testType === 'eventbus' }" role="radio" :aria-checked="testType === 'eventbus'" data-testid="distload-type-eventbus" @click="testType = 'eventbus'">Event Bus</button>
+        <button type="button" class="seg-btn" :class="{ active: testType === 'rest' }" role="radio" :aria-checked="testType === 'rest'" data-testid="distload-type-rest" @click="testType = 'rest'">REST / HTTP</button>
+      </div>
+      <p class="field-hint">
+        {{ testType === 'eventbus'
+          ? 'Publish messages to a message broker (Kafka, NATS, RabbitMQ, Pub/Sub, AMQP 1.0).'
+          : 'Issue HTTP requests directly to a REST endpoint.' }}
+      </p>
+    </section>
+
     <!-- Preset -->
     <section class="section">
       <label class="field-label">Preset</label>
@@ -278,25 +335,34 @@ onMounted(() => {
       <p v-if="selectedPresetId" class="hint">{{ presets.find(p => p.id === selectedPresetId)?.description }}</p>
     </section>
 
-    <!-- Broker -->
-    <section class="section">
-      <label class="field-label">Broker</label>
-      <Select :modelValue="brokerKind" :options="brokerKindOptions" testid="distload-broker-kind" width="100%" @update:modelValue="brokerKind = $event" />
-      <div class="broker-sub">
-        <LoadTestBrokerKafka    v-if="brokerKind === 'kafka'"        v-model="brokerConfig" />
-        <LoadTestBrokerNATS     v-else-if="brokerKind === 'nats'"     v-model="brokerConfig" />
-        <LoadTestBrokerRabbitMQ v-else-if="brokerKind === 'rabbitmq'" v-model="brokerConfig" />
-        <LoadTestBrokerPubSub   v-else-if="brokerKind === 'pubsub'"   v-model="brokerConfig" />
-        <LoadTestBrokerAMQP1    v-else-if="brokerKind === 'amqp1'"    v-model="brokerConfig" />
-        <LoadTestBrokerREST     v-else-if="brokerKind === 'rest'"     v-model="brokerConfig" />
-      </div>
-    </section>
+    <!-- Event Bus mode: broker dropdown + matching sub-form + destination. -->
+    <template v-if="testType === 'eventbus'">
+      <section class="section">
+        <label class="field-label">Protocol / Broker</label>
+        <Select :modelValue="brokerKind" :options="brokerKindOptions" testid="distload-broker-kind" width="100%" @update:modelValue="brokerKind = $event" />
+        <div class="broker-sub">
+          <LoadTestBrokerKafka    v-if="brokerKind === 'kafka'"        v-model="brokerConfig" />
+          <LoadTestBrokerNATS     v-else-if="brokerKind === 'nats'"     v-model="brokerConfig" />
+          <LoadTestBrokerRabbitMQ v-else-if="brokerKind === 'rabbitmq'" v-model="brokerConfig" />
+          <LoadTestBrokerPubSub   v-else-if="brokerKind === 'pubsub'"   v-model="brokerConfig" />
+          <LoadTestBrokerAMQP1    v-else-if="brokerKind === 'amqp1'"    v-model="brokerConfig" />
+        </div>
+      </section>
 
-    <!-- Destination -->
-    <section class="section">
-      <label class="field-label">{{ destinationLabel }}</label>
-      <input v-model="destination" class="input" :placeholder="destinationLabel" data-testid="distload-destination" />
-    </section>
+      <section class="section">
+        <label class="field-label">{{ destinationLabel }}</label>
+        <input v-model="destination" class="input" :placeholder="destinationLabel" data-testid="distload-destination" />
+      </section>
+    </template>
+
+    <!-- REST mode: the REST sub-form already carries baseURL, method,
+         path, headers, auth — no separate destination field. -->
+    <template v-else>
+      <section class="section">
+        <label class="field-label">REST endpoint</label>
+        <LoadTestBrokerREST v-model="brokerConfig" />
+      </section>
+    </template>
 
     <!-- Payload -->
     <section class="section">
@@ -394,6 +460,7 @@ onMounted(() => {
 .seg-btn { background: var(--bg3); border: none; padding: 6px 14px; font-size: 12px; color: var(--text2); cursor: pointer; font-family: inherit; }
 .seg-btn.active { background: var(--accent, #4f8cff); color: #fff; }
 .hint { font-size: 12px; color: var(--text3); font-style: italic; margin: 0; }
+.field-hint { font-size: 12px; color: var(--text3); margin: 4px 0 0; }
 .broker-sub { margin-top: 8px; }
 .row-3col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 .form-group { display: flex; flex-direction: column; gap: 4px; }
