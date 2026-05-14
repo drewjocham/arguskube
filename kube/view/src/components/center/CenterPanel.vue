@@ -12,7 +12,6 @@ import IncidentLog from '../operations/IncidentLog.vue'
 import ConfigAudit from '../operations/ConfigAudit.vue'
 import ArgusCDList from '../operations/ArgusCDList.vue'
 import PipelinesView from '../operations/PipelinesView.vue'
-import LoadTestPanel from '../operations/LoadTestPanel.vue'
 import DistLoadForm from '../loadtest/DistLoadForm.vue'
 import DistLoadDashboard from '../loadtest/DistLoadDashboard.vue'
 import DistLoadHistory from '../loadtest/DistLoadHistory.vue'
@@ -453,15 +452,12 @@ const adminTabs = SECTIONS.admin.tabs
         <ConfigAudit v-else-if="currentTab === 'audit'" />
         <ArgusCDList v-else-if="currentTab === 'arguscd'" />
         <PipelinesView v-else-if="currentTab === 'pipelines'" />
-        <LoadTestPanel v-else-if="currentTab === 'loadtest'" />
         <template v-else-if="currentTab === 'distload'">
           <div class="tabs sub-tabs">
             <div class="tab" :class="{ active: distLoadTab === 'form' }" @click="distLoadTab = 'form'">New Test</div>
             <div class="tab" :class="{ active: distLoadTab === 'dashboard' }" @click="distLoadTab = 'dashboard'">Active Run</div>
             <div class="tab" :class="{ active: distLoadTab === 'history' }" @click="distLoadTab = 'history'">History</div>
             <div class="tab" :class="{ active: distLoadTab === 'credits' }" @click="distLoadTab = 'credits'">Credits</div>
-            <div class="tab-spacer"></div>
-            <div class="tab-pro-badge">PRO</div>
           </div>
           <DistLoadForm v-if="distLoadTab === 'form'" />
           <DistLoadDashboard v-else-if="distLoadTab === 'dashboard'" />
