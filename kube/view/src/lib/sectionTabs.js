@@ -145,6 +145,16 @@ export const SECTIONS = Object.freeze({
       { id: 'notebooks', label: 'Notebooks & S3' },
     ],
   },
+  workspace: {
+    id: 'workspace',
+    label: 'Workspace',
+    // Briefcase outline — distinct enough from the operations wrench
+    // and the knowledge book that it reads at a glance in the sidebar.
+    icon: 'M20 7h-4V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2zM10 5h4v2h-4V5z',
+    tabs: [
+      { id: 'connections', label: 'Connections' },
+    ],
+  },
   admin: {
     id: 'admin',
     label: 'Admin',
@@ -170,6 +180,7 @@ export const SECTION_ORDER = Object.freeze([
   'storage',
   'operations',
   'knowledge',
+  'workspace',
   'admin',
 ])
 
@@ -188,6 +199,7 @@ export const DEFAULT_TABS = Object.freeze({
   storage: 'pvcs',
   operations: 'runbooks',
   knowledge: 'documents',
+  workspace: 'connections',
   admin: 'setup',
 })
 

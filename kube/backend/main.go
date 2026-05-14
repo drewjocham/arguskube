@@ -35,6 +35,7 @@ import (
 	"github.com/argues/argus/internal/sqlitedb"
 	"github.com/argues/argus/internal/vulnscan"
 	"github.com/argues/argus/internal/workflows"
+	"github.com/argues/argus/internal/workspace"
 	"github.com/argues/argus/view"
 )
 
@@ -192,6 +193,17 @@ func run() error {
 		dbPool = connector.New(dbConfigStore, 0, 0)
 	}
 
+	// Workspace — Slack + Google integrations. Same gating as DBAgent:
+	// only the desktop binary owns this stack. Real providers (Slack,
+	// Google) land in subsequent phases; phase 1A boots the manager
+	// with no providers, so the UI shows an empty service list until
+	// the user upgrades.
+	var workspaceMgr *workspace.Manager
+	if os.Getenv("ARGUS_MODE") != "saas" {
+		wsStore := workspace.NewStore(db.DB, workspace.NewCrypto(secretstore.New("Argus")))
+		workspaceMgr = workspace.NewManager(wsStore, logger.With("component", "workspace"))
+	}
+
 	setupMgr := setup.NewManager(
 		cfg.Kubernetes.Config,
 		cfg.Kubernetes.Context,
@@ -237,6 +249,7 @@ func run() error {
 		DB:              db.DB,
 		DBConfigs:       dbConfigStore,
 		DBPool:          dbPool,
+		Workspace:       workspaceMgr,
 		AppMode:         appMode,
 	})
 
