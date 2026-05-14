@@ -179,6 +179,23 @@ export const useDistLoadStore = defineStore('distload', () => {
     }
   }
 
+  // Polling deliberately uses a hand-rolled setTimeout chain rather
+  // than VueUse's useIntervalFn. Two requirements force it:
+  //
+  //   1. Backoff on errors. The poll interval doubles on each
+  //      consecutive failure (2s → 4s → 8s) up to MAX_POLL_RETRIES,
+  //      then surfaces "Lost connection". useIntervalFn is fixed-
+  //      interval; reconfiguring it on every error would be more
+  //      code than the current chain.
+  //   2. Self-terminating. The chain stops when status reaches a
+  //      terminal state (done / canceled / error). useIntervalFn
+  //      requires explicit pause(), which is more bookkeeping for
+  //      no benefit here.
+  //
+  // The audit's concern — orphaned timers after unmount — is
+  // addressed by DistLoadDashboard.vue's onUnmounted(stopPolling)
+  // (landed in PR-24) and by resumeActiveRun()'s persistence so a
+  // reload re-attaches instead of double-firing.
   function startPolling(runId) {
     stopPolling()
     pollRetries = 0
