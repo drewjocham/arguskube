@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
 import { useDistLoadStore } from '../../stores/distload'
 
@@ -12,11 +12,19 @@ const estimatedCost = ref(null)
 const estimating = ref(false)
 const error = ref(null)
 
-// useDebounceFn replaces the hand-rolled setTimeout-+-clearTimeout
-// dance the audit flagged. VueUse internally tracks the timer via
-// tryOnScopeDispose so the callback can't fire after the component's
-// effect scope is torn down — no manual onUnmounted cleanup needed.
+// alive guards against the debounced callback firing after the
+// component unmounts. useDebounceFn (VueUse) does NOT cancel pending
+// timers on scope dispose — the returned function is a simple
+// debounce wrapper without a cancel method exposed. Rather than
+// re-implement timer tracking, we let the timer fire but no-op the
+// callback when alive=false. Net effect: no network call after
+// unmount, which is what the audit's CostEstimateCard finding
+// required.
+const alive = ref(true)
+onUnmounted(() => { alive.value = false })
+
 const debouncedEstimate = useDebounceFn(async (spec) => {
+  if (!alive.value) return
   if (!spec.regions?.length) {
     estimatedCost.value = null
     return
@@ -25,12 +33,14 @@ const debouncedEstimate = useDebounceFn(async (spec) => {
   error.value = null
   try {
     const cost = await store.estimateCost(spec)
+    if (!alive.value) return
     estimatedCost.value = cost
   } catch (e) {
+    if (!alive.value) return
     error.value = e.message ?? String(e)
     estimatedCost.value = null
   } finally {
-    estimating.value = false
+    if (alive.value) estimating.value = false
   }
 }, 500)
 
