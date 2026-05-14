@@ -133,8 +133,7 @@ export const SECTIONS = Object.freeze({
       { id: 'audit', label: 'Config Audit' },
       { id: 'arguscd', label: 'ArgusCD', pro: true },
       { id: 'pipelines', label: 'Pipelines' },
-      { id: 'loadtest', label: 'Load Test' },
-      { id: 'distload', label: 'Distributed Test', pro: true },
+      { id: 'distload', label: 'Load Test' },
     ],
   },
   knowledge: {

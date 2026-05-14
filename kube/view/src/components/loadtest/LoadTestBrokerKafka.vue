@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import Select from '../../common/Select.vue'
+import Select from '../common/Select.vue'
 
 const props = defineProps({
   modelValue: { type: Object, required: true },

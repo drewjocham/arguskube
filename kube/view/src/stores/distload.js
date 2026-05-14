@@ -48,6 +48,14 @@ export const useDistLoadStore = defineStore('distload', () => {
   const regions = ref([])
   const regionsLoading = ref(false)
 
+  // Presets, broker kinds, and local-runner quota are ported from the
+  // legacy LoadTestPanel so the unified form can offer the same UX.
+  const presets = ref([])
+  const brokerKinds = ref([])
+  // localQuota: { used, limit, resetAt, isPro } — shapes the local-run
+  // gating badge and Start button disabling for free-tier users.
+  const localQuota = ref(null)
+
   // ── active run state ────────────────────────────────────────────────
   const activeRunId = ref(null)
   const status = ref(null)
@@ -141,6 +149,56 @@ export const useDistLoadStore = defineStore('distload', () => {
     }
   }
 
+  async function loadPresets() {
+    try {
+      const result = await callGo('ListDistLoadPresets')
+      presets.value = result ?? []
+    } catch (e) {
+      error.value = e.message ?? String(e)
+    }
+  }
+
+  async function loadBrokerKinds() {
+    try {
+      const result = await callGo('ListDistLoadBrokerKinds')
+      brokerKinds.value = result ?? []
+    } catch (e) {
+      error.value = e.message ?? String(e)
+    }
+  }
+
+  async function loadLocalQuota() {
+    try {
+      const result = await callGo('GetLocalDistLoadQuota')
+      localQuota.value = result ?? null
+    } catch (e) {
+      // Non-fatal: a missing quota service shouldn't block cloud-run UX.
+      error.value = e.message ?? String(e)
+    }
+  }
+
+  function getPreset(id) {
+    return presets.value.find((p) => p.id === id) ?? null
+  }
+
+  async function generatePayload(prompt, sizeHint) {
+    try {
+      return await callGo('GenerateLoadTestPayload', prompt, sizeHint)
+    } catch (e) {
+      error.value = e.message ?? String(e)
+      throw e
+    }
+  }
+
+  async function resolvePayloadPath(path) {
+    try {
+      return await callGo('ResolveLocalPayloadPath', path)
+    } catch (e) {
+      error.value = e.message ?? String(e)
+      throw e
+    }
+  }
+
   async function loadHistory() {
     historyLoading.value = true
     try {
@@ -170,6 +228,11 @@ export const useDistLoadStore = defineStore('distload', () => {
       status.value = { runId, state: 'provisioning', startedAt: new Date().toISOString() }
       savePersistedActiveRun(status.value)
       startPolling(runId)
+      // Refresh the local-run quota after a successful local start so
+      // the badge in the form reflects the just-consumed run.
+      if (spec?.runner === 'local') {
+        loadLocalQuota().catch(() => {})
+      }
       return runId
     } catch (e) {
       error.value = e.message ?? String(e)
@@ -308,6 +371,9 @@ export const useDistLoadStore = defineStore('distload', () => {
   return {
     regions,
     regionsLoading,
+    presets,
+    brokerKinds,
+    localQuota,
     activeRunId,
     status,
     loading,
@@ -327,6 +393,12 @@ export const useDistLoadStore = defineStore('distload', () => {
     loadRegions,
     loadCredits,
     loadHistory,
+    loadPresets,
+    loadBrokerKinds,
+    loadLocalQuota,
+    getPreset,
+    generatePayload,
+    resolvePayloadPath,
     start,
     startPolling,
     stopPolling,
