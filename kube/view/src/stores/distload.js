@@ -6,6 +6,43 @@ const CACHE_TTL = 30_000
 const POLL_INTERVAL = 1500
 const MAX_POLL_RETRIES = 3
 
+// ACTIVE_RUN_KEY persists the in-flight run id across reload. The user
+// closing the tab mid-run used to lose tracking — they had no way to
+// rejoin a real cloud run that was still burning credits in the
+// background. We persist runId + state on every status update; on
+// store init we resume polling if a non-terminal run was active.
+const ACTIVE_RUN_KEY = 'argus.distload.activeRun.v1'
+
+const TERMINAL_STATES = new Set(['done', 'canceled', 'error'])
+
+function loadPersistedActiveRun() {
+  try {
+    const raw = localStorage.getItem(ACTIVE_RUN_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed?.runId) return null
+    if (TERMINAL_STATES.has(parsed.state)) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function savePersistedActiveRun(payload) {
+  try {
+    if (!payload?.runId) {
+      localStorage.removeItem(ACTIVE_RUN_KEY)
+      return
+    }
+    localStorage.setItem(ACTIVE_RUN_KEY, JSON.stringify({
+      runId: payload.runId,
+      state: payload.state,
+    }))
+  } catch {
+    /* best-effort — quota / SSR fallthrough */
+  }
+}
+
 export const useDistLoadStore = defineStore('distload', () => {
   // ── static data loaded once ─────────────────────────────────────────
   const regions = ref([])
@@ -48,6 +85,31 @@ export const useDistLoadStore = defineStore('distload', () => {
   })
 
   const hasRegions = computed(() => regions.value.length > 0)
+
+  // ── pre-Start gate ──────────────────────────────────────────────────
+  // estimatedCost is set by the form's debounced EstimateDistLoadCost
+  // call. canStart pulls credit + estimate together so the user gets
+  // a single "insufficient credits" hint before they click Start
+  // (instead of after, with a real cloud-side rejection).
+  const estimatedCost = ref(null)
+
+  function setEstimatedCost(v) {
+    estimatedCost.value = typeof v === 'number' && Number.isFinite(v) ? v : null
+  }
+
+  const canStart = computed(() => {
+    // Don't gate Start while still loading credit balance — that
+    // would trap the user in a stuck Start button.
+    if (creditsLoading.value) return false
+    if (isRunning.value) return false
+    if (loading.value) return false
+    // Estimate not yet available → allow; the SaaS side gives the
+    // authoritative answer when StartDistLoadTest is called.
+    if (estimatedCost.value == null) return true
+    const balance = creditBalance.value
+    if (balance == null) return true
+    return balance >= estimatedCost.value
+  })
 
   // ── actions ─────────────────────────────────────────────────────────
 
@@ -92,12 +154,21 @@ export const useDistLoadStore = defineStore('distload', () => {
   }
 
   async function start(spec) {
+    // Concurrent-run guard: orphaning a real cloud run silently
+    // would burn credits on VMs nobody is watching. Reject the
+    // second Start so the user has to explicitly Cancel first.
+    if (activeRunId.value && isRunning.value) {
+      const msg = `A distributed load test is already running (${activeRunId.value}). Cancel it before starting another.`
+      error.value = msg
+      throw new Error(msg)
+    }
     error.value = null
     loading.value = true
     try {
       const runId = await callGo('StartDistributedLoadTest', spec)
       activeRunId.value = runId
       status.value = { runId, state: 'provisioning', startedAt: new Date().toISOString() }
+      savePersistedActiveRun(status.value)
       startPolling(runId)
       return runId
     } catch (e) {
@@ -145,6 +216,11 @@ export const useDistLoadStore = defineStore('distload', () => {
     if (!payload) return
     if (cancelledLocally.has(payload.runId)) return
     status.value = payload
+    if (TERMINAL_STATES.has(payload.state)) {
+      savePersistedActiveRun(null)
+    } else {
+      savePersistedActiveRun(payload)
+    }
   }
 
   async function cancel() {
@@ -160,6 +236,7 @@ export const useDistLoadStore = defineStore('distload', () => {
       if (status.value) {
         status.value = { ...status.value, state: 'canceled' }
       }
+      savePersistedActiveRun(null)
     }
   }
 
@@ -175,10 +252,18 @@ export const useDistLoadStore = defineStore('distload', () => {
 
   async function estimateCost(spec) {
     try {
-      return await callGo('EstimateDistLoadCost', spec)
+      const v = await callGo('EstimateDistLoadCost', spec)
+      const n = typeof v === 'number' ? v : Number(v)
+      const out = Number.isFinite(n) ? n : null
+      setEstimatedCost(out)
+      return out
     } catch (e) {
+      // null (not 0) so the UI can render "—" instead of a false
+      // "free!" estimate when SaaS is unreachable. The audit
+      // specifically called this out as confusing.
       error.value = e.message ?? String(e)
-      return 0
+      setEstimatedCost(null)
+      return null
     }
   }
 
@@ -188,6 +273,19 @@ export const useDistLoadStore = defineStore('distload', () => {
     status.value = null
     error.value = null
     loading.value = false
+    savePersistedActiveRun(null)
+  }
+
+  // resumeActiveRun is called once at store init. If the user closed
+  // the tab mid-run, restore the runId and re-attach polling so they
+  // can see the cloud run finish.
+  function resumeActiveRun() {
+    const persisted = loadPersistedActiveRun()
+    if (!persisted) return false
+    activeRunId.value = persisted.runId
+    status.value = { runId: persisted.runId, state: persisted.state || 'provisioning' }
+    startPolling(persisted.runId)
+    return true
   }
 
   return {
@@ -206,6 +304,9 @@ export const useDistLoadStore = defineStore('distload', () => {
     isDone,
     isTerminal,
     hasRegions,
+    estimatedCost,
+    canStart,
+    setEstimatedCost,
     loadRegions,
     loadCredits,
     loadHistory,
@@ -215,6 +316,7 @@ export const useDistLoadStore = defineStore('distload', () => {
     cancel,
     fetchResult,
     estimateCost,
+    resumeActiveRun,
     reset,
   }
 })

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { useDistLoadStore } from '../../stores/distload'
 
 const props = defineProps({
@@ -36,6 +36,18 @@ const debouncedEstimate = (spec) => {
 watch(() => props.spec, (spec) => {
   debouncedEstimate(spec)
 }, { deep: true, immediate: false })
+
+// Without this, a debounce armed just before navigation fires AFTER
+// the component is gone — and its callback writes to refs that no
+// longer have observers but still hold a reference to the SaaS store,
+// which can then trigger a redundant network call on a teardown
+// path. Clear the timer on unmount.
+onUnmounted(() => {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+    debounceTimer = null
+  }
+})
 </script>
 
 <template>

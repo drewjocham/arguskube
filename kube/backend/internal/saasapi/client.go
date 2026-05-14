@@ -18,6 +18,13 @@ var (
 	ErrInsufficientCredits = errors.New("saas: insufficient credits")
 	ErrNotFound           = errors.New("saas: resource not found")
 	ErrUnreachable        = errors.New("saas: platform unreachable")
+	// ErrNotConfigured is returned by every Client method when the
+	// API key is empty. Previously the client was constructed
+	// unconditionally with apiKey="" and every call resulted in a
+	// confusing 401 from the SaaS endpoint. Now callers can
+	// distinguish "you haven't connected your account yet" from
+	// "your key is wrong".
+	ErrNotConfigured = errors.New("saas: client not configured — set the SaaS API key in Settings")
 )
 
 type Client struct {
@@ -38,7 +45,24 @@ func NewClient(baseURL, apiKey string, logger *slog.Logger) *Client {
 	}
 }
 
+// IsConfigured reports whether the client has an API key. Callers
+// should check this before calling any method — every method
+// short-circuits to ErrNotConfigured otherwise, but the typed-error
+// path is for catching mis-wiring; the surface for the frontend is
+// "is the user signed in yet?" which is exactly this.
+func (c *Client) IsConfigured() bool {
+	return c != nil && c.apiKey != ""
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+	if c == nil || c.apiKey == "" {
+		// Fail fast with a precise error rather than letting the
+		// request go out with no Authorization header and getting
+		// a generic 401 back. The frontend uses this to decide
+		// whether to show "Connect your account" vs "Your key is
+		// wrong".
+		return ErrNotConfigured
+	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 

@@ -1,10 +1,30 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useDistLoadStore } from '../../stores/distload'
 
 const store = useDistLoadStore()
 const { status, activeRunId, error, isRunning, isTerminal } = storeToRefs(store)
+
+// Resume polling on mount if there's a persisted active run id from a
+// previous session (closed tab mid-run). Without this the dashboard
+// rendered "No active test" while a real cloud run was still burning
+// credits in the background.
+onMounted(() => {
+  if (!activeRunId.value) {
+    store.resumeActiveRun()
+  }
+})
+
+// Without this, the store's setTimeout poll chain keeps firing
+// callGo('GetDistributedLoadTestStatus', runId) every 1.5s
+// indefinitely after the component unmounts. The store's stopPolling
+// drops the timer cleanly. We do NOT clear activeRunId — the run
+// is still in flight on the SaaS side and we want the next mount
+// (or a reload) to pick it back up via resumeActiveRun().
+onUnmounted(() => {
+  store.stopPolling()
+})
 
 const STAGES = [
   { key: 'provisioning', label: 'Provisioning VMs' },
