@@ -17,6 +17,8 @@ import (
 	"github.com/argues/argus/internal/argocd"
 	"github.com/argues/argus/internal/config"
 	ctxassembly "github.com/argues/argus/internal/context"
+	"github.com/argues/argus/internal/dbagent/connector"
+	"github.com/argues/argus/internal/dbconfig"
 	"github.com/argues/argus/internal/features"
 	"github.com/argues/argus/internal/incidents"
 	"github.com/argues/argus/internal/k8s"
@@ -55,6 +57,8 @@ type AppConfig struct {
 	Usage           *usage.Store
 	SaaSClient      *saasapi.Client
 	DB              *sql.DB
+	DBConfigs       *dbconfig.Store
+	DBPool          *connector.Pool
 	AppMode         string
 }
 
@@ -117,6 +121,13 @@ type App struct {
 	// any future per-app stores can persist without re-opening.
 	db *sql.DB
 
+	// dbConfigs/dbPool are the DBAgent stack — user-registered DB
+	// connections + their cached pools. Both are nil in build modes
+	// where the feature is disabled (e.g. SaaS); the app_dbagent
+	// methods short-circuit on a nil check.
+	dbConfigs *dbconfig.Store
+	dbPool    *connector.Pool
+
 	// secretRefResolver resolves "kind:value[#key]" reference strings
 	// to actual secret values at use time. Built lazily in Startup so
 	// the resolver picks up the operator's configured cloud-vault
@@ -154,6 +165,8 @@ func NewApp(ac AppConfig) *App {
 		incidents:       ac.Incidents,
 		workflows:       ac.Workflows,
 		db:              ac.DB,
+		dbConfigs:       ac.DBConfigs,
+		dbPool:          ac.DBPool,
 		usage:           ac.Usage,
 		saasClient:      ac.SaaSClient,
 		appMode:         ac.AppMode,
