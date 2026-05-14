@@ -26,6 +26,26 @@ jobs:
           go-version-file: kube/backend/go.mod
           cache-dependency-path: kube/backend/go.sum
 
+      # kube/backend/view/embed.go uses `//go:embed all:dist` to bundle
+      # the built Vue frontend into the binary. The dist files are
+      # gitignored — they only exist after `npm run build` — so the
+      # Go side fails to vet/build/test on a fresh checkout unless we
+      # produce the frontend first. (Was already broken on main; CI
+      # for every recent run shows this same failure.)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: kube/view/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: kube/view
+        run: npm ci
+
+      - name: Build frontend (produces kube/backend/view/dist for go:embed)
+        working-directory: kube/view
+        run: npm run build
+
       - name: Download dependencies
         run: go mod download
 
