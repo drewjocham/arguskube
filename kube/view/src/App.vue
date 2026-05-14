@@ -30,7 +30,7 @@ import Sidebar from './components/sidebar/Sidebar.vue'
 import CenterPanel from './components/center/CenterPanel.vue'
 import DiagnosticsPanel from './components/diagnostics/DiagnosticsPanel.vue'
 import AgentAnalysisNotification from './components/common/AgentAnalysisNotification.vue'
-import TerminalView from './components/terminal/TerminalView.vue'
+import FeaturePanel from './features/FeaturePanel.vue'
 import ProDesktopApp from './components/desktop/ProDesktopApp.vue'
 import StatusRibbon from './components/status/StatusRibbon.vue'
 import { useStatusFeedStore } from './stores/statusFeed'
@@ -385,7 +385,7 @@ useWailsEvent('argus:status', (data) => {
                 </svg>
               </button>
             </div>
-            <TerminalView :visible="terminalOpen" />
+            <FeaturePanel id="terminal" :visible="terminalOpen" />
           </div>
         </template>
       </div>
