@@ -34,6 +34,7 @@ import (
 	"github.com/argues/argus/internal/usage"
 	"github.com/argues/argus/internal/vulnscan"
 	"github.com/argues/argus/internal/workflows"
+	"github.com/argues/argus/internal/workspace"
 )
 
 // AppConfig holds all dependencies for the application. Flat, explicit.
@@ -59,6 +60,7 @@ type AppConfig struct {
 	DB              *sql.DB
 	DBConfigs       *dbconfig.Store
 	DBPool          *connector.Pool
+	Workspace       *workspace.Manager
 	AppMode         string
 }
 
@@ -128,6 +130,12 @@ type App struct {
 	dbConfigs *dbconfig.Store
 	dbPool    *connector.Pool
 
+	// workspace is the multi-service integration manager (Slack +
+	// Google Workspace). Phase 1A wires the storage/OAuth foundation;
+	// per-service adapters land in subsequent PRs. Nil when the
+	// feature isn't configured — app_workspace methods short-circuit.
+	workspace *workspace.Manager
+
 	// secretRefResolver resolves "kind:value[#key]" reference strings
 	// to actual secret values at use time. Built lazily in Startup so
 	// the resolver picks up the operator's configured cloud-vault
@@ -167,6 +175,7 @@ func NewApp(ac AppConfig) *App {
 		db:              ac.DB,
 		dbConfigs:       ac.DBConfigs,
 		dbPool:          ac.DBPool,
+		workspace:       ac.Workspace,
 		usage:           ac.Usage,
 		saasClient:      ac.SaaSClient,
 		appMode:         ac.AppMode,

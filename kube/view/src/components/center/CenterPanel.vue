@@ -52,6 +52,7 @@ import RBACView from './RBACView.vue'
 import SetupPanel from '../setup/SetupPanel.vue'
 import SettingsPanel from '../setup/SettingsPanel.vue'
 import ArgusAIChat from '../ai/ArgusAIChat.vue'
+import WorkspaceSection from '../workspace/WorkspaceSection.vue'
 import SectionTabs from '../shared/SectionTabs.vue'
 import { useArgusScan } from '../../composables/useWails'
 import { useBackgroundTasks } from '../../composables/useBackgroundTasks'
@@ -476,6 +477,11 @@ const adminTabs = SECTIONS.admin.tabs
       />
       <S3Notebook v-if="currentTab === 'notebooks'" />
       <DocumentsView v-else-if="currentTab === 'documents'" />
+    </template>
+
+    <!-- ============ WORKSPACE ============ -->
+    <template v-else-if="activeNav === 'workspace'">
+      <WorkspaceSection />
     </template>
 
     <!-- ============ ADMIN ============ -->

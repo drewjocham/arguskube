@@ -427,6 +427,12 @@ var httpExposedMethods = map[string]struct{}{
 	"ListDBConnections": {},
 	"GetDBConnection":   {},
 	"AnalyzeDB":         {},
+	// Workspace: list-only is HTTP-callable so a SaaS-mode dashboard
+	// can render the user's connections. Start/Complete/Delete remain
+	// Wails-only — they mutate stored credentials and the OAuth flow
+	// shouldn't be reachable from arbitrary HTTP callers.
+	"ListWorkspaceServices":    {},
+	"ListWorkspaceConnections": {},
 }
 
 func methodAllowedOverHTTP(name string) bool {

@@ -296,4 +296,48 @@ var migrations = []migration{
 		name: "create_db_connections_name_index",
 		sql:  `CREATE UNIQUE INDEX IF NOT EXISTS idx_db_connections_name ON db_connections(name)`,
 	},
+	{
+		// Workspace integrations (Slack, Google Chat/Docs/Sheets/Tasks).
+		// One row per (user, service, external_workspace_id) so a user
+		// can connect, say, two Slack workspaces (prod + corp) without
+		// the schema rejecting the second one. external_workspace_id is
+		// the provider's stable identifier (Slack team_id, Google org).
+		// IF NOT EXISTS for the same reason as db_connections — the
+		// table may already exist for developers who pre-tested.
+		name: "create_workspace_connections",
+		sql: `CREATE TABLE IF NOT EXISTS workspace_connections (
+			id                     TEXT    PRIMARY KEY,
+			user_id                TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			service                TEXT    NOT NULL,
+			external_workspace_id  TEXT    NOT NULL DEFAULT '',
+			display_name           TEXT    NOT NULL DEFAULT '',
+			email                  TEXT    NOT NULL DEFAULT '',
+			avatar_url             TEXT    NOT NULL DEFAULT '',
+			connected_at           INTEGER NOT NULL,
+			updated_at             INTEGER NOT NULL
+		)`,
+	},
+	{
+		name: "create_workspace_connections_unique",
+		sql:  `CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_conn_unique ON workspace_connections(user_id, service, external_workspace_id)`,
+	},
+	{
+		// Encrypted OAuth tokens. access_token_enc / refresh_token_enc
+		// are base64(AES-256-GCM(nonce||ct||tag)) — same envelope the
+		// dbconfig package uses for DB passwords, and the master key
+		// derives from the same secretstore (macOS Keychain, in-memory
+		// elsewhere). One row per connection; on refresh the row is
+		// UPDATEd in place rather than appended so historic tokens
+		// don't accumulate in the schema.
+		name: "create_workspace_tokens",
+		sql: `CREATE TABLE IF NOT EXISTS workspace_tokens (
+			connection_id     TEXT    PRIMARY KEY REFERENCES workspace_connections(id) ON DELETE CASCADE,
+			access_token_enc  TEXT    NOT NULL,
+			refresh_token_enc TEXT    NOT NULL DEFAULT '',
+			token_type        TEXT    NOT NULL DEFAULT 'bearer',
+			expires_at        INTEGER NOT NULL DEFAULT 0,
+			scope             TEXT    NOT NULL DEFAULT '',
+			updated_at        INTEGER NOT NULL
+		)`,
+	},
 }
