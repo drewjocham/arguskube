@@ -264,7 +264,7 @@ func TestRenderLoadTestMarkdown_FrontmatterAndSections(t *testing.T) {
 			{At: time.Date(2026, 5, 14, 0, 0, 1, 0, time.UTC), Phase: "publishing", Replicas: 0, Ready: 0},
 		},
 	}
-	md := renderLoadTestMarkdown(rec)
+	md := renderLoadTestMarkdown(rec, "")
 
 	// Sanity checks. We don't pin the entire output — it's a long
 	// formatted string — but assert the critical fields the agent
@@ -291,7 +291,7 @@ func TestRenderLoadTestMarkdown_WithFinalError(t *testing.T) {
 		Summary:    loadtest.Summary{Sent: 0},
 		FinalError: "broker connect: dial tcp: timeout",
 	}
-	md := renderLoadTestMarkdown(rec)
+	md := renderLoadTestMarkdown(rec, "")
 	mustContain(t, md, "## Final error")
 	mustContain(t, md, "broker connect: dial tcp: timeout")
 }
@@ -300,5 +300,55 @@ func mustContain(t *testing.T, s, sub string) {
 	t.Helper()
 	if !strings.Contains(s, sub) {
 		t.Errorf("output missing expected substring %q", sub)
+	}
+}
+
+// PR-E: Narrative section appears between the report header and the
+// Summary section when a non-empty narrative is supplied. When empty,
+// the section is omitted entirely (no header, no extra blank line)
+// so a no-AI install gets a clean report.
+func TestRenderLoadTestMarkdown_WithNarrative(t *testing.T) {
+	rec := &loadtest.RunRecord{
+		Spec: loadtest.RunSpec{
+			Destination: "x",
+			Payload:     loadtest.Payload{Kind: loadtest.PayloadKindTyped, Size: 1},
+			Ramp:        loadtest.Ramp{Kind: loadtest.RampConstant, Rate: 1},
+		},
+		BrokerKind: broker.KindNATS,
+		Started:    time.Now(),
+		Finished:   time.Now(),
+		Summary:    loadtest.Summary{Sent: 10},
+	}
+	narrative := "Backlog drained in 38 seconds. P99 was within budget."
+	md := renderLoadTestMarkdown(rec, narrative)
+	mustContain(t, md, "## Narrative")
+	mustContain(t, md, narrative)
+	// Narrative must appear BEFORE Summary in the rendered file.
+	narrIdx := strings.Index(md, "## Narrative")
+	sumIdx := strings.Index(md, "## Summary")
+	if narrIdx < 0 || sumIdx < 0 || narrIdx > sumIdx {
+		t.Errorf("Narrative section should precede Summary (narrIdx=%d sumIdx=%d)", narrIdx, sumIdx)
+	}
+}
+
+func TestRenderLoadTestMarkdown_NoNarrative_OmitsSection(t *testing.T) {
+	rec := &loadtest.RunRecord{
+		Spec:       loadtest.RunSpec{Destination: "x", Payload: loadtest.Payload{Size: 1}, Ramp: loadtest.Ramp{Kind: loadtest.RampConstant, Rate: 1}},
+		BrokerKind: broker.KindNATS,
+		Started:    time.Now(),
+		Finished:   time.Now(),
+		Summary:    loadtest.Summary{Sent: 0},
+	}
+	md := renderLoadTestMarkdown(rec, "")
+	if strings.Contains(md, "## Narrative") {
+		t.Error("empty narrative should omit the section")
+	}
+}
+
+func TestTryNarrateLoadTest_NoAgent_ReturnsEmpty(t *testing.T) {
+	a := quietApp(t)
+	a.agent = nil
+	if got := a.tryNarrateLoadTest(&loadtest.RunRecord{}); got != "" {
+		t.Errorf("got %q, want empty (no agent)", got)
 	}
 }

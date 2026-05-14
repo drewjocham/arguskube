@@ -95,6 +95,16 @@ func (a *Agent) currentClient() *DeepSeekClient {
 	return a.client
 }
 
+// Client is the exported accessor for the underlying LLM client. Other
+// subsystems (e.g. the load-test narrator) need to issue their own Chat
+// calls outside the Agent's alert-investigation flow. Returns nil when
+// no client is configured — callers MUST nil-check and degrade
+// gracefully (the load-test path falls back to a deterministic
+// Markdown render when this is nil).
+func (a *Agent) Client() *DeepSeekClient {
+	return a.currentClient()
+}
+
 // AutoInvestigate is called when a new alert arrives. It builds context and
 // sends the alert to DeepSeek for automatic analysis. Non-blocking — runs
 // in a goroutine and stores the result.
