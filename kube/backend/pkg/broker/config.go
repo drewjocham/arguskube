@@ -21,6 +21,7 @@ type Config struct {
 	Kafka    *KafkaConfig    `json:"kafka,omitempty"`
 	RabbitMQ *RabbitMQConfig `json:"rabbitmq,omitempty"`
 	AMQP1    *AMQP1Config    `json:"amqp1,omitempty"`
+	REST     *RESTConfig     `json:"rest,omitempty"`
 }
 
 // Resolve returns the per-kind config block. Returns an error if the
@@ -54,6 +55,11 @@ func (c Config) Resolve() (any, error) {
 			return nil, fmt.Errorf("broker config: kind=%q but amqp1 block missing", c.Kind)
 		}
 		return c.AMQP1, nil
+	case KindREST:
+		if c.REST == nil {
+			return nil, fmt.Errorf("broker config: kind=%q but rest block missing", c.Kind)
+		}
+		return c.REST, nil
 	default:
 		return nil, fmt.Errorf("broker config: unknown kind %q", c.Kind)
 	}
@@ -162,6 +168,28 @@ type RabbitMQConfig struct {
 	TLSClientCert      string `json:"tlsClientCert,omitempty"`
 	TLSClientKey       string `json:"tlsClientKey,omitempty"`
 	InsecureSkipVerify bool   `json:"insecureSkipVerify,omitempty"`
+}
+
+// RESTConfig — arbitrary HTTP/REST endpoints. The load tester treats
+// the response as the ack: AckLatency is wall time from request start
+// to response headers received. Useful for benchmarking webhooks,
+// REST APIs, or any HTTP-fronted ingest service.
+//
+// BaseURL + Path (or Message.Destination override) build the request
+// URL. Headers are merged into every request; auth helpers (Bearer,
+// Basic) layer on top.
+type RESTConfig struct {
+	BaseURL           string            `json:"baseURL"`                   // e.g. "https://api.example.com"
+	Method            string            `json:"method"`                    // POST | PUT | PATCH | GET | DELETE; default POST
+	Path              string            `json:"path,omitempty"`            // optional default path; overridden by Message.Destination
+	Headers           map[string]string `json:"headers,omitempty"`         // applied to every request; Authorization etc.
+	ContentType       string            `json:"contentType,omitempty"`     // default "application/json"
+	TimeoutSeconds    int               `json:"timeoutSeconds,omitempty"`  // per-request; default 30
+	InsecureSkipTLS   bool              `json:"insecureSkipTLS,omitempty"` // dev-only escape hatch
+	BasicAuthUser     string            `json:"basicAuthUser,omitempty"`
+	BasicAuthPassword string            `json:"basicAuthPassword,omitempty"`
+	BearerToken       string            `json:"bearerToken,omitempty"`
+	SuccessCodes      []int             `json:"successCodes,omitempty"` // default 2xx
 }
 
 // AMQP1Config — Solace, Azure Service Bus, Artemis, anything AMQP 1.0.

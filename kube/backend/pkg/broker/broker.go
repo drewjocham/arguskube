@@ -38,11 +38,12 @@ const (
 	KindKafka    Kind = "kafka"    // Apache Kafka (Confluent / MSK / Strimzi)
 	KindRabbitMQ Kind = "rabbitmq" // RabbitMQ AMQP-0.9
 	KindAMQP1    Kind = "amqp1"    // Solace, Azure Service Bus, anything AMQP-1.0
+	KindREST     Kind = "rest"     // arbitrary HTTP/REST endpoints
 )
 
 // Knowns is the closed set of broker kinds. Frontend dropdowns iterate
 // this so adding a kind here automatically exposes it in the UI list.
-var Knowns = []Kind{KindPubSub, KindNATS, KindKafka, KindRabbitMQ, KindAMQP1}
+var Knowns = []Kind{KindPubSub, KindNATS, KindKafka, KindRabbitMQ, KindAMQP1, KindREST}
 
 // Publisher is the publish-side contract every adapter implements.
 //
@@ -116,6 +117,10 @@ type Receipt struct {
 	// Empty for brokers that don't return one (RabbitMQ AMQP-0.9 in
 	// non-confirm mode, AMQP-1 fire-and-forget).
 	MessageID string `json:"messageId,omitempty"`
+	// Bytes is the size of the broker-side response payload, when
+	// the adapter has one to count (e.g. REST response body). Most
+	// message brokers ack with a header-only frame and leave this 0.
+	Bytes int `json:"bytes,omitempty"`
 }
 
 // Errors callers should be able to distinguish at the call site. Most
