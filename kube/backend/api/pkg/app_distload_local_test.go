@@ -3,10 +3,14 @@ package pkg
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -465,6 +469,40 @@ func TestLocalDistLoad_QuotaCapsFreeTier(t *testing.T) {
 	}
 	if q.Used != 5 || q.Limit != 5 {
 		t.Errorf("quota = %+v, want used=5 limit=5", q)
+	}
+}
+
+// TestLocalDistLoad_QuotaIsAtomic ensures the count+insert pair cannot
+// double-spend the free-tier cap under concurrent Start calls. We bypass
+// the engine path (reserveLocalQuotaSlot directly) to isolate the race.
+func TestLocalDistLoad_QuotaIsAtomic(t *testing.T) {
+	a := quotaTestApp(t)
+	a.ctx = context.Background()
+	const goroutines = 20
+	var wg sync.WaitGroup
+	var okCount, rejCount int32
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			runID := fmt.Sprintf("race-%d", i)
+			_, _, _, err := a.reserveLocalQuotaSlot(runID, time.Now())
+			if err == nil {
+				atomic.AddInt32(&okCount, 1)
+			} else if errors.Is(err, ErrLocalQuotaExceeded) {
+				atomic.AddInt32(&rejCount, 1)
+			} else {
+				t.Errorf("unexpected err: %v", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+	if okCount != int32(localQuotaFreeLimit) {
+		t.Fatalf("expected exactly %d successful reservations, got %d ok + %d rejected",
+			localQuotaFreeLimit, okCount, rejCount)
+	}
+	if rejCount != goroutines-int32(localQuotaFreeLimit) {
+		t.Fatalf("expected %d rejections, got %d", goroutines-int32(localQuotaFreeLimit), rejCount)
 	}
 }
 

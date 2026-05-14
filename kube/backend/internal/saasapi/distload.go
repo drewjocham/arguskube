@@ -21,6 +21,14 @@ type DistLoadSpec struct {
 	RampRate    int             `json:"rampRate"`
 	TimeoutMins int             `json:"timeoutMins"`
 
+	// Ramp carries the per-profile knobs (rampTo, stepBy, spike sizes,
+	// duration) the unified form collects. The flat RampProfile/RampRate
+	// fields above remain as the back-compat shorthand for older clients
+	// and the cloud worker JSON payload. When Ramp is non-nil the local
+	// dispatcher uses it verbatim so the user's choice of linear/step/
+	// spike actually takes effect.
+	Ramp *DistLoadRamp `json:"ramp,omitempty"`
+
 	// Runner selects where the engine actually runs.
 	//   "local" — the desktop runs pkg/loadtest in-process.
 	//   "cloud" — the SaaS API provisions VMs and runs there.
@@ -49,6 +57,22 @@ type DistLoadSpec struct {
 //
 // AIPrompt is the prompt that produced an "ai" payload — kept only for
 // audit so the Notebook report can quote the request.
+// DistLoadRamp mirrors the loadtest.Ramp shape but uses JSON-friendly
+// seconds (not Go Duration ns) so the frontend doesn't have to convert.
+// Each profile uses a subset of fields — Validate / distLoadSpecToRunSpec
+// picks the right ones based on RampProfile.
+type DistLoadRamp struct {
+	Profile     string `json:"profile"`               // constant | linear | step | spike
+	Rate        int    `json:"rate,omitempty"`        // constant.rate, linear.from
+	RampTo      int    `json:"rampTo,omitempty"`      // linear.to
+	StepBy      int    `json:"stepBy,omitempty"`      // step.by
+	StepEvery   int    `json:"stepEverySec,omitempty"`// step.every (seconds)
+	SpikeCount  int    `json:"spikeCount,omitempty"`  // spike: number of bursts
+	SpikeSize   int    `json:"spikeSize,omitempty"`   // spike: messages per burst
+	SpikeIdle   int    `json:"spikeIdleSec,omitempty"`// spike: gap between bursts (seconds)
+	DurationSec int    `json:"durationSec,omitempty"` // linear/step total runtime
+}
+
 type DistLoadPayload struct {
 	Source   string `json:"source"`
 	Bytes    string `json:"bytes,omitempty"`

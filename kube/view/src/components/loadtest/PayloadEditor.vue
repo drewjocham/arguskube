@@ -107,6 +107,11 @@ const fileMode = computed({
   get: () => props.modelValue.fileMode || 'template',
   set: (v) => patch('fileMode', v),
 })
+
+// Preview is editable for inline sources (upload/paste/type/ai) but
+// read-only when the source is "file" — the engine reads from disk at
+// runtime, so edits to the in-memory preview wouldn't actually be sent.
+const previewReadonly = computed(() => source.value === 'file')
 async function doResolve() {
   resolveError.value = ''
   resolved.value = null
@@ -202,16 +207,20 @@ const sizeLabel = computed(() => {
       </div>
     </div>
 
-    <!-- Always-visible editable preview -->
+    <!-- Always-visible preview. Read-only in file mode because the
+         backend reads from disk at run time; editing here would silently
+         discard the change. The user can switch to Paste/Type to make the
+         preview authoritative. -->
     <div class="preview-block">
       <div class="preview-head">
-        <span class="preview-label">Editable preview</span>
+        <span class="preview-label">{{ previewReadonly ? 'Preview (read-only — backend reads files at runtime)' : 'Editable preview' }}</span>
         <span class="preview-size">{{ sizeLabel }}</span>
       </div>
       <textarea
         class="form-textarea preview-area"
         rows="14"
         :value="bytes"
+        :readonly="previewReadonly"
         data-testid="distload-payload-preview"
         @input="bytes = $event.target.value"
         @blur="lintJson"

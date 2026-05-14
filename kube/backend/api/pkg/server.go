@@ -414,10 +414,10 @@ var httpExposedMethods = map[string]struct{}{
 	"ListDistLoadBrokerKinds":          {},
 	"GetDistributedLoadTestStatus":     {},
 	"GetDistributedLoadTestRecord":     {},
-	// Payload helpers + quota. GenerateLoadTestPayload IS a write-ish
-	// side effect (it spends LLM tokens), but exposed for parity with
-	// the desktop UI calling through the HTTP shim.
-	"GenerateLoadTestPayload": {},
+	// Payload helpers + quota. Note: GenerateLoadTestPayload is
+	// intentionally NOT here — it spends DeepSeek tokens and exposing
+	// it over the SaaS HTTP shim would let any reachable caller drain
+	// the user's budget. Wails-only (operator on same machine).
 	"ResolveLocalPayloadPath": {},
 	"GetLocalDistLoadQuota":   {},
 }

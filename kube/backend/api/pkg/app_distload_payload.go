@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -149,8 +150,14 @@ func checkPayloadPath(path string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("path required")
 	}
-	if strings.Contains(path, "..") {
-		return "", fmt.Errorf("path must not contain '..'")
+	// Reject ".." as a *segment* on the raw input — both to catch
+	// traversal attempts like /etc/../tmp (which Clean would silently
+	// flatten to /tmp) and to leave legitimate filenames like
+	// "myfile..bak" alone.
+	for _, seg := range strings.Split(path, string(filepath.Separator)) {
+		if seg == ".." {
+			return "", fmt.Errorf("path must not contain '..'")
+		}
 	}
 	clean := filepath.Clean(path)
 	if clean == "/" || clean == "." || clean == string(filepath.Separator) {
@@ -174,6 +181,26 @@ func checkPayloadPath(path string) (string, error) {
 	}
 	if !allowed {
 		return "", fmt.Errorf("path %q is outside the allowed roots (home, /tmp, /var/folders)", path)
+	}
+	// Resolve symlinks so a path like ~/link-to-etc can't escape the
+	// trust root. EvalSymlinks errors on a non-existent path — fine,
+	// the caller's os.Stat will surface a clearer error than ours.
+	if resolved, err := filepath.EvalSymlinks(clean); err == nil {
+		allowed = false
+		if home, herr := os.UserHomeDir(); herr == nil && home != "" {
+			if resolvedHome, herr2 := filepath.EvalSymlinks(home); herr2 == nil {
+				if hasPrefixDir(resolved, resolvedHome) {
+					allowed = true
+				}
+			}
+		}
+		if !allowed && (hasPrefixDir(resolved, "/tmp") || hasPrefixDir(resolved, "/var/folders") || hasPrefixDir(resolved, "/private/var/folders") || hasPrefixDir(resolved, "/private/tmp")) {
+			allowed = true
+		}
+		if !allowed {
+			return "", fmt.Errorf("path %q resolves outside the allowed roots", path)
+		}
+		clean = resolved
 	}
 	return clean, nil
 }
@@ -332,4 +359,82 @@ func (a *App) recordLocalDistLoadRun(runID string, startedAt time.Time) error {
 		return fmt.Errorf("record local run: %w", err)
 	}
 	return nil
+}
+
+// reserveLocalQuotaSlot atomically checks remaining capacity and, if
+// available, inserts a quota row in the same transaction. This is the
+// concurrency-safe variant of "localQuotaStatus + recordLocalDistLoadRun"
+// — two parallel Start calls at the 4→5 boundary cannot both succeed
+// because the SELECT…INSERT runs inside a SQLite IMMEDIATE transaction
+// (which acquires the write lock at BEGIN, not on first write).
+//
+// Returns ErrLocalQuotaExceeded when the cap is hit; the caller renders
+// a human-readable message that includes resetAt.
+func (a *App) reserveLocalQuotaSlot(runID string, startedAt time.Time) (used, limit int, resetAt int64, err error) {
+	isPro := a.gate != nil && a.gate.Allowed(features.FeatureDistributedLoadTest)
+	if isPro {
+		limit = math.MaxInt32
+	} else {
+		limit = localQuotaFreeLimit
+	}
+	if a.db == nil {
+		// In-memory / tests without a DB: skip enforcement.
+		return 0, limit, 0, nil
+	}
+
+	tx, err := a.db.BeginTx(a.appCtx(), &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return 0, limit, 0, fmt.Errorf("reserve quota: begin tx: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	cutoff := startedAt.Add(-24 * time.Hour).Unix()
+	if err = tx.QueryRow(
+		`SELECT COUNT(*) FROM distload_local_runs WHERE started_at > ?`, cutoff,
+	).Scan(&used); err != nil {
+		return 0, limit, 0, fmt.Errorf("reserve quota: count: %w", err)
+	}
+	if used >= limit {
+		// Read resetAt so the caller can render a useful error.
+		if used > 0 {
+			var oldest int64
+			if scanErr := tx.QueryRow(
+				`SELECT started_at FROM distload_local_runs WHERE started_at > ? ORDER BY started_at ASC LIMIT 1`, cutoff,
+			).Scan(&oldest); scanErr == nil {
+				resetAt = oldest + int64(24*time.Hour/time.Second)
+			}
+		}
+		_ = tx.Rollback()
+		return used, limit, resetAt, ErrLocalQuotaExceeded
+	}
+	if _, err = tx.Exec(
+		`INSERT INTO distload_local_runs (run_id, started_at) VALUES (?, ?)`,
+		runID, startedAt.Unix(),
+	); err != nil {
+		return 0, limit, 0, fmt.Errorf("reserve quota: insert: %w", err)
+	}
+	if err = tx.Commit(); err != nil {
+		return 0, limit, 0, fmt.Errorf("reserve quota: commit: %w", err)
+	}
+	return used + 1, limit, 0, nil
+}
+
+// ErrLocalQuotaExceeded is the sentinel returned by reserveLocalQuotaSlot
+// when the daily cap is reached. The caller wraps it with the resetAt
+// timestamp for display.
+var ErrLocalQuotaExceeded = fmt.Errorf("local load tests are limited to %d/day on the free tier", localQuotaFreeLimit)
+
+// refundLocalQuotaSlot deletes a previously-reserved quota row. Called
+// when a Start request passes the quota check but then fails (e.g. the
+// engine registry says another run is already active). Best-effort —
+// failures here are logged by the caller, not returned.
+func (a *App) refundLocalQuotaSlot(runID string) {
+	if a.db == nil {
+		return
+	}
+	_, _ = a.db.Exec(`DELETE FROM distload_local_runs WHERE run_id = ?`, runID)
 }

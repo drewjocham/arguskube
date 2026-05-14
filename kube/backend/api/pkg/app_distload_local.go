@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -134,15 +135,19 @@ func (a *App) startLocalDistLoad(spec saasapi.DistLoadSpec) (string, error) {
 		return "", fmt.Errorf("invalid spec: %w", err)
 	}
 
-	// Daily quota: 5/day for free tier, unlimited for Pro. We charge
-	// the quota AFTER the spec validates (no point burning a slot on
-	// a malformed request) and BEFORE the run goroutine starts so a
-	// rejection bounces cleanly. If the DB isn't wired (tests), the
-	// quota helper returns zero usage and the check passes.
-	used, limit, resetAt, _, qerr := a.localQuotaStatus()
-	if qerr == nil && used >= limit {
-		return "", fmt.Errorf("local load tests are limited to %d/day on the free tier (resets at %s) — upgrade to Pro for unlimited local runs",
-			limit, time.Unix(resetAt, 0).Format(time.RFC3339))
+	// Daily quota: 5/day for free tier, unlimited for Pro. We reserve a
+	// slot atomically (SELECT COUNT + INSERT inside one transaction) so
+	// two concurrent Start calls at the 4→5 boundary cannot both succeed.
+	id := uuid.New().String()
+	startedAt := time.Now()
+	if _, limit, resetAt, qerr := a.reserveLocalQuotaSlot(id, startedAt); qerr != nil {
+		if errors.Is(qerr, ErrLocalQuotaExceeded) {
+			return "", fmt.Errorf("local load tests are limited to %d/day on the free tier (resets at %s) — upgrade to Pro for unlimited local runs",
+				limit, time.Unix(resetAt, 0).Format(time.RFC3339))
+		}
+		// Storage hiccup: log and continue rather than block the user.
+		a.logger.Warn("loadtest: quota reserve failed; allowing run",
+			slog.String("error", qerr.Error()))
 	}
 
 	reg := a.loadtests()
@@ -151,16 +156,18 @@ func (a *App) startLocalDistLoad(spec saasapi.DistLoadSpec) (string, error) {
 		existing := reg.runs[reg.activeID]
 		if existing != nil && existing.activeState() == "running" {
 			reg.mu.Unlock()
+			// We already inserted a quota row; refund it so a "busy"
+			// rejection doesn't burn the user's allowance.
+			a.refundLocalQuotaSlot(id)
 			return "", fmt.Errorf("a load test is already running (id=%s); cancel it first", reg.activeID)
 		}
 	}
-	id := uuid.New().String()
 	ctx, cancel := context.WithCancel(a.appCtx())
 	run := &loadtestRun{
 		id:       id,
 		spec:     runSpec,
 		cancel:   cancel,
-		started:  time.Now(),
+		started:  startedAt,
 		state:    "pending",
 		presetID: spec.PresetID,
 		name:     spec.Name,
@@ -188,12 +195,8 @@ func (a *App) startLocalDistLoad(spec saasapi.DistLoadSpec) (string, error) {
 	reg.activeID = id
 	reg.mu.Unlock()
 
-	// Record the run for quota accounting. Errors are non-fatal — the
-	// worst case is the user gets a few extra runs that day.
-	if rerr := a.recordLocalDistLoadRun(id, run.started); rerr != nil {
-		a.logger.Warn("loadtest: quota record failed",
-			slog.String("runId", id), slog.String("error", rerr.Error()))
-	}
+	// Quota slot already reserved above (inside the atomic
+	// reserveLocalQuotaSlot transaction) — no second insert.
 
 	go a.runLoadTest(ctx, run, progress)
 	return id, nil
@@ -383,35 +386,7 @@ func distLoadSpecToRunSpec(spec saasapi.DistLoadSpec) (loadtest.RunSpec, error) 
 		return loadtest.RunSpec{}, err
 	}
 
-	ramp := loadtest.Ramp{Rate: float64(spec.RampRate)}
-	// Map the user-facing profile names onto the engine's RampKind.
-	// Unknown/empty falls back to "constant" — the safest profile.
-	switch strings.ToLower(spec.RampProfile) {
-	case "linear":
-		ramp.Kind = loadtest.RampLinear
-		ramp.RampTo = float64(spec.RampRate)
-		if spec.TimeoutMins > 0 {
-			ramp.Duration = time.Duration(spec.TimeoutMins) * time.Minute
-		}
-	case "step":
-		ramp.Kind = loadtest.RampStep
-		ramp.StepBy = float64(spec.RampRate) / 4 // arbitrary default — frontend rarely uses this path
-		ramp.StepEvery = 30 * time.Second
-	case "spike":
-		ramp.Kind = loadtest.RampSpike
-		ramp.SpikeCount = 6
-		ramp.SpikeSize = spec.Count / 6
-		ramp.SpikeIdle = 30 * time.Second
-	default:
-		ramp.Kind = loadtest.RampConstant
-		if ramp.Rate <= 0 {
-			// Sensible default so a barebones spec validates.
-			ramp.Rate = 100
-		}
-		if spec.TimeoutMins > 0 {
-			ramp.Duration = time.Duration(spec.TimeoutMins) * time.Minute
-		}
-	}
+	ramp := buildRamp(spec)
 
 	rs := loadtest.RunSpec{
 		Name:        spec.Name,
@@ -423,6 +398,74 @@ func distLoadSpecToRunSpec(spec saasapi.DistLoadSpec) (loadtest.RunSpec, error) 
 		Ramp:        ramp,
 	}
 	return rs, nil
+}
+
+// buildRamp resolves the user-facing ramp configuration into a
+// loadtest.Ramp. Precedence: the nested spec.Ramp block (rich, sent by
+// the unified form) wins; the flat RampProfile/RampRate/TimeoutMins
+// fields are the back-compat fallback used by older clients and the
+// cloud worker payload.
+func buildRamp(spec saasapi.DistLoadSpec) loadtest.Ramp {
+	// Rich path: nested Ramp block carries per-profile knobs verbatim.
+	if r := spec.Ramp; r != nil {
+		out := loadtest.Ramp{Rate: float64(r.Rate)}
+		if r.DurationSec > 0 {
+			out.Duration = time.Duration(r.DurationSec) * time.Second
+		}
+		switch strings.ToLower(r.Profile) {
+		case "linear":
+			out.Kind = loadtest.RampLinear
+			out.RampTo = float64(r.RampTo)
+		case "step":
+			out.Kind = loadtest.RampStep
+			out.StepBy = float64(r.StepBy)
+			if r.StepEvery > 0 {
+				out.StepEvery = time.Duration(r.StepEvery) * time.Second
+			}
+		case "spike":
+			out.Kind = loadtest.RampSpike
+			out.SpikeCount = r.SpikeCount
+			out.SpikeSize = r.SpikeSize
+			if r.SpikeIdle > 0 {
+				out.SpikeIdle = time.Duration(r.SpikeIdle) * time.Second
+			}
+		default:
+			out.Kind = loadtest.RampConstant
+			if out.Rate <= 0 {
+				out.Rate = 100
+			}
+		}
+		return out
+	}
+
+	// Back-compat path: only the flat fields are populated.
+	out := loadtest.Ramp{Rate: float64(spec.RampRate)}
+	switch strings.ToLower(spec.RampProfile) {
+	case "linear":
+		out.Kind = loadtest.RampLinear
+		out.RampTo = float64(spec.RampRate)
+		if spec.TimeoutMins > 0 {
+			out.Duration = time.Duration(spec.TimeoutMins) * time.Minute
+		}
+	case "step":
+		out.Kind = loadtest.RampStep
+		out.StepBy = float64(spec.RampRate) / 4
+		out.StepEvery = 30 * time.Second
+	case "spike":
+		out.Kind = loadtest.RampSpike
+		out.SpikeCount = 6
+		out.SpikeSize = spec.Count / 6
+		out.SpikeIdle = 30 * time.Second
+	default:
+		out.Kind = loadtest.RampConstant
+		if out.Rate <= 0 {
+			out.Rate = 100
+		}
+		if spec.TimeoutMins > 0 {
+			out.Duration = time.Duration(spec.TimeoutMins) * time.Minute
+		}
+	}
+	return out
 }
 
 // resolvePayload builds a loadtest.Payload from a DistLoadSpec. Three
