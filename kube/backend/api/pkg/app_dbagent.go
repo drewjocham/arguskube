@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/argues/argus/internal/dbagent/clickhouse"
 	"github.com/argues/argus/internal/dbagent/postgres"
+	"github.com/argues/argus/internal/dbagent/sqlite"
 	"github.com/argues/argus/internal/dbconfig"
 )
 
@@ -203,8 +205,32 @@ func (a *App) AnalyzeDB(ctx context.Context, id, section string) (map[string]int
 			"section":    section,
 			"data":       data,
 		}, nil
+	case dbconfig.DBSQLite:
+		az := sqlite.New(db, 0)
+		data, err := az.Analyze(ctx, section)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{
+			"connection": cfg.Name,
+			"db_type":    string(cfg.DBType),
+			"section":    section,
+			"data":       data,
+		}, nil
+	case dbconfig.DBClickHouse:
+		az := clickhouse.New(db, 0)
+		data, err := az.Analyze(ctx, section)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{
+			"connection": cfg.Name,
+			"db_type":    string(cfg.DBType),
+			"section":    section,
+			"data":       data,
+		}, nil
 	}
-	return nil, fmt.Errorf("dbagent: analyzer for %s is not in this build (Phase 5 adds the rest)", cfg.DBType)
+	return nil, fmt.Errorf("dbagent: analyzer for %s is not in this build", cfg.DBType)
 }
 
 // nowMillis is a tiny helper. Var-injected so a test can freeze time.

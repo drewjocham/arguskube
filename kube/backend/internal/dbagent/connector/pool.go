@@ -21,8 +21,9 @@ import (
 	// Side-effect imports register database/sql drivers. We register
 	// every dialect dbconfig.DSN() can produce so the connector doesn't
 	// have to know which one a given config wants.
-	_ "github.com/jackc/pgx/v5/stdlib" // pgx => "pgx"
-	_ "modernc.org/sqlite"             // pure-Go sqlite => "sqlite"
+	_ "github.com/ClickHouse/clickhouse-go/v2" // => "clickhouse"
+	_ "github.com/jackc/pgx/v5/stdlib"         // pgx => "pgx"
+	_ "modernc.org/sqlite"                     // pure-Go sqlite => "sqlite"
 )
 
 // Pool caches one *sql.DB per connection ID. *sql.DB is itself a pool,
@@ -148,6 +149,8 @@ func driverFor(t dbconfig.DBType) (string, error) {
 		return "pgx", nil
 	case dbconfig.DBSQLite:
 		return "sqlite", nil
+	case dbconfig.DBClickHouse:
+		return "clickhouse", nil
 	}
 	return "", fmt.Errorf("connector: no driver compiled in for %s (Phase 2+ adds the rest)", t)
 }
