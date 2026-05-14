@@ -38,6 +38,10 @@ export function BatchCheckCanI(arg1, arg2) {
   return window['go']['pkg']['App']['BatchCheckCanI'](arg1, arg2);
 }
 
+export function CancelLoadTest(arg1) {
+  return window['go']['pkg']['App']['CancelLoadTest'](arg1);
+}
+
 export function CancelOAuthFlow(arg1) {
   return window['go']['pkg']['App']['CancelOAuthFlow'](arg1);
 }
@@ -290,6 +294,14 @@ export function GetGatewayStatusByRole(arg1) {
   return window['go']['pkg']['App']['GetGatewayStatusByRole'](arg1);
 }
 
+export function GetLoadTestRecord(arg1) {
+  return window['go']['pkg']['App']['GetLoadTestRecord'](arg1);
+}
+
+export function GetLoadTestStatus(arg1) {
+  return window['go']['pkg']['App']['GetLoadTestStatus'](arg1);
+}
+
 export function GetMetrics() {
   return window['go']['pkg']['App']['GetMetrics']();
 }
@@ -426,6 +438,10 @@ export function ListArgusCDProjects() {
   return window['go']['pkg']['App']['ListArgusCDProjects']();
 }
 
+export function ListBrokerKinds() {
+  return window['go']['pkg']['App']['ListBrokerKinds']();
+}
+
 export function ListCodeReviewReports(arg1) {
   return window['go']['pkg']['App']['ListCodeReviewReports'](arg1);
 }
@@ -468,6 +484,10 @@ export function ListHTTPRoutes(arg1) {
 
 export function ListIncidents() {
   return window['go']['pkg']['App']['ListIncidents']();
+}
+
+export function ListLoadTestPresets() {
+  return window['go']['pkg']['App']['ListLoadTestPresets']();
 }
 
 export function ListNamespaces() {
@@ -692,6 +712,10 @@ export function StartEventLoop(arg1) {
 
 export function StartHTTPServer(arg1) {
   return window['go']['pkg']['App']['StartHTTPServer'](arg1);
+}
+
+export function StartLoadTest(arg1) {
+  return window['go']['pkg']['App']['StartLoadTest'](arg1);
 }
 
 export function StartOAuthFlow(arg1) {

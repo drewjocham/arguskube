@@ -13,6 +13,7 @@ kube/backend/build/*
 kube/mcp/build/*
 !kube/mcp/build/appicon.png
 **/view/dist/
+HomePage/dist/
 **/node_modules/
 
 # Terraform
@@ -24,6 +25,10 @@ kube/mcp/build/*
 .idea/
 .vscode/
 *.swp
+
+# Python
+**/__pycache__/
+*.egg-info/
 
 # OS
 .DS_Store
@@ -46,6 +51,12 @@ kube/view/src/wailsjs/
 *.tfstate.*
 *.tfplan
 .terraform.lock.hcl
+
+# Dagster runtime data (anomstack)
+**/dagster_home/
+
+# Design references (static mocks, not source)
+design-references/*.html
 
 # Env
 .env

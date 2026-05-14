@@ -770,6 +770,188 @@ export namespace auth {
 
 }
 
+export namespace broker {
+	
+	export class AMQP1Config {
+	    url: string;
+	    authMode: string;
+	    username?: string;
+	    password?: string;
+	    bearerToken?: string;
+	    senderTarget: string;
+	    tlsCaCert?: string;
+	    tlsClientCert?: string;
+	    tlsClientKey?: string;
+	    insecureSkipVerify?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AMQP1Config(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.authMode = source["authMode"];
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.bearerToken = source["bearerToken"];
+	        this.senderTarget = source["senderTarget"];
+	        this.tlsCaCert = source["tlsCaCert"];
+	        this.tlsClientCert = source["tlsClientCert"];
+	        this.tlsClientKey = source["tlsClientKey"];
+	        this.insecureSkipVerify = source["insecureSkipVerify"];
+	    }
+	}
+	export class RabbitMQConfig {
+	    url: string;
+	    exchange: string;
+	    exchangeType?: string;
+	    publisherConfirms: boolean;
+	    tlsCaCert?: string;
+	    tlsClientCert?: string;
+	    tlsClientKey?: string;
+	    insecureSkipVerify?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new RabbitMQConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.exchange = source["exchange"];
+	        this.exchangeType = source["exchangeType"];
+	        this.publisherConfirms = source["publisherConfirms"];
+	        this.tlsCaCert = source["tlsCaCert"];
+	        this.tlsClientCert = source["tlsClientCert"];
+	        this.tlsClientKey = source["tlsClientKey"];
+	        this.insecureSkipVerify = source["insecureSkipVerify"];
+	    }
+	}
+	export class KafkaConfig {
+	    bootstrapServers: string;
+	    clientId?: string;
+	    authMode: string;
+	    username?: string;
+	    password?: string;
+	    oauthBearerToken?: string;
+	    tlsCaCert?: string;
+	    tlsClientCert?: string;
+	    tlsClientKey?: string;
+	    acks?: string;
+	    insecureSkipVerify?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new KafkaConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.bootstrapServers = source["bootstrapServers"];
+	        this.clientId = source["clientId"];
+	        this.authMode = source["authMode"];
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.oauthBearerToken = source["oauthBearerToken"];
+	        this.tlsCaCert = source["tlsCaCert"];
+	        this.tlsClientCert = source["tlsClientCert"];
+	        this.tlsClientKey = source["tlsClientKey"];
+	        this.acks = source["acks"];
+	        this.insecureSkipVerify = source["insecureSkipVerify"];
+	    }
+	}
+	export class NATSConfig {
+	    servers: string;
+	    useJetStream: boolean;
+	    authMode: string;
+	    username?: string;
+	    password?: string;
+	    token?: string;
+	    nkeySeed?: string;
+	    credsFile?: string;
+	    insecureSkipVerify?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new NATSConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.servers = source["servers"];
+	        this.useJetStream = source["useJetStream"];
+	        this.authMode = source["authMode"];
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.token = source["token"];
+	        this.nkeySeed = source["nkeySeed"];
+	        this.credsFile = source["credsFile"];
+	        this.insecureSkipVerify = source["insecureSkipVerify"];
+	    }
+	}
+	export class PubSubConfig {
+	    projectId: string;
+	    authMode: string;
+	    serviceAccountJson?: string;
+	    endpoint?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PubSubConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.projectId = source["projectId"];
+	        this.authMode = source["authMode"];
+	        this.serviceAccountJson = source["serviceAccountJson"];
+	        this.endpoint = source["endpoint"];
+	    }
+	}
+	export class Config {
+	    kind: string;
+	    pubsub?: PubSubConfig;
+	    nats?: NATSConfig;
+	    kafka?: KafkaConfig;
+	    rabbitmq?: RabbitMQConfig;
+	    amqp1?: AMQP1Config;
+	
+	    static createFrom(source: any = {}) {
+	        return new Config(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.pubsub = this.convertValues(source["pubsub"], PubSubConfig);
+	        this.nats = this.convertValues(source["nats"], NATSConfig);
+	        this.kafka = this.convertValues(source["kafka"], KafkaConfig);
+	        this.rabbitmq = this.convertValues(source["rabbitmq"], RabbitMQConfig);
+	        this.amqp1 = this.convertValues(source["amqp1"], AMQP1Config);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+
+}
+
 export namespace config {
 	
 	export class AuthConfig {
@@ -2972,6 +3154,314 @@ export namespace k8s {
 
 }
 
+export namespace loadtest {
+	
+	export class Payload {
+	    kind: string;
+	    filename?: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Payload(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.filename = source["filename"];
+	        this.size = source["size"];
+	    }
+	}
+	export class ScalePlan {
+	    namespace?: string;
+	    deployment?: string;
+	    preScaleToZero?: boolean;
+	    minReplicas?: number;
+	    preScaleTimeoutNs?: number;
+	    postScaleTimeoutNs?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScalePlan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.namespace = source["namespace"];
+	        this.deployment = source["deployment"];
+	        this.preScaleToZero = source["preScaleToZero"];
+	        this.minReplicas = source["minReplicas"];
+	        this.preScaleTimeoutNs = source["preScaleTimeoutNs"];
+	        this.postScaleTimeoutNs = source["postScaleTimeoutNs"];
+	    }
+	}
+	export class Ramp {
+	    kind: string;
+	    durationNs?: number;
+	    rate?: number;
+	    rampTo?: number;
+	    stepEveryNs?: number;
+	    stepBy?: number;
+	    spikeCount?: number;
+	    spikeSize?: number;
+	    spikeIdleNs?: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Ramp(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.durationNs = source["durationNs"];
+	        this.rate = source["rate"];
+	        this.rampTo = source["rampTo"];
+	        this.stepEveryNs = source["stepEveryNs"];
+	        this.stepBy = source["stepBy"];
+	        this.spikeCount = source["spikeCount"];
+	        this.spikeSize = source["spikeSize"];
+	        this.spikeIdleNs = source["spikeIdleNs"];
+	    }
+	}
+	export class RunSpec {
+	    name?: string;
+	    broker: broker.Config;
+	    destination: string;
+	    payload: Payload;
+	    count: number;
+	    workers?: number;
+	    ramp: Ramp;
+	    scale: ScalePlan;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunSpec(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.broker = this.convertValues(source["broker"], broker.Config);
+	        this.destination = source["destination"];
+	        this.payload = this.convertValues(source["payload"], Payload);
+	        this.count = source["count"];
+	        this.workers = source["workers"];
+	        this.ramp = this.convertValues(source["ramp"], Ramp);
+	        this.scale = this.convertValues(source["scale"], ScalePlan);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Preset {
+	    id: string;
+	    name: string;
+	    description: string;
+	    whenToUse: string;
+	    spec: RunSpec;
+	
+	    static createFrom(source: any = {}) {
+	        return new Preset(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.whenToUse = source["whenToUse"];
+	        this.spec = this.convertValues(source["spec"], RunSpec);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class Summary {
+	    sent: number;
+	    acked: number;
+	    errors: number;
+	    durationNs: number;
+	    throughputPerSec: number;
+	    p50AckLatencyNs: number;
+	    p95AckLatencyNs: number;
+	    p99AckLatencyNs: number;
+	    maxAckLatencyNs: number;
+	    errorBreakdown?: Record<string, number>;
+	
+	    static createFrom(source: any = {}) {
+	        return new Summary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sent = source["sent"];
+	        this.acked = source["acked"];
+	        this.errors = source["errors"];
+	        this.durationNs = source["durationNs"];
+	        this.throughputPerSec = source["throughputPerSec"];
+	        this.p50AckLatencyNs = source["p50AckLatencyNs"];
+	        this.p95AckLatencyNs = source["p95AckLatencyNs"];
+	        this.p99AckLatencyNs = source["p99AckLatencyNs"];
+	        this.maxAckLatencyNs = source["maxAckLatencyNs"];
+	        this.errorBreakdown = source["errorBreakdown"];
+	    }
+	}
+	export class ScaleEvent {
+	    // Go type: time
+	    at: any;
+	    phase: string;
+	    replicas: number;
+	    ready: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScaleEvent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.at = this.convertValues(source["at"], null);
+	        this.phase = source["phase"];
+	        this.replicas = source["replicas"];
+	        this.ready = source["ready"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class Sample {
+	    // Go type: time
+	    at: any;
+	    ackLatencyNs: number;
+	    ok: boolean;
+	    err?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Sample(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.at = this.convertValues(source["at"], null);
+	        this.ackLatencyNs = source["ackLatencyNs"];
+	        this.ok = source["ok"];
+	        this.err = source["err"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RunRecord {
+	    spec: RunSpec;
+	    brokerKind: string;
+	    // Go type: time
+	    started: any;
+	    // Go type: time
+	    finished: any;
+	    samples?: Sample[];
+	    scaleLog?: ScaleEvent[];
+	    summary: Summary;
+	    finalError?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.spec = this.convertValues(source["spec"], RunSpec);
+	        this.brokerKind = source["brokerKind"];
+	        this.started = this.convertValues(source["started"], null);
+	        this.finished = this.convertValues(source["finished"], null);
+	        this.samples = this.convertValues(source["samples"], Sample);
+	        this.scaleLog = this.convertValues(source["scaleLog"], ScaleEvent);
+	        this.summary = this.convertValues(source["summary"], Summary);
+	        this.finalError = source["finalError"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+	
+
+}
+
 export namespace multipart {
 	
 	export class FileHeader {
@@ -3310,6 +3800,54 @@ export namespace pkg {
 	        this.draft = source["draft"];
 	        this.updatedAt = source["updatedAt"];
 	    }
+	}
+	export class LoadTestStatus {
+	    runId: string;
+	    state: string;
+	    // Go type: time
+	    startedAt: any;
+	    // Go type: time
+	    finishedAt?: any;
+	    spec: loadtest.RunSpec;
+	    summary: loadtest.Summary;
+	    lastScale?: loadtest.ScaleEvent;
+	    finalError?: string;
+	    reportPath?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LoadTestStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.runId = source["runId"];
+	        this.state = source["state"];
+	        this.startedAt = this.convertValues(source["startedAt"], null);
+	        this.finishedAt = this.convertValues(source["finishedAt"], null);
+	        this.spec = this.convertValues(source["spec"], loadtest.RunSpec);
+	        this.summary = this.convertValues(source["summary"], loadtest.Summary);
+	        this.lastScale = this.convertValues(source["lastScale"], loadtest.ScaleEvent);
+	        this.finalError = source["finalError"];
+	        this.reportPath = source["reportPath"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class NextSuggestionResult {
 	    suggestion?: userprofile.Suggestion;

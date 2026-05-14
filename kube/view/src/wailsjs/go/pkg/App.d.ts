@@ -15,8 +15,10 @@ import {ai} from '../models';
 import {anomaly} from '../models';
 import {argocd} from '../models';
 import {features} from '../models';
+import {loadtest} from '../models';
 import {config} from '../models';
 import {workflows} from '../models';
+import {broker} from '../models';
 import {notebooks} from '../models';
 import {vulnscan} from '../models';
 import {popeye} from '../models';
@@ -40,6 +42,8 @@ export function AuthRoutes(arg1:http.ServeMux):Promise<void>;
 export function AutoResolveContext():Promise<k8s.ContextResolution>;
 
 export function BatchCheckCanI(arg1:string,arg2:Array<k8s.CanIResult>):Promise<Array<k8s.CanIResult>>;
+
+export function CancelLoadTest(arg1:string):Promise<void>;
 
 export function CancelOAuthFlow(arg1:string):Promise<boolean>;
 
@@ -167,6 +171,10 @@ export function GetFeatures():Promise<Record<features.Feature, boolean>>;
 
 export function GetGatewayStatusByRole(arg1:string):Promise<any>;
 
+export function GetLoadTestRecord(arg1:string):Promise<loadtest.RunRecord>;
+
+export function GetLoadTestStatus(arg1:string):Promise<pkg.LoadTestStatus>;
+
 export function GetMetrics():Promise<alerts.ClusterMetrics>;
 
 export function GetNextSuggestion(arg1:string):Promise<pkg.NextSuggestionResult>;
@@ -235,6 +243,8 @@ export function ListArgusCDApps(arg1:string):Promise<Array<argocd.App>>;
 
 export function ListArgusCDProjects():Promise<Array<string>>;
 
+export function ListBrokerKinds():Promise<Array<broker.Kind>>;
+
 export function ListCodeReviewReports(arg1:string):Promise<Array<pkg.CodeReviewReport>>;
 
 export function ListContexts():Promise<Array<k8s.ContextInfo>>;
@@ -256,6 +266,8 @@ export function ListGitHubPullRequests():Promise<Array<pkg.GitHubPullRequest>>;
 export function ListHTTPRoutes(arg1:string):Promise<Array<k8s.HTTPRouteSummary>>;
 
 export function ListIncidents():Promise<Array<incidents.Incident>>;
+
+export function ListLoadTestPresets():Promise<Array<loadtest.Preset>>;
 
 export function ListNamespaces():Promise<Array<string>>;
 
@@ -368,6 +380,8 @@ export function StartEnvProbeLoop(arg1:context.Context):Promise<void>;
 export function StartEventLoop(arg1:context.Context):Promise<void>;
 
 export function StartHTTPServer(arg1:number):Promise<void>;
+
+export function StartLoadTest(arg1:loadtest.RunSpec):Promise<string>;
 
 export function StartOAuthFlow(arg1:string):Promise<string>;
 
