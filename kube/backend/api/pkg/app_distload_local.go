@@ -127,6 +127,12 @@ func (r *loadtestRun) activeState() string {
 // the runID the caller hands back over Wails. Single-active-run policy
 // is enforced here.
 func (a *App) startLocalDistLoad(spec saasapi.DistLoadSpec) (string, error) {
+	// Multi-step REST scenarios run on the SaaS workers — the desktop
+	// has no scenario executor. Reject up front so the user picks Cloud
+	// (or trims the scenario down to a single-endpoint REST config).
+	if spec.Scenario != nil {
+		return "", fmt.Errorf("scenario tests require the Cloud runner — switch Runner to Cloud regions, or remove the scenario to use a single-endpoint REST test")
+	}
 	runSpec, err := distLoadSpecToRunSpec(spec)
 	if err != nil {
 		return "", fmt.Errorf("invalid spec: %w", err)

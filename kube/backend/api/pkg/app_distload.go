@@ -57,6 +57,14 @@ func resolveRunner(spec saasapi.DistLoadSpec) (string, error) {
 // single runID that addresses subsequent status/cancel calls regardless
 // of runner mode.
 func (a *App) StartDistributedLoadTest(spec saasapi.DistLoadSpec) (string, error) {
+	// Validate the scenario shape on the desktop so a malformed plan
+	// fails fast with a clear error pointing at the bad field, instead
+	// of bouncing off the SaaS API and surfacing a generic 400.
+	if spec.Scenario != nil {
+		if err := spec.Scenario.Validate(); err != nil {
+			return "", err
+		}
+	}
 	runner, err := resolveRunner(spec)
 	if err != nil {
 		return "", err

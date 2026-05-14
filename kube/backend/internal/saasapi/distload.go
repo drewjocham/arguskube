@@ -47,6 +47,13 @@ type DistLoadSpec struct {
 	// cloud path keeps using PayloadSize for back-compat; this struct
 	// lives on the local dispatcher side today.
 	Payload *DistLoadPayload `json:"payload,omitempty"`
+
+	// Scenario is REST-mode only: a multi-step plan (auth + 1..5
+	// endpoints + chains + assertions). The SaaS workers own the
+	// runner; the desktop just builds the spec and ships it. Empty
+	// for Event-Bus tests and for single-endpoint REST tests built
+	// with the legacy RESTConfig shape.
+	Scenario *DistLoadScenario `json:"scenario,omitempty"`
 }
 
 // DistLoadPayload describes a user-supplied message body. Exactly one

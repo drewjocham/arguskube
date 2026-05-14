@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useDistLoadStore } from '../../stores/distload'
+import ScenarioLiveCard from './ScenarioLiveCard.vue'
 
 const store = useDistLoadStore()
 const { status, activeRunId, error, isRunning, isTerminal } = storeToRefs(store)
@@ -180,6 +181,9 @@ const hasPartialResults = computed(() => {
           <div v-if="r.errorMessage" class="region-error">{{ r.errorMessage }}</div>
         </div>
       </div>
+
+      <!-- Per-endpoint scenario progress, if the run is a multi-step REST scenario. -->
+      <ScenarioLiveCard v-if="status?.scenario" :scenario="status.scenario" />
 
       <!-- Summary -->
       <div v-if="status?.summary" class="summary-card">

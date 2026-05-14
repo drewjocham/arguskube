@@ -12,6 +12,7 @@ import LoadTestBrokerRabbitMQ from './LoadTestBrokerRabbitMQ.vue'
 import LoadTestBrokerPubSub from './LoadTestBrokerPubSub.vue'
 import LoadTestBrokerAMQP1 from './LoadTestBrokerAMQP1.vue'
 import LoadTestBrokerREST from './LoadTestBrokerREST.vue'
+import ScenarioBuilder from './ScenarioBuilder.vue'
 import { isPrivateOrLoopback } from '../../lib/destinationValidation'
 
 // Unified Load Test form. Drives both local and cloud (distributed)
@@ -35,6 +36,14 @@ const runner = ref('local') // 'local' | 'cloud'
 // We remember the user's eventbus selection so flipping rest→eventbus
 // doesn't lose their choice.
 const testType = ref('eventbus') // 'eventbus' | 'rest'
+// REST sub-mode: 'simple' (single endpoint via LoadTestBrokerREST) vs
+// 'scenario' (multi-step ScenarioBuilder). Scenario requires the Cloud
+// runner — backend rejects local-mode scenarios.
+const restMode = ref('simple') // 'simple' | 'scenario'
+const scenario = ref({
+  auth: { mode: 'none' },
+  endpoints: [{ method: 'POST', url: '', headers: {}, body: '', expect: null, chain: [] }],
+})
 const lastEventBusKind = ref('kafka')
 const selectedPresetId = ref('')
 const brokerKind = ref('kafka')
@@ -181,6 +190,11 @@ const showQuotaBadge = computed(() => {
 // ── effective count ──────────────────────────────────────────────────
 const effectiveCount = computed(() => customCount.value ? countInput.value : messageCount.value)
 
+// REST scenario mode swaps in spec.scenario and uses an empty REST broker
+// config — the SaaS runner reads endpoints/auth from the scenario field
+// instead of the single-endpoint REST broker shape.
+const useScenario = computed(() => testType.value === 'rest' && restMode.value === 'scenario')
+
 // ── spec ─────────────────────────────────────────────────────────────
 const spec = computed(() => ({
   name: testName.value || `Load test ${new Date().toLocaleDateString()}`,
@@ -190,7 +204,10 @@ const spec = computed(() => ({
     provider: r.provider, region: r.region,
     instanceType: r.instanceType || 't3.medium', count: r.count || 1,
   })) : [],
-  broker: { kind: brokerKind.value, [brokerKind.value]: brokerConfig.value },
+  broker: useScenario.value
+    ? { kind: 'rest', rest: {} }
+    : { kind: brokerKind.value, [brokerKind.value]: brokerConfig.value },
+  scenario: useScenario.value ? scenario.value : undefined,
   destination: destination.value,
   payloadSize: payloadSize.value,
   count: effectiveCount.value,
@@ -217,7 +234,17 @@ function validate() {
   if (testType.value === 'eventbus') {
     if (!destination.value) errs.push('Destination is required')
   } else if (testType.value === 'rest') {
-    if (!brokerConfig.value?.baseURL) errs.push('Base URL is required for REST tests')
+    if (useScenario.value) {
+      // Scenario tests run only on the Cloud runner — the local runner
+      // rejects them with a clear error from the backend. Surface that
+      // upfront so the user doesn't have to read a backend stacktrace.
+      if (runner.value === 'local') errs.push('Scenario tests require the Cloud runner — switch Runner to Cloud regions.')
+      const eps = scenario.value?.endpoints || []
+      if (!eps.length) errs.push('Scenario requires at least one endpoint')
+      else if (eps.some(e => !e.url || !e.method)) errs.push('Every scenario endpoint needs a URL and method')
+    } else if (!brokerConfig.value?.baseURL) {
+      errs.push('Base URL is required for REST tests')
+    }
   }
   if (effectiveCount.value <= 0 || effectiveCount.value > 10_000_000) errs.push('Message count must be between 1 and 10M')
   if (workers.value <= 0) errs.push('Workers must be > 0')
@@ -245,7 +272,8 @@ const canStart = computed(() => {
   // Endpoint check varies by test type — destination for brokers,
   // baseURL on the REST config sub-form.
   if (testType.value === 'eventbus' && !destination.value) return false
-  if (testType.value === 'rest' && !brokerConfig.value?.baseURL) return false
+  if (testType.value === 'rest' && !useScenario.value && !brokerConfig.value?.baseURL) return false
+  if (useScenario.value && runner.value === 'local') return false
   return true
 })
 
@@ -355,12 +383,29 @@ onMounted(() => {
       </section>
     </template>
 
-    <!-- REST mode: the REST sub-form already carries baseURL, method,
-         path, headers, auth — no separate destination field. -->
+    <!-- REST mode: simple = single endpoint via LoadTestBrokerREST;
+         scenario = multi-step ScenarioBuilder. Scenario requires Cloud. -->
     <template v-else>
       <section class="section">
-        <label class="field-label">REST endpoint</label>
-        <LoadTestBrokerREST v-model="brokerConfig" />
+        <label class="field-label">REST mode</label>
+        <div class="seg" role="radiogroup" aria-label="REST mode">
+          <button type="button" class="seg-btn" :class="{ active: restMode === 'simple' }" role="radio"
+            :aria-checked="restMode === 'simple'" data-testid="distload-restmode-simple"
+            @click="restMode = 'simple'">Simple (single endpoint)</button>
+          <button type="button" class="seg-btn" :class="{ active: restMode === 'scenario' }" role="radio"
+            :aria-checked="restMode === 'scenario'" data-testid="distload-restmode-scenario"
+            @click="restMode = 'scenario'">Scenario (multi-step)</button>
+        </div>
+        <p class="field-hint">
+          {{ restMode === 'scenario'
+            ? 'Build a multi-step plan with chained calls and JSON-path assertions. Cloud runner only.'
+            : 'Hit one HTTP endpoint repeatedly.' }}
+        </p>
+      </section>
+      <section class="section">
+        <label class="field-label">{{ restMode === 'scenario' ? 'Scenario' : 'REST endpoint' }}</label>
+        <LoadTestBrokerREST v-if="restMode === 'simple'" v-model="brokerConfig" />
+        <ScenarioBuilder v-else v-model="scenario" />
       </section>
     </template>
 
