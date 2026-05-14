@@ -12,6 +12,7 @@ import LoadTestBrokerRabbitMQ from './LoadTestBrokerRabbitMQ.vue'
 import LoadTestBrokerPubSub from './LoadTestBrokerPubSub.vue'
 import LoadTestBrokerAMQP1 from './LoadTestBrokerAMQP1.vue'
 import LoadTestBrokerREST from './LoadTestBrokerREST.vue'
+import { isPrivateOrLoopback } from '../../lib/destinationValidation'
 
 // Unified Load Test form. Drives both local and cloud (distributed)
 // runs through a single spec shape — runner toggle decides the
@@ -189,7 +190,10 @@ function validate() {
   if (workers.value <= 0) errs.push('Workers must be > 0')
   if (runner.value === 'cloud') {
     if (selectedRegions.value.length === 0) errs.push('Select at least one region')
-    if (destination.value === 'localhost') errs.push('Broker must be reachable from cloud VMs — use a public or VPN-accessible endpoint')
+    const privateReason = isPrivateOrLoopback(destination.value)
+    if (privateReason) {
+      errs.push(`Destination is ${privateReason} — cloud VMs can't reach it. Use a public hostname or a VPN-accessible endpoint.`)
+    }
   }
   validationErrors.value = errs
 }
@@ -206,6 +210,7 @@ const canStart = computed(() => {
 
 // ── regions ──────────────────────────────────────────────────────────
 const availableRegions = computed(() => regions.value ?? [])
+
 function addRegion() {
   selectedRegions.value.push({
     provider: 'aws', region: 'us-east-1', instanceType: 't3.medium', count: 1,

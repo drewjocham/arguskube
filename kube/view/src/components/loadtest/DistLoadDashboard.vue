@@ -86,6 +86,16 @@ const regionStatuses = computed(() => {
 })
 
 function handleCancel() {
+  // Distributed load tests provision real cloud VMs. Mis-clicked
+  // Cancel before, mid-run, used to silently tear them down and
+  // burn the credits already spent on provisioning. The audit
+  // flagged this as a UX gap. Native confirm() is the smallest
+  // possible surface — the project doesn't ship a modal-dialog
+  // component, and a one-line confirm is sufficient signal.
+  const ok = window.confirm(
+    'Cancel this distributed load test? VMs already provisioned will be torn down and the credits spent so far cannot be refunded.',
+  )
+  if (!ok) return
   store.cancel()
 }
 
@@ -100,6 +110,17 @@ const hasPartialResults = computed(() => {
       <div class="empty-icon">⚡</div>
       <h3>No Active Test</h3>
       <p>Start a distributed load test from the form tab.</p>
+    </div>
+
+    <!-- Run id exists but first poll hasn't returned yet — render
+         "Initializing" instead of leaving the dashboard blank or
+         flashing "No Active Test" briefly. The audit flagged the
+         empty-state flash as confusing for users who just clicked
+         Start. -->
+    <div v-else-if="!status" class="empty-state">
+      <div class="empty-icon spinner-icon">⏳</div>
+      <h3>Initializing…</h3>
+      <p>Provisioning request sent. Waiting for the SaaS platform to acknowledge.</p>
     </div>
 
     <div v-else class="dashboard-content">
