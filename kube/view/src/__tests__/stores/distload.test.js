@@ -168,3 +168,84 @@ describe('distload store — audit blocker fixes', () => {
     expect(s.canStart).toBe(false)
   })
 })
+
+describe('distload store — consolidation extensions', () => {
+  it('loadPresets stores the backend result', async () => {
+    const s = await freshStore()
+    const data = [{ id: 'preset-a', name: 'A', description: 'd', whenToUse: 'when', spec: {} }]
+    mockCallGo.mockResolvedValueOnce(data)
+    await s.loadPresets()
+    expect(mockCallGo).toHaveBeenCalledWith('ListDistLoadPresets')
+    expect(s.presets).toEqual(data)
+  })
+
+  it('loadPresets surfaces backend error without throwing', async () => {
+    const s = await freshStore()
+    mockCallGo.mockRejectedValueOnce(new Error('boom'))
+    await s.loadPresets()
+    expect(s.error).toMatch(/boom/)
+    expect(s.presets).toEqual([])
+  })
+
+  it('loadBrokerKinds stores the array', async () => {
+    const s = await freshStore()
+    mockCallGo.mockResolvedValueOnce(['kafka', 'rest'])
+    await s.loadBrokerKinds()
+    expect(mockCallGo).toHaveBeenCalledWith('ListDistLoadBrokerKinds')
+    expect(s.brokerKinds).toEqual(['kafka', 'rest'])
+  })
+
+  it('loadLocalQuota stores the quota object', async () => {
+    const s = await freshStore()
+    const q = { used: 2, limit: 5, resetAt: '2030-01-01', isPro: false }
+    mockCallGo.mockResolvedValueOnce(q)
+    await s.loadLocalQuota()
+    expect(mockCallGo).toHaveBeenCalledWith('GetLocalDistLoadQuota')
+    expect(s.localQuota).toEqual(q)
+  })
+
+  it('generatePayload forwards prompt and sizeHint', async () => {
+    const s = await freshStore()
+    mockCallGo.mockResolvedValueOnce('{"hello":"world"}')
+    const out = await s.generatePayload('order event', 1024)
+    expect(mockCallGo).toHaveBeenCalledWith('GenerateLoadTestPayload', 'order event', 1024)
+    expect(out).toBe('{"hello":"world"}')
+  })
+
+  it('generatePayload propagates rejection', async () => {
+    const s = await freshStore()
+    mockCallGo.mockRejectedValueOnce(new Error('AI unconfigured'))
+    await expect(s.generatePayload('x', 100)).rejects.toThrow(/AI unconfigured/)
+    expect(s.error).toMatch(/AI unconfigured/)
+  })
+
+  it('resolvePayloadPath returns the resolution', async () => {
+    const s = await freshStore()
+    const out = { kind: 'file', files: [{ name: 'a.json', size: 12, path: '/a.json' }], sample: '{}' }
+    mockCallGo.mockResolvedValueOnce(out)
+    const got = await s.resolvePayloadPath('/a.json')
+    expect(mockCallGo).toHaveBeenCalledWith('ResolveLocalPayloadPath', '/a.json')
+    expect(got).toEqual(out)
+  })
+
+  it('getPreset finds by id', async () => {
+    const s = await freshStore()
+    mockCallGo.mockResolvedValueOnce([{ id: 'p1', name: 'one' }, { id: 'p2', name: 'two' }])
+    await s.loadPresets()
+    expect(s.getPreset('p2')).toEqual({ id: 'p2', name: 'two' })
+    expect(s.getPreset('missing')).toBeNull()
+  })
+
+  it('start with runner=local triggers a quota refresh after success', async () => {
+    const s = await freshStore()
+    mockCallGo.mockResolvedValueOnce('run-local-1')
+    // The post-start fire-and-forget loadLocalQuota call resolves second.
+    mockCallGo.mockResolvedValueOnce({ used: 3, limit: 5, isPro: false })
+    await s.start({ runner: 'local' })
+    s.stopPolling()
+    // Allow microtask queue to drain so the .catch chained call runs.
+    await Promise.resolve(); await Promise.resolve()
+    const quotaCalls = mockCallGo.mock.calls.filter(c => c[0] === 'GetLocalDistLoadQuota')
+    expect(quotaCalls.length).toBe(1)
+  })
+})

@@ -245,9 +245,27 @@ var migrations = []migration{
 		sql:  `CREATE INDEX idx_user_suggestion_log_created ON user_suggestion_log(created_at DESC)`,
 	},
 	{
+		// One row per local distload run start. Drives the 5/day quota
+		// on the free tier (Pro is uncapped). Append-only; the count
+		// query uses started_at as a rolling 24h window.
+		name: "create_distload_local_runs",
+		sql: `CREATE TABLE distload_local_runs (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			run_id     TEXT NOT NULL,
+			started_at INTEGER NOT NULL
+		)`,
+	},
+	{
+		name: "create_distload_local_runs_index",
+		sql:  `CREATE INDEX idx_distload_local_runs_started ON distload_local_runs(started_at DESC)`,
+	},
+	{
 		// User-registered database connections for DBAgent. password_enc
 		// is base64(AES-256-GCM(nonce||ct||tag)); the master key lives
 		// in secretstore so a stolen argus.db is useless on its own.
+		// Slotted AFTER the distload-local-runs migrations because those
+		// shipped to existing installs via the prior PR; staying behind
+		// them keeps migration numbers stable for users already on main.
 		name: "create_db_connections",
 		sql: `CREATE TABLE db_connections (
 			id            TEXT    PRIMARY KEY,
