@@ -414,6 +414,12 @@ var httpExposedMethods = map[string]struct{}{
 	"ListDistLoadBrokerKinds":          {},
 	"GetDistributedLoadTestStatus":     {},
 	"GetDistributedLoadTestRecord":     {},
+	// Payload helpers + quota. GenerateLoadTestPayload IS a write-ish
+	// side effect (it spends LLM tokens), but exposed for parity with
+	// the desktop UI calling through the HTTP shim.
+	"GenerateLoadTestPayload": {},
+	"ResolveLocalPayloadPath": {},
+	"GetLocalDistLoadQuota":   {},
 }
 
 func methodAllowedOverHTTP(name string) bool {

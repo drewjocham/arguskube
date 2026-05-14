@@ -244,4 +244,19 @@ var migrations = []migration{
 		name: "create_user_suggestion_log_index",
 		sql:  `CREATE INDEX idx_user_suggestion_log_created ON user_suggestion_log(created_at DESC)`,
 	},
+	{
+		// One row per local distload run start. Drives the 5/day quota
+		// on the free tier (Pro is uncapped). Append-only; the count
+		// query uses started_at as a rolling 24h window.
+		name: "create_distload_local_runs",
+		sql: `CREATE TABLE distload_local_runs (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			run_id     TEXT NOT NULL,
+			started_at INTEGER NOT NULL
+		)`,
+	},
+	{
+		name: "create_distload_local_runs_index",
+		sql:  `CREATE INDEX idx_distload_local_runs_started ON distload_local_runs(started_at DESC)`,
+	},
 }

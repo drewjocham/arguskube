@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -131,6 +134,17 @@ func (a *App) startLocalDistLoad(spec saasapi.DistLoadSpec) (string, error) {
 		return "", fmt.Errorf("invalid spec: %w", err)
 	}
 
+	// Daily quota: 5/day for free tier, unlimited for Pro. We charge
+	// the quota AFTER the spec validates (no point burning a slot on
+	// a malformed request) and BEFORE the run goroutine starts so a
+	// rejection bounces cleanly. If the DB isn't wired (tests), the
+	// quota helper returns zero usage and the check passes.
+	used, limit, resetAt, _, qerr := a.localQuotaStatus()
+	if qerr == nil && used >= limit {
+		return "", fmt.Errorf("local load tests are limited to %d/day on the free tier (resets at %s) — upgrade to Pro for unlimited local runs",
+			limit, time.Unix(resetAt, 0).Format(time.RFC3339))
+	}
+
 	reg := a.loadtests()
 	reg.mu.Lock()
 	if reg.activeID != "" {
@@ -173,6 +187,13 @@ func (a *App) startLocalDistLoad(spec saasapi.DistLoadSpec) (string, error) {
 	reg.runs[id] = run
 	reg.activeID = id
 	reg.mu.Unlock()
+
+	// Record the run for quota accounting. Errors are non-fatal — the
+	// worst case is the user gets a few extra runs that day.
+	if rerr := a.recordLocalDistLoadRun(id, run.started); rerr != nil {
+		a.logger.Warn("loadtest: quota record failed",
+			slog.String("runId", id), slog.String("error", rerr.Error()))
+	}
 
 	go a.runLoadTest(ctx, run, progress)
 	return id, nil
@@ -354,17 +375,12 @@ func distLoadSpecToRunSpec(spec saasapi.DistLoadSpec) (loadtest.RunSpec, error) 
 		return loadtest.RunSpec{}, fmt.Errorf("broker config: %w", err)
 	}
 
-	// Payload: cloud-mode posts only a size; the engine needs bytes,
-	// so we generate a deterministic filler. This matches what the
-	// cloud worker does on its side.
-	size := spec.PayloadSize
-	if size <= 0 {
-		size = 256
-	}
-	payload := loadtest.Payload{
-		Kind:  loadtest.PayloadKindTyped,
-		Bytes: bytes.Repeat([]byte{'x'}, size),
-		Size:  size,
+	// Payload: when the new Payload block is set, the source dictates
+	// shape; otherwise fall back to the legacy PayloadSize byte-filler
+	// (cloud back-compat) so older frontends still work.
+	payload, err := resolvePayload(spec)
+	if err != nil {
+		return loadtest.RunSpec{}, err
 	}
 
 	ramp := loadtest.Ramp{Rate: float64(spec.RampRate)}
@@ -407,6 +423,167 @@ func distLoadSpecToRunSpec(spec saasapi.DistLoadSpec) (loadtest.RunSpec, error) 
 		Ramp:        ramp,
 	}
 	return rs, nil
+}
+
+// resolvePayload builds a loadtest.Payload from a DistLoadSpec. Three
+// shapes:
+//
+//   - spec.Payload nil → legacy filler based on spec.PayloadSize
+//   - spec.Payload set, Source in upload/paste/type/ai → inline Bytes
+//   - spec.Payload set, Source=="file" → read file or dir contents.
+//     FileMode "template" picks the first file's bytes (engine repeats
+//     it); "exact" reads every listed file into SamplePool for
+//     round-robin send.
+//
+// File paths are revalidated here (the resolver method enforced the
+// same rules, but a direct Start call shouldn't trust the frontend).
+func resolvePayload(spec saasapi.DistLoadSpec) (loadtest.Payload, error) {
+	if spec.Payload == nil {
+		size := spec.PayloadSize
+		if size <= 0 {
+			size = 256
+		}
+		return loadtest.Payload{
+			Kind:  loadtest.PayloadKindTyped,
+			Bytes: bytes.Repeat([]byte{'x'}, size),
+			Size:  size,
+		}, nil
+	}
+	p := spec.Payload
+	switch p.Source {
+	case "upload", "paste", "type", "ai":
+		b := []byte(p.Bytes)
+		if len(b) == 0 {
+			return loadtest.Payload{}, fmt.Errorf("payload bytes empty for source %q", p.Source)
+		}
+		return loadtest.Payload{
+			Kind:     mapPayloadKind(p.Source),
+			Bytes:    b,
+			Filename: p.Filename,
+			Size:     len(b),
+		}, nil
+	case "file":
+		return resolveFilePayload(p)
+	default:
+		return loadtest.Payload{}, fmt.Errorf("unknown payload source %q", p.Source)
+	}
+}
+
+func mapPayloadKind(src string) loadtest.PayloadKind {
+	switch src {
+	case "upload":
+		return loadtest.PayloadKindUploaded
+	case "paste":
+		return loadtest.PayloadKindPasted
+	case "type":
+		return loadtest.PayloadKindTyped
+	case "ai":
+		return loadtest.PayloadKindAI
+	case "file":
+		return loadtest.PayloadKindFile
+	default:
+		return loadtest.PayloadKindTyped
+	}
+}
+
+// resolveFilePayload reads from the user's filesystem. The path is
+// re-validated through checkPayloadPath so a caller bypassing the
+// ResolveLocalPayloadPath RPC can't escape the sandbox.
+func resolveFilePayload(p *saasapi.DistLoadPayload) (loadtest.Payload, error) {
+	if p.FilePath == "" {
+		return loadtest.Payload{}, fmt.Errorf("filePath required for source=\"file\"")
+	}
+	clean, err := checkPayloadPath(p.FilePath)
+	if err != nil {
+		return loadtest.Payload{}, err
+	}
+	info, err := os.Stat(clean)
+	if err != nil {
+		return loadtest.Payload{}, fmt.Errorf("stat %s: %w", clean, err)
+	}
+	mode := p.FileMode
+	if mode == "" {
+		mode = "template"
+	}
+
+	if info.IsDir() {
+		entries, err := os.ReadDir(clean)
+		if err != nil {
+			return loadtest.Payload{}, fmt.Errorf("read dir %s: %w", clean, err)
+		}
+		var paths []string
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			lower := strings.ToLower(e.Name())
+			if !strings.HasSuffix(lower, ".json") && !strings.HasSuffix(lower, ".txt") {
+				continue
+			}
+			fi, err := e.Info()
+			if err != nil || fi.Size() > resolvePayloadMaxFileSize {
+				continue
+			}
+			paths = append(paths, filepath.Join(clean, e.Name()))
+			if len(paths) >= resolvePayloadMaxFiles {
+				break
+			}
+		}
+		if len(paths) == 0 {
+			return loadtest.Payload{}, fmt.Errorf("no .json/.txt files in %s", clean)
+		}
+		sort.Strings(paths)
+		switch mode {
+		case "template":
+			b, err := os.ReadFile(paths[0])
+			if err != nil {
+				return loadtest.Payload{}, fmt.Errorf("read %s: %w", paths[0], err)
+			}
+			return loadtest.Payload{
+				Kind:     loadtest.PayloadKindFile,
+				Bytes:    b,
+				Filename: filepath.Base(clean),
+				Size:     len(b),
+			}, nil
+		case "exact":
+			pool := make([][]byte, 0, len(paths))
+			for _, fp := range paths {
+				b, err := os.ReadFile(fp)
+				if err != nil {
+					continue
+				}
+				pool = append(pool, b)
+			}
+			if len(pool) == 0 {
+				return loadtest.Payload{}, fmt.Errorf("no readable files in %s", clean)
+			}
+			return loadtest.Payload{
+				Kind:       loadtest.PayloadKindFile,
+				SamplePool: pool,
+				Bytes:      pool[0], // backup body in case the engine ignores the pool
+				Filename:   filepath.Base(clean),
+				Size:       len(pool[0]),
+			}, nil
+		default:
+			return loadtest.Payload{}, fmt.Errorf("unknown fileMode %q (want \"exact\" or \"template\")", mode)
+		}
+	}
+
+	// Single file: ignore mode (template and exact collapse to the
+	// same shape — one body the engine repeats).
+	if info.Size() > resolvePayloadMaxFileSize {
+		return loadtest.Payload{}, fmt.Errorf("file %s exceeds %d bytes", clean, resolvePayloadMaxFileSize)
+	}
+	b, err := os.ReadFile(clean)
+	if err != nil {
+		return loadtest.Payload{}, fmt.Errorf("read %s: %w", clean, err)
+	}
+	return loadtest.Payload{
+		Kind:     loadtest.PayloadKindFile,
+		Bytes:    b,
+		Filename: info.Name(),
+		Size:     len(b),
+	}, nil
 }
 
 // exportLoadTestReport renders the run record as Markdown and writes

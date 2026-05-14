@@ -33,6 +33,29 @@ type DistLoadSpec struct {
 	// fields before submission; this field carries the choice through
 	// for audit/log purposes (and lets a local dispatcher record it).
 	PresetID string `json:"presetId,omitempty"`
+
+	// Payload, when non-nil, overrides the legacy PayloadSize byte-fill.
+	// Carries the user-supplied source (upload/paste/typed/AI/file). The
+	// cloud path keeps using PayloadSize for back-compat; this struct
+	// lives on the local dispatcher side today.
+	Payload *DistLoadPayload `json:"payload,omitempty"`
+}
+
+// DistLoadPayload describes a user-supplied message body. Exactly one
+// of {Bytes, FilePath} is meaningful per Source:
+//
+//   - upload/paste/type/ai → Bytes (Filename is metadata for "upload")
+//   - file                 → FilePath + FileMode ("exact" or "template")
+//
+// AIPrompt is the prompt that produced an "ai" payload — kept only for
+// audit so the Notebook report can quote the request.
+type DistLoadPayload struct {
+	Source   string `json:"source"`
+	Bytes    string `json:"bytes,omitempty"`
+	Filename string `json:"filename,omitempty"`
+	FilePath string `json:"filePath,omitempty"`
+	FileMode string `json:"fileMode,omitempty"`
+	AIPrompt string `json:"aiPrompt,omitempty"`
 }
 
 type RegionSpec struct {

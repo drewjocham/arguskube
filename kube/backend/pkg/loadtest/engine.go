@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/argues/argus/pkg/broker"
@@ -32,6 +33,11 @@ type Engine struct {
 
 	// onScale is the same for ScaleEvents.
 	onScale func(ScaleEvent)
+
+	// poolIdx round-robins through Payload.SamplePool when that pool
+	// is non-empty. Atomic so workers can fetch the next index without
+	// taking a lock per Publish.
+	poolIdx uint64
 }
 
 // New builds an Engine. The frontend supplies the spec; the engine
@@ -179,9 +185,16 @@ func (e *Engine) publish(ctx context.Context, pub broker.Publisher) error {
 }
 
 func (e *Engine) publishOne(ctx context.Context, pub broker.Publisher, _ int) {
+	body := e.spec.Payload.Bytes
+	if pool := e.spec.Payload.SamplePool; len(pool) > 0 {
+		// Atomic post-increment gives every Publish a distinct slot;
+		// modulo wraps cleanly within the pool.
+		i := atomic.AddUint64(&e.poolIdx, 1) - 1
+		body = pool[int(i%uint64(len(pool)))]
+	}
 	msg := broker.Message{
 		Destination: e.spec.Destination,
-		Payload:     e.spec.Payload.Bytes,
+		Payload:     body,
 	}
 	start := time.Now()
 	receipt, err := pub.Publish(ctx, msg)

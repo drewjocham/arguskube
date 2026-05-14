@@ -400,6 +400,70 @@ func TestEngine_ContextCancel_ReturnsRecord(t *testing.T) {
 	}
 }
 
+// --- SamplePool round-robin -------------------------------------------------
+
+// recordingPublisher captures the bytes of every Publish so the test
+// can assert round-robin distribution across SamplePool entries.
+type recordingPublisher struct {
+	mu       sync.Mutex
+	received [][]byte
+}
+
+func (p *recordingPublisher) Connect(_ context.Context) error { return nil }
+func (p *recordingPublisher) Publish(_ context.Context, m broker.Message) (broker.Receipt, error) {
+	p.mu.Lock()
+	cpy := make([]byte, len(m.Payload))
+	copy(cpy, m.Payload)
+	p.received = append(p.received, cpy)
+	p.mu.Unlock()
+	return broker.Receipt{PublishedAt: time.Now()}, nil
+}
+func (p *recordingPublisher) Close() error      { return nil }
+func (p *recordingPublisher) Kind() broker.Kind { return broker.KindNATS }
+
+func TestEngine_SamplePool_RoundRobin(t *testing.T) {
+	pool := [][]byte{[]byte(`{"k":0}`), []byte(`{"k":1}`), []byte(`{"k":2}`)}
+	spec := minimalSpec()
+	spec.Count = 9
+	// Single worker keeps the round-robin order deterministic so the
+	// test can assert exactly which payload landed where.
+	spec.Workers = 1
+	spec.Ramp = Ramp{Kind: RampConstant, Rate: 5000}
+	spec.Payload = Payload{
+		Kind:       PayloadKindFile,
+		SamplePool: pool,
+		Size:       len(pool[0]),
+	}
+
+	rp := &recordingPublisher{}
+	e := New(spec, slog.Default())
+	e.NewPublisher = func(_ context.Context, _ broker.Config, _ *slog.Logger) (broker.Publisher, error) {
+		return rp, nil
+	}
+	rec, err := e.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if rec.FinalError != "" {
+		t.Fatalf("FinalError = %q", rec.FinalError)
+	}
+
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	if len(rp.received) != 9 {
+		t.Fatalf("received %d, want 9", len(rp.received))
+	}
+	counts := map[string]int{}
+	for _, b := range rp.received {
+		counts[string(b)]++
+	}
+	for i, want := range pool {
+		if counts[string(want)] != 3 {
+			t.Errorf("pool[%d] sent %d times, want 3 (counts=%v)", i, counts[string(want)], counts)
+		}
+	}
+}
+
 // --- Presets ----------------------------------------------------------------
 
 func TestPresetList_FiveLocked(t *testing.T) {

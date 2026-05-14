@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/argues/argus/internal/saasapi"
+	"github.com/argues/argus/internal/sqlitedb"
 	"github.com/argues/argus/pkg/broker"
 	"github.com/argues/argus/pkg/loadtest"
 )
@@ -365,6 +367,104 @@ func TestTryNarrateLoadTest_NoAgent_ReturnsEmpty(t *testing.T) {
 	a.agent = nil
 	if got := a.tryNarrateLoadTest(&loadtest.RunRecord{}); got != "" {
 		t.Errorf("got %q, want empty (no agent)", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Payload + quota tests (PR adding rich payload sources + 5/day cap)
+// ---------------------------------------------------------------------------
+
+func TestGenerateLoadTestPayload_NilAgent(t *testing.T) {
+	a := quietApp(t)
+	a.agent = nil
+	_, err := a.GenerateLoadTestPayload("anything", 0)
+	if err == nil {
+		t.Fatal("expected error when agent is nil")
+	}
+	if !strings.Contains(err.Error(), "AI agent disabled") {
+		t.Errorf("err = %q, want it to mention 'AI agent disabled'", err.Error())
+	}
+}
+
+func TestResolveLocalPayloadPath_RejectsRoot(t *testing.T) {
+	a := quietApp(t)
+	if _, err := a.ResolveLocalPayloadPath("/"); err == nil {
+		t.Fatal("expected error for root path")
+	}
+	if _, err := a.ResolveLocalPayloadPath(""); err == nil {
+		t.Fatal("expected error for empty path")
+	}
+	if _, err := a.ResolveLocalPayloadPath("/etc/../tmp"); err == nil {
+		t.Fatal("expected error for path with '..'")
+	}
+}
+
+func TestResolveLocalPayloadPath_AcceptsTempDir(t *testing.T) {
+	a := quietApp(t)
+	dir := t.TempDir()
+	// Write a small json file so the listing has content.
+	fp := dir + "/a.json"
+	if err := os.WriteFile(fp, []byte(`{"x":1}`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	res, err := a.ResolveLocalPayloadPath(dir)
+	if err != nil {
+		t.Fatalf("ResolveLocalPayloadPath: %v", err)
+	}
+	if res.Kind != "dir" {
+		t.Errorf("kind = %q, want dir", res.Kind)
+	}
+	if len(res.Files) != 1 || res.Files[0].Name != "a.json" {
+		t.Errorf("files = %+v", res.Files)
+	}
+	if !strings.Contains(res.Sample, `"x":1`) {
+		t.Errorf("sample = %q", res.Sample)
+	}
+}
+
+// quotaTestApp wires the App to a real on-disk SQLite so the quota
+// migration runs and INSERT/COUNT exercise the real schema.
+func quotaTestApp(t *testing.T) *App {
+	t.Helper()
+	dir := t.TempDir()
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
+	sdb, err := sqlitedb.Open(dir, logger)
+	if err != nil {
+		t.Fatalf("sqlitedb open: %v", err)
+	}
+	t.Cleanup(func() { _ = sdb.Close() })
+	return &App{logger: logger, db: sdb.DB}
+}
+
+func TestLocalDistLoad_QuotaCapsFreeTier(t *testing.T) {
+	a := quotaTestApp(t)
+	spec := goodLocalDistSpec(t)
+	spec.Count = 5
+	spec.RampRate = 5000
+
+	for i := 0; i < 5; i++ {
+		id := startTestLocalDistLoad(t, a, spec, &fakeLoadtestPublisher{ackLatency: 100 * time.Microsecond})
+		if got := awaitLocalState(t, a, id, "done", 2*time.Second); got != "done" {
+			t.Fatalf("run %d state = %q", i, got)
+		}
+	}
+
+	// 6th start must fail with the quota error.
+	_, err := a.StartDistributedLoadTest(spec)
+	if err == nil {
+		t.Fatal("expected 6th start to fail (quota)")
+	}
+	if !strings.Contains(err.Error(), "limited to 5/day") {
+		t.Errorf("err = %q, want it to mention '5/day'", err.Error())
+	}
+
+	// GetLocalDistLoadQuota should report the cap.
+	q, err := a.GetLocalDistLoadQuota()
+	if err != nil {
+		t.Fatalf("GetLocalDistLoadQuota: %v", err)
+	}
+	if q.Used != 5 || q.Limit != 5 {
+		t.Errorf("quota = %+v, want used=5 limit=5", q)
 	}
 }
 
