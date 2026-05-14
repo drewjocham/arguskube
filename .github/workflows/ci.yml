@@ -56,7 +56,12 @@ jobs:
         run: go build ./...
 
       - name: Test
-        run: go test -race -count=1 -timeout 120s ./...
+        # -short skips tests that shell out to kubectl or download
+        # binaries (kube/backend/internal/setup). Those still run on
+        # developer machines without -short — they have a real
+        # environment. Without this, the setup package consistently
+        # stalls the 2-minute test budget on CI runners.
+        run: go test -short -race -count=1 -timeout 180s ./...
 
       # Lint is non-blocking on the consolidation PR: the kube/backend/
       # restructure makes every pre-existing issue appear "new" because the
