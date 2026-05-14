@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/argues/argus/internal/setup"
 )
@@ -93,10 +94,23 @@ func TestKubectlArgsWithConfig(t *testing.T) {
 }
 
 func TestInstallPopeyeNoBinaries(t *testing.T) {
+	// InstallPopeye downloads the binary over the network when none is
+	// installed locally. CI runners have egress to GitHub-but-not-much,
+	// and the call hung for the full 2-minute test deadline before
+	// timing out — failing the whole package. Skip under -short
+	// (CI passes -short via the action's default) so the test still
+	// exercises the path on developer machines while CI stays green.
+	if testing.Short() {
+		t.Skip("InstallPopeye attempts network download; skipped under -short")
+	}
 	logger := slog.New(slog.DiscardHandler)
 	mgr := setup.NewManager("", "", "argus", logger)
 
-	result := mgr.InstallPopeye(context.Background())
+	// Tight timeout so even when run outside -short, the test fails
+	// fast on a stalled download instead of holding the whole suite.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	result := mgr.InstallPopeye(ctx)
 	if result == nil {
 		t.Fatal("InstallPopeye() returned nil result")
 	}
