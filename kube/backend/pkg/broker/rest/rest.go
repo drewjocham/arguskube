@@ -159,7 +159,7 @@ func (p *Publisher) Publish(ctx context.Context, msg broker.Message) (broker.Rec
 	if err != nil {
 		return broker.Receipt{}, mapErr(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read body fully so the connection can be reused from the idle
 	// pool — leaving it half-read disables keep-alive.

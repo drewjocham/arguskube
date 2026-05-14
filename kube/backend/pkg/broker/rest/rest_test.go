@@ -272,7 +272,7 @@ func TestREST_ConnectIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("broker.New: %v", err)
 	}
-	defer pub.Close()
+	defer func() { _ = pub.Close() }()
 	if err := pub.Connect(context.Background()); err != nil {
 		t.Fatalf("first Connect: %v", err)
 	}

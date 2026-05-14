@@ -278,7 +278,7 @@ func readSample(path string, max int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	buf := make([]byte, max)
 	n, _ := f.Read(buf)
 	return string(buf[:n]), nil
@@ -344,27 +344,10 @@ func (a *App) GetLocalDistLoadQuota() (LocalQuotaStatus, error) {
 	return LocalQuotaStatus{Used: used, Limit: limit, ResetAt: resetAt, IsPro: isPro}, nil
 }
 
-// recordLocalDistLoadRun appends a row to the quota table. Called after
-// a successful start so a rejected start doesn't burn the user's
-// allowance.
-func (a *App) recordLocalDistLoadRun(runID string, startedAt time.Time) error {
-	if a.db == nil {
-		return nil
-	}
-	_, err := a.db.Exec(
-		`INSERT INTO distload_local_runs (run_id, started_at) VALUES (?, ?)`,
-		runID, startedAt.Unix(),
-	)
-	if err != nil {
-		return fmt.Errorf("record local run: %w", err)
-	}
-	return nil
-}
-
 // reserveLocalQuotaSlot atomically checks remaining capacity and, if
 // available, inserts a quota row in the same transaction. This is the
-// concurrency-safe variant of "localQuotaStatus + recordLocalDistLoadRun"
-// — two parallel Start calls at the 4→5 boundary cannot both succeed
+// concurrency-safe variant of separate "count + insert" calls —
+// two parallel Start calls at the 4→5 boundary cannot both succeed
 // because the SELECT…INSERT runs inside a SQLite IMMEDIATE transaction
 // (which acquires the write lock at BEGIN, not on first write).
 //

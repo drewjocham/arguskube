@@ -717,9 +717,9 @@ func renderLoadTestMarkdown(rec *loadtest.RunRecord, narrative string) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	b.WriteString("type: loadtest-report\n")
-	b.WriteString(fmt.Sprintf("started: %s\n", rec.Started.UTC().Format(time.RFC3339)))
-	b.WriteString(fmt.Sprintf("finished: %s\n", rec.Finished.UTC().Format(time.RFC3339)))
-	b.WriteString(fmt.Sprintf("broker: %s\n", rec.BrokerKind))
+	fmt.Fprintf(&b, "started: %s\n", rec.Started.UTC().Format(time.RFC3339))
+	fmt.Fprintf(&b, "finished: %s\n", rec.Finished.UTC().Format(time.RFC3339))
+	fmt.Fprintf(&b, "broker: %s\n", rec.BrokerKind)
 	if rec.Spec.Scale.Deployment != "" {
 		b.WriteString(fmt.Sprintf("deployment: %s/%s\n", rec.Spec.Scale.Namespace, rec.Spec.Scale.Deployment))
 	}
