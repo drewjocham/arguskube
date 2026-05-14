@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useDistLoadStore } from '../../stores/distload'
 import Select from '../common/Select.vue'
 import CostEstimateCard from './CostEstimateCard.vue'
+import { isPrivateOrLoopback } from '../../lib/destinationValidation'
 
 const store = useDistLoadStore()
 const { regions, creditBalance, error: storeError, loading, isRunning, isTerminal } = storeToRefs(store)
@@ -88,7 +89,10 @@ function validate() {
   if (count <= 0 || count > 10_000_000) errors.push('Message count must be between 1 and 10M')
   if (payloadSize.value <= 0) errors.push('Payload size must be > 0')
   if (workers.value <= 0) errors.push('Worker count must be > 0')
-  if (destination.value === 'localhost') errors.push('Broker must be reachable from cloud VMs — use a public or VPN-accessible endpoint')
+  const privateReason = isPrivateOrLoopback(destination.value)
+  if (privateReason) {
+    errors.push(`Destination is ${privateReason} — cloud VMs can't reach it. Use a public hostname or a VPN-accessible endpoint.`)
+  }
   validationErrors.value = errors
 }
 

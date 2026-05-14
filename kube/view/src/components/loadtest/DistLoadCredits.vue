@@ -27,14 +27,20 @@ onMounted(() => {
     <div v-if="creditsLoading && creditBalance == null" class="loading-state">Loading credit info…</div>
 
     <div v-else class="credits-content">
-      <!-- Balance card -->
-      <div class="balance-card" :class="{ low: (creditBalance ?? 0) < 100 }">
+      <!-- Balance card.
+           The "low credits" classes only kick in once we know the
+           real balance — `creditBalance != null` guards against the
+           initial-load flash where `creditBalance ?? 0` would have
+           rendered 0 < 100 → "Low credits" warning while the value
+           was still en route from the SaaS API. The audit flagged
+           that as a confusing false alarm. -->
+      <div class="balance-card" :class="{ low: creditBalance != null && creditBalance < 100 }">
         <div class="balance-amount">
           <span class="balance-number">{{ creditBalance != null ? creditBalance.toFixed(1) : '—' }}</span>
           <span class="balance-unit">credits</span>
         </div>
         <div class="balance-label">Available Balance</div>
-        <div v-if="(creditBalance ?? 0) < 100" class="balance-warning">
+        <div v-if="creditBalance != null && creditBalance < 100" class="balance-warning">
           Low credits — contact your Argus administrator to add more.
         </div>
       </div>
