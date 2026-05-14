@@ -266,8 +266,16 @@ var migrations = []migration{
 		// Slotted AFTER the distload-local-runs migrations because those
 		// shipped to existing installs via the prior PR; staying behind
 		// them keeps migration numbers stable for users already on main.
+		//
+		// IF NOT EXISTS keeps this idempotent for developers who tested
+		// an earlier rev of this branch (where db_connections sat at a
+		// lower slot) — the table got created back then, _migrations
+		// records the OLD slot as applied, and replaying this migration
+		// would otherwise error with "table already exists". Append-only
+		// migrations don't fully protect against this when a branch is
+		// rebased through reordering, so we guard at the SQL level.
 		name: "create_db_connections",
-		sql: `CREATE TABLE db_connections (
+		sql: `CREATE TABLE IF NOT EXISTS db_connections (
 			id            TEXT    PRIMARY KEY,
 			name          TEXT    NOT NULL,
 			db_type       TEXT    NOT NULL,
@@ -286,6 +294,6 @@ var migrations = []migration{
 	},
 	{
 		name: "create_db_connections_name_index",
-		sql:  `CREATE UNIQUE INDEX idx_db_connections_name ON db_connections(name)`,
+		sql:  `CREATE UNIQUE INDEX IF NOT EXISTS idx_db_connections_name ON db_connections(name)`,
 	},
 }
