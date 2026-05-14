@@ -1,6 +1,7 @@
 package loadtest
 
 import (
+	"math"
 	"time"
 )
 
@@ -95,7 +96,7 @@ func (p *rampPlanner) scheduleLinear() []time.Duration {
 	for i := 1; i <= p.count; i++ {
 		// Solve a*t² + b*t - i = 0 for t.
 		// t = (-b + sqrt(b² + 4ai)) / 2a
-		t := (-b + sqrtPos(b*b+4*a*float64(i))) / (2 * a)
+		t := (-b + math.Sqrt(b*b+4*a*float64(i))) / (2 * a)
 		offset := time.Duration(t * float64(time.Second))
 		if offset > dur {
 			break
@@ -103,25 +104,6 @@ func (p *rampPlanner) scheduleLinear() []time.Duration {
 		out = append(out, offset)
 	}
 	return out
-}
-
-// sqrtPos is math.Sqrt without importing math at the file level. The
-// arg is always non-negative in our use (b² + positive). Kept inline
-// to make this file self-contained.
-func sqrtPos(x float64) float64 {
-	if x < 0 {
-		return 0
-	}
-	// Newton-Raphson, 8 iterations is plenty for IEEE float64 over
-	// the value range we hit (b² up to ~1e6, 4ai up to ~1e10).
-	g := x / 2
-	if g == 0 {
-		return 0
-	}
-	for i := 0; i < 8; i++ {
-		g = (g + x/g) / 2
-	}
-	return g
 }
 
 // scheduleStep keeps a constant rate within each step window then
