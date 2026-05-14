@@ -141,7 +141,6 @@ func (a *Analyzer) indexes(ctx context.Context) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: list indexes: %w", err)
 	}
-	defer rows.Close()
 
 	type indexRow struct {
 		Name    string `json:"index"`
@@ -150,23 +149,34 @@ func (a *Analyzer) indexes(ctx context.Context) (map[string]any, error) {
 		Auto    bool   `json:"auto_created"`
 	}
 	var out []indexRow
+	// Drain the outer query FIRST before issuing the per-index column
+	// counts. SQLite's pool with MaxOpenConns(1) (the production
+	// configuration in sqlitedb.Open) would deadlock if we held the
+	// outer Rows open while waiting for a connection to run the inner
+	// query. Gather names, close, then enrich.
 	for rows.Next() {
 		var r indexRow
 		if err := rows.Scan(&r.Name, &r.Table); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		r.Auto = strings.HasPrefix(r.Name, "sqlite_autoindex_")
-		// index_info returns one row per indexed column. We count
-		// rather than scan columns because callers don't usually need
-		// the column names — just enough to spot "this is a 5-col index".
-		if n, err := countRows(ctx, a.db,
-			fmt.Sprintf(`SELECT COUNT(*) FROM pragma_index_info(%s)`, sqliteQuote(r.Name))); err == nil {
-			r.Columns = n
-		}
 		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return nil, err
+	}
+	rows.Close()
+
+	for i := range out {
+		// pragma_index_info returns one row per indexed column. We count
+		// rather than scan columns because callers don't usually need
+		// the column names — just enough to spot "this is a 5-col index".
+		if n, err := countRows(ctx, a.db,
+			fmt.Sprintf(`SELECT COUNT(*) FROM pragma_index_info(%s)`, sqliteQuote(out[i].Name))); err == nil {
+			out[i].Columns = n
+		}
 	}
 	return map[string]any{"indexes": out}, nil
 }

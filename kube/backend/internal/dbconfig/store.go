@@ -17,6 +17,12 @@ import (
 // convention so callers can switch on error identity cleanly.
 var ErrNotFound = errors.New("dbconfig: connection not found")
 
+// ErrDuplicateName is returned by Upsert when the requested Name
+// collides with an existing row (UNIQUE index on db_connections.name).
+// The UI uses this to surface a clear "pick a different name" instead
+// of a raw driver error.
+var ErrDuplicateName = errors.New("dbconfig: connection name already in use")
+
 // querier is the subset of *sql.DB / *sql.Tx that Store needs. Lets
 // tests pass an in-memory database without depending on sqlitedb's
 // migration system.
@@ -97,21 +103,24 @@ func (s *Store) Upsert(ctx context.Context, c DBConnection) (DBConnection, error
 	}
 	now := s.now().Unix()
 	if strings.TrimSpace(c.ID) == "" {
+		// Create path: assign a fresh ID and stamp CreatedAt.
 		c.ID = newID()
 		c.CreatedAt = now
+	} else {
+		// Update path: the ID must reference an existing row. Without
+		// this guard a caller could resurrect a deleted row by passing
+		// its old ID, which is a data-integrity hazard the reviewer
+		// flagged as a blocker.
+		existing, gerr := s.Get(ctx, c.ID)
+		if errors.Is(gerr, ErrNotFound) {
+			return DBConnection{}, ErrNotFound
+		}
+		if gerr != nil {
+			return DBConnection{}, gerr
+		}
+		c.CreatedAt = existing.CreatedAt
 	}
 	c.UpdatedAt = now
-	if c.CreatedAt == 0 {
-		// Updating an existing row: preserve created_at from the DB.
-		existing, err := s.Get(ctx, c.ID)
-		if err == nil {
-			c.CreatedAt = existing.CreatedAt
-		} else if !errors.Is(err, ErrNotFound) {
-			return DBConnection{}, err
-		} else {
-			c.CreatedAt = now
-		}
-	}
 
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO db_connections (
@@ -136,6 +145,12 @@ func (s *Store) Upsert(ctx context.Context, c DBConnection) (DBConnection, error
 		boolToInt(c.Enabled), c.CreatedAt, c.UpdatedAt,
 	)
 	if err != nil {
+		// Map the driver's UNIQUE-constraint error onto a typed
+		// sentinel so the UI can show a friendly "name in use" message
+		// instead of leaking SQL details.
+		if strings.Contains(err.Error(), "UNIQUE constraint failed: db_connections.name") {
+			return DBConnection{}, ErrDuplicateName
+		}
 		return DBConnection{}, fmt.Errorf("dbconfig: upsert: %w", err)
 	}
 	return c, nil

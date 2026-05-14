@@ -414,6 +414,13 @@ var httpExposedMethods = map[string]struct{}{
 	"ListBrokerKinds":     {},
 	"GetLoadTestStatus":   {},
 	"GetLoadTestRecord":   {},
+	// DBAgent: read-only + analysis are HTTP-callable so the Python
+	// specialist agent can fetch metrics over /api/AnalyzeDB. Credential
+	// management (Upsert/Delete/Test) stays Wails-only so SaaS-mode HTTP
+	// callers can't enumerate or rotate the user's stored connections.
+	"ListDBConnections": {},
+	"GetDBConnection":   {},
+	"AnalyzeDB":         {},
 }
 
 func methodAllowedOverHTTP(name string) bool {

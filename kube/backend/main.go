@@ -180,9 +180,17 @@ func run() error {
 
 	// DBAgent — registered DB connections + cached pools. The crypto
 	// master key lives in the OS keychain (or in-memory on Linux/SaaS),
-	// reusing the same secretstore that backs auth.
-	dbConfigStore := dbconfig.NewStore(db.DB, dbconfig.NewCrypto(secretstore.New("Argus")))
-	dbPool := connector.New(dbConfigStore, 0, 0)
+	// reusing the same secretstore that backs auth. Only wired in
+	// desktop modes; in SaaS the feature is off and dbAgentAvailable()
+	// returns false so the Wails methods short-circuit.
+	var (
+		dbConfigStore *dbconfig.Store
+		dbPool        *connector.Pool
+	)
+	if os.Getenv("ARGUS_MODE") != "saas" {
+		dbConfigStore = dbconfig.NewStore(db.DB, dbconfig.NewCrypto(secretstore.New("Argus")))
+		dbPool = connector.New(dbConfigStore, 0, 0)
+	}
 
 	setupMgr := setup.NewManager(
 		cfg.Kubernetes.Config,

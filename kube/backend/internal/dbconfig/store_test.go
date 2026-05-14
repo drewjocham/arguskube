@@ -39,6 +39,11 @@ func openTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("create table: %v", err)
 	}
+	// Mirror sqlitedb migration #16 — the UNIQUE index that
+	// ErrDuplicateName depends on.
+	if _, err := db.Exec(`CREATE UNIQUE INDEX idx_db_connections_name ON db_connections(name)`); err != nil {
+		t.Fatalf("create unique index: %v", err)
+	}
 	t.Cleanup(func() { db.Close() })
 	return db
 }
@@ -155,6 +160,41 @@ func TestStore_Delete(t *testing.T) {
 	}
 	if _, err := s.Get(ctx, saved.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("get after delete should be ErrNotFound, got %v", err)
+	}
+}
+
+// TestStore_UpsertRejectsUnknownID guards the resurrection blocker the
+// reviewer flagged: passing a non-empty ID that doesn't reference an
+// existing row used to silently create a new row under the caller's ID,
+// which let a deleted connection's ID become a path to a fresh row.
+func TestStore_UpsertRejectsUnknownID(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	_, err := s.Upsert(ctx, DBConnection{
+		ID:   "stale-id-from-deleted-row",
+		Name: "x", DBType: DBPostgres, Host: "h", Port: 5432,
+	})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for unknown ID, got %v", err)
+	}
+}
+
+// TestStore_DuplicateName maps the driver's UNIQUE constraint error
+// onto the typed ErrDuplicateName sentinel so the UI can render a
+// friendly message.
+func TestStore_DuplicateName(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	if _, err := s.Upsert(ctx, DBConnection{
+		Name: "prod", DBType: DBPostgres, Host: "h", Port: 5432,
+	}); err != nil {
+		t.Fatalf("first upsert: %v", err)
+	}
+	_, err := s.Upsert(ctx, DBConnection{
+		Name: "prod", DBType: DBPostgres, Host: "h2", Port: 5432,
+	})
+	if !errors.Is(err, ErrDuplicateName) {
+		t.Fatalf("expected ErrDuplicateName, got %v", err)
 	}
 }
 
