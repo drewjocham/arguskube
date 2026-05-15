@@ -202,6 +202,7 @@ func run() error {
 	// with no providers, so the UI shows an empty service list until
 	// the user upgrades.
 	var workspaceMgr *workspace.Manager
+	var slackEvents *workspace.EventBus
 	if os.Getenv("ARGUS_MODE") != "saas" {
 		wsStore := workspace.NewStore(db.DB, workspace.NewCrypto(secretstore.New("Argus")))
 		workspaceMgr = workspace.NewManager(wsStore, logger.With("component", "workspace"))
@@ -233,6 +234,28 @@ func run() error {
 			})
 			logger.Info("workspace: Google provider registered")
 		}
+
+		// Slack Events bus — SaaS-only inbound (requires public URL).
+		// Registers when ARGUS_SLACK_SIGNING_SECRET is set; the HTTP
+		// routes (/workspace/slack/events, /workspace/slack/commands)
+		// only mount when the bus exists.
+		if sigSec := os.Getenv("ARGUS_SLACK_SIGNING_SECRET"); sigSec != "" {
+			slackEvents = workspace.NewEventBus(sigSec, logger.With("component", "slack-events"))
+			// Built-in /argus-ping so operators can confirm the
+			// webhook plumbing end-to-end without writing any handler.
+			slackEvents.RegisterCommand("/argus-ping", func(c workspace.SlashCommand) string {
+				return "pong from Argus · user=" + c.UserName + " · team=" + c.TeamDomain
+			})
+			logger.Info("workspace: Slack events bus registered")
+		}
+
+		// Background token refresh worker — walks every connection whose
+		// token expires within 15 minutes and proactively refreshes via
+		// the same singleflight path Manager.Token uses on demand.
+		refresher := workspace.NewRefreshWorker(workspaceMgr, wsStore,
+			logger.With("component", "workspace-refresh"),
+			5*time.Minute, 15*time.Minute)
+		go refresher.Run(context.Background())
 	}
 
 	setupMgr := setup.NewManager(
@@ -281,6 +304,7 @@ func run() error {
 		DBConfigs:       dbConfigStore,
 		DBPool:          dbPool,
 		Workspace:       workspaceMgr,
+		SlackEvents:     slackEvents,
 		AppMode:         appMode,
 	})
 
