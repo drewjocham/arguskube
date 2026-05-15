@@ -198,6 +198,74 @@ func (s *Store) GetToken(ctx context.Context, connectionID string) (Token, error
 	return tok, nil
 }
 
+// GetService returns just the service of a connection. Used by the
+// refresh path so it doesn't need a full Connection round-trip to pick
+// the right Provider.
+func (s *Store) GetService(ctx context.Context, id string) (Service, error) {
+	var svc string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT service FROM workspace_connections WHERE id = ?`, id,
+	).Scan(&svc)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("workspace: get service: %w", err)
+	}
+	return Service(svc), nil
+}
+
+// UpdateToken overwrites the stored token for an existing connection.
+// Used by the refresh path. If tok.RefreshToken is empty we keep the
+// previously stored refresh token unchanged — Google's refresh response
+// omits the refresh_token field when it isn't rotating it, and clearing
+// the stored copy would brick subsequent refresh attempts.
+func (s *Store) UpdateToken(ctx context.Context, connectionID string, tok Token) error {
+	now := s.now().Unix()
+	accessEnc, err := s.crypto.Encrypt(ctx, tok.AccessToken)
+	if err != nil {
+		return err
+	}
+	expires := int64(0)
+	if !tok.ExpiresAt.IsZero() {
+		expires = tok.ExpiresAt.Unix()
+	}
+	if strings.TrimSpace(tok.RefreshToken) == "" {
+		res, err := s.db.ExecContext(ctx, `
+			UPDATE workspace_tokens
+			SET access_token_enc = ?, token_type = ?, expires_at = ?, scope = ?, updated_at = ?
+			WHERE connection_id = ?`,
+			accessEnc, tok.TokenType, expires, tok.Scope, now, connectionID,
+		)
+		if err != nil {
+			return fmt.Errorf("workspace: update token: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return ErrNotFound
+		}
+		return nil
+	}
+	refreshEnc, err := s.crypto.Encrypt(ctx, tok.RefreshToken)
+	if err != nil {
+		return err
+	}
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE workspace_tokens
+		SET access_token_enc = ?, refresh_token_enc = ?, token_type = ?, expires_at = ?, scope = ?, updated_at = ?
+		WHERE connection_id = ?`,
+		accessEnc, refreshEnc, tok.TokenType, expires, tok.Scope, now, connectionID,
+	)
+	if err != nil {
+		return fmt.Errorf("workspace: update token: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // Delete removes a connection and its token (CASCADE). Missing IDs
 // return ErrNotFound so the UI can distinguish "already gone" from
 // "succeeded".

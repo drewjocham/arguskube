@@ -54,6 +54,20 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const slackSendStatus = ref(null)
   let slackStatusTimer = null
 
+  // ---------- Phase 2 — Google Workspace (Docs / Sheets / Tasks) ----------
+  // Per-connection caches. Docs+Sheets aren't preloaded today (no list-all
+  // backend method), but the maps stay here so the panels can shove
+  // recently-touched items into them and share between tab switches.
+  const docs = ref({})        // { [connectionID]: Doc[] }
+  const sheets = ref({})      // { [connectionID]: Sheet[] }
+  const taskLists = ref({})   // { [connectionID]: TaskList[] }
+  const tasks = ref({})       // { [`${connectionID}:${listID}`]: Task[] }
+  const googleLoading = ref(false)
+  const googleError = ref(null)
+  // Transient ✓ banner data: { op, at }. Cleared after 4s.
+  const googleStatus = ref(null)
+  let googleStatusTimer = null
+
   const connectionsByService = computed(() => {
     const out = {}
     for (const c of connections.value) {
@@ -66,6 +80,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   // Convenience getter for the SlackPanel — empty array when none.
   const slackConnections = computed(() =>
     connections.value.filter((c) => c.service === 'slack'),
+  )
+
+  // All three Google panels share the same `service: 'google'` connection.
+  const googleConnections = computed(() =>
+    connections.value.filter((c) => c.service === 'google'),
   )
 
   async function loadServices() {
@@ -210,6 +229,134 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  // -------------------- Google: shared status helpers --------------------
+  // Centralized so every google action shares one timer slot. Auto-clear
+  // mirrors the Slack pattern so the UX feels uniform across panels.
+  function clearGoogleStatus() {
+    googleError.value = null
+    googleStatus.value = null
+    if (googleStatusTimer) {
+      clearTimeout(googleStatusTimer)
+      googleStatusTimer = null
+    }
+  }
+
+  function _setGoogleStatus(op) {
+    googleStatus.value = { op, at: Date.now() }
+    if (googleStatusTimer) clearTimeout(googleStatusTimer)
+    googleStatusTimer = setTimeout(() => {
+      googleStatus.value = null
+      googleStatusTimer = null
+    }, 4000)
+  }
+
+  function _setGoogleError(e) {
+    googleError.value = e?.message || String(e)
+    if (googleStatusTimer) clearTimeout(googleStatusTimer)
+    googleStatusTimer = setTimeout(() => {
+      googleError.value = null
+      googleStatusTimer = null
+    }, 4000)
+  }
+
+  // Each action follows the same shape: flip loading, call, set status or
+  // error, clear loading. Reads use cachedCallGo; writes hit callGo and
+  // invalidate so the next read picks up the fresh data.
+  async function _googleCall(method, args, opLabel, { cache = false } = {}) {
+    googleLoading.value = true
+    googleError.value = null
+    try {
+      const token = getSessionTokenSync()
+      const fn = cache ? cachedCallGo : callGo
+      const result = cache
+        ? await fn(method, [token, ...args], FAST_TTL)
+        : await fn(method, token, ...args)
+      if (opLabel) _setGoogleStatus(opLabel)
+      return result
+    } catch (e) {
+      _setGoogleError(e)
+      throw e
+    } finally {
+      googleLoading.value = false
+    }
+  }
+
+  // -------------------- Docs --------------------
+  async function createDoc(connectionID, title, body) {
+    const doc = await _googleCall('CreateGoogleDoc', [connectionID, title, body], 'doc-created')
+    // Stash into the docs cache so a future "recent" strip can pick it up.
+    const list = docs.value[connectionID] || []
+    docs.value = { ...docs.value, [connectionID]: [doc, ...list].slice(0, 50) }
+    return doc
+  }
+  async function readDoc(connectionID, docID) {
+    return _googleCall('ReadGoogleDoc', [connectionID, docID], null)
+  }
+  async function appendDoc(connectionID, docID, text) {
+    return _googleCall('AppendGoogleDoc', [connectionID, docID, text], 'doc-appended')
+  }
+
+  // -------------------- Sheets --------------------
+  async function createSheet(connectionID, title) {
+    const sheet = await _googleCall('CreateGoogleSheet', [connectionID, title], 'sheet-created')
+    const list = sheets.value[connectionID] || []
+    sheets.value = { ...sheets.value, [connectionID]: [sheet, ...list].slice(0, 50) }
+    return sheet
+  }
+  async function getSheet(connectionID, sheetID) {
+    return _googleCall('GetGoogleSheet', [connectionID, sheetID], null)
+  }
+  async function readSheetRange(connectionID, sheetID, a1Range) {
+    return _googleCall('ReadGoogleSheetRange', [connectionID, sheetID, a1Range], null)
+  }
+  async function writeSheetRange(connectionID, sheetID, a1Range, rows) {
+    return _googleCall('WriteGoogleSheetRange', [connectionID, sheetID, a1Range, rows], 'sheet-written')
+  }
+
+  // -------------------- Tasks --------------------
+  async function loadTaskLists(connectionID) {
+    if (!connectionID) return []
+    const result = await _googleCall('ListGoogleTaskLists', [connectionID], null, { cache: true })
+    const arr = Array.isArray(result) ? result : []
+    taskLists.value = { ...taskLists.value, [connectionID]: arr }
+    return arr
+  }
+  async function loadTasks(connectionID, listID) {
+    if (!connectionID || !listID) return []
+    const result = await _googleCall('ListGoogleTasks', [connectionID, listID], null, { cache: true })
+    const arr = Array.isArray(result) ? result : []
+    tasks.value = { ...tasks.value, [`${connectionID}:${listID}`]: arr }
+    return arr
+  }
+  async function createTask(connectionID, listID, task) {
+    const created = await _googleCall(
+      'CreateGoogleTask', [connectionID, listID, task], 'task-created',
+    )
+    invalidateCache('ListGoogleTasks', getSessionTokenSync(), connectionID, listID)
+    const key = `${connectionID}:${listID}`
+    tasks.value = { ...tasks.value, [key]: [...(tasks.value[key] || []), created] }
+    return created
+  }
+  async function updateTask(connectionID, listID, taskID, patch) {
+    const updated = await _googleCall(
+      'UpdateGoogleTask', [connectionID, listID, taskID, patch], 'task-updated',
+    )
+    invalidateCache('ListGoogleTasks', getSessionTokenSync(), connectionID, listID)
+    const key = `${connectionID}:${listID}`
+    const list = (tasks.value[key] || []).map((t) => (t.id === taskID ? { ...t, ...updated } : t))
+    tasks.value = { ...tasks.value, [key]: list }
+    return updated
+  }
+  async function deleteTask(connectionID, listID, taskID) {
+    await _googleCall('DeleteGoogleTask', [connectionID, listID, taskID], 'task-deleted')
+    invalidateCache('ListGoogleTasks', getSessionTokenSync(), connectionID, listID)
+    const key = `${connectionID}:${listID}`
+    tasks.value = {
+      ...tasks.value,
+      [key]: (tasks.value[key] || []).filter((t) => t.id !== taskID),
+    }
+  }
+
   return {
     services,
     connections,
@@ -228,5 +375,27 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     loadSlackChannels,
     sendSlackMessage,
     clearSlackSendStatus,
+    // Phase 2 — Google
+    docs,
+    sheets,
+    taskLists,
+    tasks,
+    googleLoading,
+    googleError,
+    googleStatus,
+    googleConnections,
+    createDoc,
+    readDoc,
+    appendDoc,
+    createSheet,
+    getSheet,
+    readSheetRange,
+    writeSheetRange,
+    loadTaskLists,
+    loadTasks,
+    createTask,
+    updateTask,
+    deleteTask,
+    clearGoogleStatus,
   }
 })

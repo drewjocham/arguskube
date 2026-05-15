@@ -10,6 +10,9 @@ import { useSectionTabsStore } from '../../stores/sectionTabs'
 import { SECTIONS } from '../../lib/sectionTabs'
 import ConnectionPanel from './ConnectionPanel.vue'
 import SlackPanel from './SlackPanel.vue'
+import DocsPanel from './DocsPanel.vue'
+import SheetsPanel from './SheetsPanel.vue'
+import TasksPanel from './TasksPanel.vue'
 
 const sectionTabsStore = useSectionTabsStore()
 const { tabs: sectionTabValues } = storeToRefs(sectionTabsStore)
@@ -35,6 +38,9 @@ function setTab(id) {
     </nav>
     <ConnectionPanel v-if="active === 'connections'" />
     <SlackPanel v-else-if="active === 'slack'" @switch-tab="setTab" />
+    <DocsPanel v-else-if="active === 'gdocs'" @switch-tab="setTab" />
+    <SheetsPanel v-else-if="active === 'gsheets'" @switch-tab="setTab" />
+    <TasksPanel v-else-if="active === 'gtasks'" @switch-tab="setTab" />
   </div>
 </template>
 

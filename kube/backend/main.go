@@ -215,6 +215,21 @@ func run() error {
 			})
 			logger.Info("workspace: Slack provider registered")
 		}
+
+		// Google provider: unified grant covering Docs + Sheets + Tasks.
+		// We use a separate env-var prefix from the existing
+		// ARGUS_GOOGLE_* (which configures the OIDC login provider) so
+		// the two consents are independently configurable — a deployment
+		// can have Google Sign-In without exposing workspace scopes, or
+		// vice versa.
+		if id, sec := os.Getenv("ARGUS_GOOGLE_WORKSPACE_CLIENT_ID"), os.Getenv("ARGUS_GOOGLE_WORKSPACE_CLIENT_SECRET"); id != "" && sec != "" {
+			workspaceMgr.Register(&workspace.GoogleProvider{
+				ClientID:     id,
+				ClientSecret: sec,
+				RedirectURL:  strings.TrimRight(cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback",
+			})
+			logger.Info("workspace: Google provider registered")
+		}
 	}
 
 	setupMgr := setup.NewManager(

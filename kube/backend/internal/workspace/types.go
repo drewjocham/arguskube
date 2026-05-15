@@ -26,8 +26,16 @@ import (
 type Service string
 
 const (
-	ServiceSlack   Service = "slack"
-	ServiceGChat   Service = "gchat"
+	ServiceSlack  Service = "slack"
+	ServiceGChat  Service = "gchat"
+	// ServiceGoogle is the unified Google Workspace service: one OAuth
+	// grant covers Docs + Sheets + Tasks. Adapters key off this single
+	// connection rather than three separate ones.
+	ServiceGoogle Service = "google"
+
+	// Deprecated: ServiceGDocs/GSheets/GTasks are retained for migration
+	// friendliness only. New code uses ServiceGoogle — all three
+	// capabilities share one connection's token.
 	ServiceGDocs   Service = "gdocs"
 	ServiceGSheets Service = "gsheets"
 	ServiceGTasks  Service = "gtasks"
@@ -37,8 +45,14 @@ const (
 // new service means adding it here AND registering a Provider in
 // WorkspaceManager.
 var supportedServices = map[Service]bool{
-	ServiceSlack: true, ServiceGChat: true,
-	ServiceGDocs: true, ServiceGSheets: true, ServiceGTasks: true,
+	ServiceSlack:  true,
+	ServiceGChat:  true,
+	ServiceGoogle: true,
+	// Deprecated aliases — accepted so existing rows still load, but
+	// new connections should use ServiceGoogle.
+	ServiceGDocs:   true,
+	ServiceGSheets: true,
+	ServiceGTasks:  true,
 }
 
 // Connection is one user's link to a specific external workspace —
@@ -106,6 +120,17 @@ type Provider interface {
 	// display name, email, avatar). Returns the data the storage
 	// layer needs to persist.
 	Complete(ctx context.Context, state, code string) (CompleteResult, error)
+}
+
+// Refresher is implemented by Providers whose access tokens expire.
+// Manager.Token() calls Refresh transparently when the cached token is
+// past its expiry, persisting the new token before returning it.
+//
+// Implementations MUST tolerate an empty refresh-token response field
+// (Google preserves the original on rotation); callers in Manager keep
+// the previous refresh token if Refresh returns an empty one.
+type Refresher interface {
+	Refresh(ctx context.Context, refreshToken string) (Token, error)
 }
 
 // CompleteResult is what a Provider returns from a successful OAuth

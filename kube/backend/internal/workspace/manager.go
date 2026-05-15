@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // Manager is the entry point the App holds. It routes Start/Complete
@@ -29,6 +31,10 @@ type Manager struct {
 	pendingMu sync.Mutex
 	pending   map[string]pendingFlow
 	now       func() time.Time
+
+	// refreshSF coalesces concurrent token refreshes per connectionID so
+	// a burst of adapter calls produces one Refresh roundtrip, not N.
+	refreshSF singleflight.Group
 }
 
 // pendingFlow is the (userID, service) tuple bound to an OAuth state
@@ -196,8 +202,63 @@ func (m *Manager) Delete(ctx context.Context, id string) error {
 	return m.store.Delete(ctx, id)
 }
 
-// Token decrypts the token for a connection. Reserved for adapter use;
-// callers MUST NOT log or serialize the returned value.
+// Token decrypts the token for a connection, transparently refreshing
+// it when expired and the provider implements Refresher. Reserved for
+// adapter use; callers MUST NOT log or serialize the returned value.
+//
+// Concurrent calls for the same connection coalesce into a single
+// Refresh via singleflight so a stampede of adapter calls doesn't
+// hammer the upstream token endpoint.
 func (m *Manager) Token(ctx context.Context, connectionID string) (Token, error) {
-	return m.store.GetToken(ctx, connectionID)
+	tok, err := m.store.GetToken(ctx, connectionID)
+	if err != nil {
+		return Token{}, err
+	}
+	if !tok.Expired() {
+		return tok, nil
+	}
+	if tok.RefreshToken == "" {
+		// No refresh material; nothing to do. Return the (expired) token
+		// and let the adapter surface the upstream 401 — that's the
+		// signal to the UI that the user must reconnect.
+		return tok, nil
+	}
+	svc, err := m.store.GetService(ctx, connectionID)
+	if err != nil {
+		return Token{}, err
+	}
+	prov, ok := m.providers[svc]
+	if !ok {
+		return tok, nil
+	}
+	rf, ok := prov.(Refresher)
+	if !ok {
+		return tok, nil
+	}
+
+	v, err, _ := m.refreshSF.Do(connectionID, func() (interface{}, error) {
+		fresh, err := rf.Refresh(ctx, tok.RefreshToken)
+		if err != nil {
+			// A failed refresh almost always means the refresh_token was
+			// revoked (user de-authorised, password reset, scope change).
+			// Drop the stale row so the UI prompts a reconnect rather
+			// than retrying with dead credentials forever.
+			_ = m.store.Delete(ctx, connectionID)
+			return Token{}, fmt.Errorf("workspace: refresh failed — reconnect required: %w", err)
+		}
+		// Preserve the previous refresh token if the provider didn't
+		// rotate one (Google's typical behaviour).
+		if fresh.RefreshToken == "" {
+			fresh.RefreshToken = tok.RefreshToken
+		}
+		fresh.ConnectionID = connectionID
+		if err := m.store.UpdateToken(ctx, connectionID, fresh); err != nil {
+			return Token{}, fmt.Errorf("workspace: persist refreshed token: %w", err)
+		}
+		return fresh, nil
+	})
+	if err != nil {
+		return Token{}, err
+	}
+	return v.(Token), nil
 }

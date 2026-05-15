@@ -440,6 +440,15 @@ var httpExposedMethods = map[string]struct{}{
 	"ListWorkspaceServices":    {},
 	"ListWorkspaceConnections": {},
 	"ListSlackChannels":        {},
+	// Google (read-only): document/sheet/task reads are HTTP-safe so a
+	// SaaS-mode dashboard can show context to the user. Mutating
+	// methods (Create/Append/Write/Update/Delete) stay Wails-only — same
+	// posture as Slack's Send.
+	"ReadGoogleDoc":        {},
+	"GetGoogleSheet":       {},
+	"ReadGoogleSheetRange": {},
+	"ListGoogleTaskLists":  {},
+	"ListGoogleTasks":      {},
 }
 
 func methodAllowedOverHTTP(name string) bool {
