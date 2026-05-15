@@ -242,6 +242,9 @@ func (a *App) StartHTTPServer(port int) {
 	if a.auth != nil {
 		a.AuthRoutes(mux)
 	}
+	if a.workspaceAvailable() {
+		a.WorkspaceRoutes(mux)
+	}
 	go a.hub.Run(a.ctx)
 	mux.HandleFunc("/tunnel", a.hub.HandleTunnel)
 
@@ -430,9 +433,23 @@ var httpExposedMethods = map[string]struct{}{
 	// Workspace: list-only is HTTP-callable so a SaaS-mode dashboard
 	// can render the user's connections. Start/Complete/Delete remain
 	// Wails-only — they mutate stored credentials and the OAuth flow
-	// shouldn't be reachable from arbitrary HTTP callers.
+	// shouldn't be reachable from arbitrary HTTP callers. Per-service
+	// read endpoints (ListSlackChannels) are HTTP-safe; the
+	// destructive ones (SendSlackMessage) stay Wails-only to keep
+	// the message-firehose authority on the local operator.
 	"ListWorkspaceServices":    {},
 	"ListWorkspaceConnections": {},
+	"ListSlackChannels":        {},
+	// Google (read-only): document/sheet/task reads are HTTP-safe so a
+	// SaaS-mode dashboard can show context to the user. Mutating
+	// methods (Create/Append/Write/Update/Delete) stay Wails-only — same
+	// posture as Slack's Send.
+	"ReadGoogleDoc":          {},
+	"GetGoogleSheet":         {},
+	"ReadGoogleSheetRange":   {},
+	"ListGoogleTaskLists":    {},
+	"ListGoogleTasks":        {},
+	"ListGoogleChatSpaces":   {},
 }
 
 func methodAllowedOverHTTP(name string) bool {

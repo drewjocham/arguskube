@@ -61,6 +61,7 @@ type AppConfig struct {
 	DBConfigs       *dbconfig.Store
 	DBPool          *connector.Pool
 	Workspace       *workspace.Manager
+	SlackEvents     *workspace.EventBus
 	AppMode         string
 }
 
@@ -136,6 +137,13 @@ type App struct {
 	// feature isn't configured — app_workspace methods short-circuit.
 	workspace *workspace.Manager
 
+	// slackEvents is the inbound-events bus (Slack Events API + slash
+	// commands). SaaS-only: nil unless ARGUS_SLACK_SIGNING_SECRET is
+	// set. The HTTP handlers in workspace_slack_events.go check this
+	// field via the route registration, so a nil bus produces 404s
+	// rather than a misleading 500.
+	slackEvents *workspace.EventBus
+
 	// secretRefResolver resolves "kind:value[#key]" reference strings
 	// to actual secret values at use time. Built lazily in Startup so
 	// the resolver picks up the operator's configured cloud-vault
@@ -176,6 +184,7 @@ func NewApp(ac AppConfig) *App {
 		dbConfigs:       ac.DBConfigs,
 		dbPool:          ac.DBPool,
 		workspace:       ac.Workspace,
+		slackEvents:     ac.SlackEvents,
 		usage:           ac.Usage,
 		saasClient:      ac.SaaSClient,
 		appMode:         ac.AppMode,

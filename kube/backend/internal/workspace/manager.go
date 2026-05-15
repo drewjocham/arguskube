@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // Manager is the entry point the App holds. It routes Start/Complete
@@ -21,13 +24,32 @@ type Manager struct {
 	providers map[Service]Provider
 
 	// pendingMu guards pending; pending maps an opaque state nonce
-	// (returned by Provider.Start) to the userID that initiated the
-	// flow. The callback handler looks the state up to know who to
-	// upsert the connection for. Entries stay until Complete consumes
-	// them; we don't TTL them in 1A — that's a 1B follow-up.
+	// (returned by Provider.Start) to the binding the callback needs
+	// to know which user + service the flow belongs to. Entries TTL
+	// out after 10 minutes — a slow user shouldn't tie up state forever
+	// and a stale entry shouldn't be reusable.
 	pendingMu sync.Mutex
-	pending   map[string]string
+	pending   map[string]pendingFlow
+	now       func() time.Time
+
+	// refreshSF coalesces concurrent token refreshes per connectionID so
+	// a burst of adapter calls produces one Refresh roundtrip, not N.
+	refreshSF singleflight.Group
 }
+
+// pendingFlow is the (userID, service) tuple bound to an OAuth state
+// nonce. The callback handler resolves the binding by state without
+// trusting the redirect URL params.
+type pendingFlow struct {
+	userID    string
+	service   Service
+	createdAt time.Time
+}
+
+// pendingTTL is how long an unredeemed pending state stays valid.
+// Slack/Google's own OAuth round-trip rarely exceeds 60s; 10m covers
+// the user-fumbles-the-password case.
+const pendingTTL = 10 * time.Minute
 
 func NewManager(store *Store, logger *slog.Logger) *Manager {
 	if logger == nil {
@@ -37,7 +59,8 @@ func NewManager(store *Store, logger *slog.Logger) *Manager {
 		store:     store,
 		logger:    logger,
 		providers: map[Service]Provider{},
-		pending:   map[string]string{},
+		pending:   map[string]pendingFlow{},
+		now:       time.Now,
 	}
 }
 
@@ -89,9 +112,35 @@ func (m *Manager) Start(ctx context.Context, userID string, svc Service, redirec
 	}
 
 	m.pendingMu.Lock()
-	m.pending[a.State] = userID
+	m.gcPendingLocked()
+	m.pending[a.State] = pendingFlow{userID: userID, service: svc, createdAt: m.now()}
 	m.pendingMu.Unlock()
 	return a, nil
+}
+
+// LookupPendingService returns the service a pending state belongs to
+// without consuming it — used by the HTTP callback handler so the
+// confirmation page can postMessage the right service back to the
+// opener. Returns ErrNotFound if state is unknown or expired.
+func (m *Manager) LookupPendingService(state string) (Service, error) {
+	m.pendingMu.Lock()
+	defer m.pendingMu.Unlock()
+	m.gcPendingLocked()
+	flow, ok := m.pending[state]
+	if !ok {
+		return "", ErrNotFound
+	}
+	return flow.service, nil
+}
+
+// gcPendingLocked drops expired entries. Caller must hold pendingMu.
+func (m *Manager) gcPendingLocked() {
+	cutoff := m.now().Add(-pendingTTL)
+	for state, flow := range m.pending {
+		if flow.createdAt.Before(cutoff) {
+			delete(m.pending, state)
+		}
+	}
 }
 
 // Complete is the OAuth callback path. It claims the pending state,
@@ -103,7 +152,8 @@ func (m *Manager) Complete(ctx context.Context, svc Service, state, code string)
 	}
 
 	m.pendingMu.Lock()
-	userID, known := m.pending[state]
+	m.gcPendingLocked()
+	flow, known := m.pending[state]
 	if known {
 		delete(m.pending, state)
 	}
@@ -111,6 +161,7 @@ func (m *Manager) Complete(ctx context.Context, svc Service, state, code string)
 	if !known {
 		return Connection{}, errors.New("workspace: unknown or expired state — restart the connect flow")
 	}
+	userID := flow.userID
 
 	res, err := p.Complete(ctx, state, code)
 	if err != nil {
@@ -151,8 +202,115 @@ func (m *Manager) Delete(ctx context.Context, id string) error {
 	return m.store.Delete(ctx, id)
 }
 
-// Token decrypts the token for a connection. Reserved for adapter use;
-// callers MUST NOT log or serialize the returned value.
+// Token decrypts the token for a connection, transparently refreshing
+// it when expired and the provider implements Refresher. Reserved for
+// adapter use; callers MUST NOT log or serialize the returned value.
+//
+// Concurrent calls for the same connection coalesce into a single
+// Refresh via singleflight so a stampede of adapter calls doesn't
+// hammer the upstream token endpoint.
 func (m *Manager) Token(ctx context.Context, connectionID string) (Token, error) {
-	return m.store.GetToken(ctx, connectionID)
+	tok, err := m.store.GetToken(ctx, connectionID)
+	if err != nil {
+		return Token{}, err
+	}
+	if !tok.Expired() {
+		return tok, nil
+	}
+	if tok.RefreshToken == "" {
+		// No refresh material; nothing to do. Return the (expired) token
+		// and let the adapter surface the upstream 401 — that's the
+		// signal to the UI that the user must reconnect.
+		return tok, nil
+	}
+	svc, err := m.store.GetService(ctx, connectionID)
+	if err != nil {
+		return Token{}, err
+	}
+	prov, ok := m.providers[svc]
+	if !ok {
+		return tok, nil
+	}
+	rf, ok := prov.(Refresher)
+	if !ok {
+		return tok, nil
+	}
+
+	return m.runRefresh(ctx, connectionID, rf, tok)
+}
+
+// runRefresh single-flights the actual refresh exchange. Shared between
+// Token() (lazy, on expiry) and RefreshIfStale() (eager, by the
+// background worker) so a worker tick + an adapter call hitting the
+// same connection at the same instant coalesce into one upstream
+// request.
+func (m *Manager) runRefresh(ctx context.Context, connectionID string, rf Refresher, tok Token) (Token, error) {
+	v, err, _ := m.refreshSF.Do(connectionID, func() (interface{}, error) {
+		fresh, err := rf.Refresh(ctx, tok.RefreshToken)
+		if err != nil {
+			// A failed refresh almost always means the refresh_token was
+			// revoked (user de-authorised, password reset, scope change).
+			// Drop the stale row so the UI prompts a reconnect rather
+			// than retrying with dead credentials forever.
+			_ = m.store.Delete(ctx, connectionID)
+			return Token{}, fmt.Errorf("workspace: refresh failed — reconnect required: %w", err)
+		}
+		// Preserve the previous refresh token if the provider didn't
+		// rotate one (Google's typical behaviour).
+		if fresh.RefreshToken == "" {
+			fresh.RefreshToken = tok.RefreshToken
+		}
+		fresh.ConnectionID = connectionID
+		if err := m.store.UpdateToken(ctx, connectionID, fresh); err != nil {
+			return Token{}, fmt.Errorf("workspace: persist refreshed token: %w", err)
+		}
+		return fresh, nil
+	})
+	if err != nil {
+		return Token{}, err
+	}
+	return v.(Token), nil
+}
+
+// RefreshIfStale proactively refreshes a token when it expires within
+// the threshold window. The background worker calls this on every
+// connection it knows about so the first user action of the day
+// doesn't pay synchronous refresh latency.
+//
+// When the token is still fresh, the refresh is a no-op (returns nil
+// without contacting the upstream). When the threshold trips, the
+// refresh runs through the same singleflight key as Token's on-demand
+// path — concurrent worker + adapter calls coalesce into one request.
+func (m *Manager) RefreshIfStale(ctx context.Context, connectionID string, threshold time.Duration) error {
+	tok, err := m.store.GetToken(ctx, connectionID)
+	if err != nil {
+		return err
+	}
+	if tok.ExpiresAt.IsZero() {
+		// Non-expiring tokens (Slack bot tokens) — nothing to do.
+		return nil
+	}
+	if time.Until(tok.ExpiresAt) > threshold {
+		return nil
+	}
+	if tok.RefreshToken == "" {
+		// Without a refresh token there's nothing the worker can do;
+		// the next adapter call will surface a 401 and the UI will
+		// prompt the user to reconnect.
+		return nil
+	}
+	svc, err := m.store.GetService(ctx, connectionID)
+	if err != nil {
+		return err
+	}
+	prov, ok := m.providers[svc]
+	if !ok {
+		return nil
+	}
+	rf, ok := prov.(Refresher)
+	if !ok {
+		return nil
+	}
+	_, err = m.runRefresh(ctx, connectionID, rf, tok)
+	return err
 }

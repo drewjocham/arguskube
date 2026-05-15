@@ -24,6 +24,19 @@ import (
 type Service string
 
 const (
+	// Messaging services. Slack uses bot tokens (never expire); Google
+	// Chat shares the unified Google grant via additional scopes.
+	ServiceSlack Service = "slack"
+	ServiceGChat Service = "gchat"
+	// ServiceGoogle is the unified Google Workspace service: one OAuth
+	// grant covers Docs + Sheets + Tasks. Adapters key off this single
+	// connection rather than three separate ones.
+	ServiceGoogle Service = "google"
+
+	// ServiceGDocs/GSheets/GTasks are retained as per-capability
+	// aliases so callers that only need one slice (a Docs-only test
+	// fixture, e.g.) can name it directly. The active OAuth grant
+	// lives under ServiceGoogle when the full unified flow is wired.
 	ServiceGDocs   Service = "gdocs"
 	ServiceGSheets Service = "gsheets"
 	ServiceGTasks  Service = "gtasks"
@@ -33,7 +46,12 @@ const (
 // new service means adding it here AND registering a Provider in
 // WorkspaceManager.
 var supportedServices = map[Service]bool{
-	ServiceGDocs: true, ServiceGSheets: true, ServiceGTasks: true,
+	ServiceSlack:   true,
+	ServiceGChat:   true,
+	ServiceGoogle:  true,
+	ServiceGDocs:   true,
+	ServiceGSheets: true,
+	ServiceGTasks:  true,
 }
 
 // Connection is one user's link to a specific external workspace —
@@ -98,6 +116,17 @@ type Provider interface {
 	Complete(ctx context.Context, state, code string) (CompleteResult, error)
 }
 
+// Refresher is implemented by Providers whose access tokens expire.
+// Manager.Token() calls Refresh transparently when the cached token is
+// past its expiry, persisting the new token before returning it.
+//
+// Implementations MUST tolerate an empty refresh-token response field
+// (Google preserves the original on rotation); callers in Manager keep
+// the previous refresh token if Refresh returns an empty one.
+type Refresher interface {
+	Refresh(ctx context.Context, refreshToken string) (Token, error)
+}
+
 // CompleteResult is what a Provider returns from a successful OAuth
 // callback. The WorkspaceManager turns it into Connection + Token
 // rows.
@@ -110,52 +139,28 @@ type CompleteResult struct {
 	Token               Token
 }
 
-// Integration is the marker every post-OAuth adapter satisfies.
-// Adapters should also satisfy one or more of the narrow capability
-// interfaces below (DocEditor, SheetEditor, TaskManager) rather than
-// returning errors from no-op methods.
+// Integration is the marker every post-OAuth adapter satisfies. The
+// narrower capability interfaces (Messenger, DocEditor, SheetEditor,
+// TaskManager) live in the adapter source files so each one can carry
+// the richer shape its API actually returns (Doc with title+url, Task
+// with status+updated, etc.) without bloating this types file.
 type Integration interface {
 	Service() Service
 }
 
-// DocEditor is implemented by Google Docs adapters.
-type DocEditor interface {
+// Messenger is implemented by chat integrations (Slack, Google Chat).
+// Adapter files (slack.go, gchat.go) implement it with a per-service
+// channel/space ID convention.
+type Messenger interface {
 	Integration
-	CreateDoc(ctx context.Context, token Token, title string) (docID string, err error)
-	ReadDoc(ctx context.Context, token Token, docID string) (text string, err error)
-	AppendText(ctx context.Context, token Token, docID, text string) error
+	ListChannels(ctx context.Context, token Token) ([]Channel, error)
+	Send(ctx context.Context, token Token, channelID, text string) error
 }
 
-// SheetEditor is implemented by Google Sheets adapters. Ranges use A1
-// notation ("Sheet1!A1:C10").
-type SheetEditor interface {
-	Integration
-	CreateSheet(ctx context.Context, token Token, title string) (sheetID string, err error)
-	ReadRange(ctx context.Context, token Token, sheetID, a1Range string) (values [][]string, err error)
-	WriteRange(ctx context.Context, token Token, sheetID, a1Range string, values [][]string) error
-}
-
-// TaskManager is implemented by Google Tasks adapters.
-type TaskManager interface {
-	Integration
-	ListTaskLists(ctx context.Context, token Token) ([]TaskList, error)
-	ListTasks(ctx context.Context, token Token, listID string) ([]Task, error)
-	CreateTask(ctx context.Context, token Token, listID string, t Task) (taskID string, err error)
-	CompleteTask(ctx context.Context, token Token, listID, taskID string) error
-}
-
-// TaskList is a Google Tasks list (e.g. "My Tasks", "Work").
-type TaskList struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-}
-
-// Task is one entry within a TaskList. Due is the RFC3339 timestamp
-// the Google API returns; empty when no due date is set.
-type Task struct {
-	ID    string `json:"id,omitempty"`
-	Title string `json:"title"`
-	Notes string `json:"notes,omitempty"`
-	Due   string `json:"due,omitempty"`
-	Done  bool   `json:"done,omitempty"`
+// Channel is the addressable destination a Messenger sends into. The
+// ID is opaque to callers — Slack channel IDs (`C…`), Google Chat
+// space resource names (`spaces/…`).
+type Channel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }

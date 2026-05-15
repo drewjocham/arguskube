@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/wailsapp/wails/v2"
@@ -199,9 +202,60 @@ func run() error {
 	// with no providers, so the UI shows an empty service list until
 	// the user upgrades.
 	var workspaceMgr *workspace.Manager
+	var slackEvents *workspace.EventBus
 	if os.Getenv("ARGUS_MODE") != "saas" {
 		wsStore := workspace.NewStore(db.DB, workspace.NewCrypto(secretstore.New("Argus")))
 		workspaceMgr = workspace.NewManager(wsStore, logger.With("component", "workspace"))
+
+		// Slack provider: only register when both client id + secret are
+		// set. The OAuth callback lands on PublicBaseURL +
+		// /workspace/oauth/callback — the same URL the user pastes into
+		// their Slack app's "OAuth Redirect URLs" config.
+		if id, sec := os.Getenv("ARGUS_SLACK_CLIENT_ID"), os.Getenv("ARGUS_SLACK_CLIENT_SECRET"); id != "" && sec != "" {
+			workspaceMgr.Register(&workspace.SlackProvider{
+				ClientID:     id,
+				ClientSecret: sec,
+				RedirectURL:  strings.TrimRight(cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback",
+			})
+			logger.Info("workspace: Slack provider registered")
+		}
+
+		// Google provider: unified grant covering Docs + Sheets + Tasks.
+		// We use a separate env-var prefix from the existing
+		// ARGUS_GOOGLE_* (which configures the OIDC login provider) so
+		// the two consents are independently configurable — a deployment
+		// can have Google Sign-In without exposing workspace scopes, or
+		// vice versa.
+		if id, sec := os.Getenv("ARGUS_GOOGLE_WORKSPACE_CLIENT_ID"), os.Getenv("ARGUS_GOOGLE_WORKSPACE_CLIENT_SECRET"); id != "" && sec != "" {
+			workspaceMgr.Register(&workspace.GoogleProvider{
+				ClientID:     id,
+				ClientSecret: sec,
+				RedirectURL:  strings.TrimRight(cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback",
+			})
+			logger.Info("workspace: Google provider registered")
+		}
+
+		// Slack Events bus — SaaS-only inbound (requires public URL).
+		// Registers when ARGUS_SLACK_SIGNING_SECRET is set; the HTTP
+		// routes (/workspace/slack/events, /workspace/slack/commands)
+		// only mount when the bus exists.
+		if sigSec := os.Getenv("ARGUS_SLACK_SIGNING_SECRET"); sigSec != "" {
+			slackEvents = workspace.NewEventBus(sigSec, logger.With("component", "slack-events"))
+			// Built-in /argus-ping so operators can confirm the
+			// webhook plumbing end-to-end without writing any handler.
+			slackEvents.RegisterCommand("/argus-ping", func(c workspace.SlashCommand) string {
+				return "pong from Argus · user=" + c.UserName + " · team=" + c.TeamDomain
+			})
+			logger.Info("workspace: Slack events bus registered")
+		}
+
+		// Background token refresh worker — walks every connection whose
+		// token expires within 15 minutes and proactively refreshes via
+		// the same singleflight path Manager.Token uses on demand.
+		refresher := workspace.NewRefreshWorker(workspaceMgr, wsStore,
+			logger.With("component", "workspace-refresh"),
+			5*time.Minute, 15*time.Minute)
+		go refresher.Run(context.Background())
 	}
 
 	setupMgr := setup.NewManager(
@@ -250,6 +304,7 @@ func run() error {
 		DBConfigs:       dbConfigStore,
 		DBPool:          dbPool,
 		Workspace:       workspaceMgr,
+		SlackEvents:     slackEvents,
 		AppMode:         appMode,
 	})
 

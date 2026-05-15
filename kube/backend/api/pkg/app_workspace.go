@@ -83,6 +83,12 @@ func (a *App) ListWorkspaceServices() []string {
 
 // ListWorkspaceConnections returns every connection the calling user
 // owns. Tokens are NOT included.
+//
+// Wails methods on App don't take context.Context — the runtime maps
+// every Go parameter to a JS arg, and the codebase convention is to
+// pull the App's context from a.appCtx() internally instead. Breaking
+// that convention produces "received N arguments to method, expected
+// N+1" on the JS side because Wails counts the ctx parameter.
 func (a *App) ListWorkspaceConnections(sessionToken string) ([]WorkspaceConnectionView, error) {
 	if !a.workspaceAvailable() {
 		return nil, errors.New("workspace: not configured in this build mode")
@@ -91,7 +97,7 @@ func (a *App) ListWorkspaceConnections(sessionToken string) ([]WorkspaceConnecti
 	if err != nil {
 		return nil, err
 	}
-	conns, err := a.workspace.List(a.ctx, userID)
+	conns, err := a.workspace.List(a.appCtx(), userID)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +119,7 @@ func (a *App) StartWorkspaceConnect(sessionToken, service, redirectURL string) (
 	if err != nil {
 		return workspace.AuthURL{}, err
 	}
-	return a.workspace.Start(a.ctx, userID, workspace.Service(service), redirectURL)
+	return a.workspace.Start(a.appCtx(), userID, workspace.Service(service), redirectURL)
 }
 
 // CompleteWorkspaceConnect is the callback handler. The frontend
@@ -123,7 +129,7 @@ func (a *App) CompleteWorkspaceConnect(service, state, code string) (WorkspaceCo
 	if !a.workspaceAvailable() {
 		return WorkspaceConnectionView{}, errors.New("workspace: not configured")
 	}
-	c, err := a.workspace.Complete(a.ctx, workspace.Service(service), state, code)
+	c, err := a.workspace.Complete(a.appCtx(), workspace.Service(service), state, code)
 	if err != nil {
 		return WorkspaceConnectionView{}, fmt.Errorf("workspace: %w", err)
 	}
@@ -139,7 +145,7 @@ func (a *App) DeleteWorkspaceConnection(sessionToken, id string) error {
 	if _, err := a.workspaceUserID(sessionToken); err != nil {
 		return err
 	}
-	if err := a.workspace.Delete(a.ctx, id); err != nil && !errors.Is(err, workspace.ErrNotFound) {
+	if err := a.workspace.Delete(a.appCtx(), id); err != nil && !errors.Is(err, workspace.ErrNotFound) {
 		return err
 	}
 	return nil
