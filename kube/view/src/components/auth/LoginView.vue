@@ -6,6 +6,23 @@ import RevealableInput from '../common/RevealableInput.vue'
 
 const auth = useAuthStore()
 
+// Diagnostic: if LoginView is rendering, the auth gate decided
+// !isAuthenticated. The most common silent cause is loadProviders
+// failing (network, port, CORS) so authDisabled never flips true even
+// when the backend has dev-mode enabled. Surfacing the state inline
+// lets an operator running `make no-auth-run` see at a glance what
+// happened — without needing the webview's dev tools, which some
+// build configurations hide.
+const debugInfo = computed(() => {
+  return {
+    authDisabled: auth.authDisabled,
+    hasToken: !!auth.token,
+    hasUser: !!auth.user,
+    isAuthenticated: auth.isAuthenticated,
+    providers: (auth.providers || []).map((p) => p.name).join(','),
+  }
+})
+
 const mode = ref('login') // 'login' | 'signup'
 const email = ref('')
 const name = ref('')
@@ -62,6 +79,17 @@ function onOAuthError(msg) {
 <template>
   <div class="login-shell">
     <div class="login-card">
+      <!-- Diagnostic banner: only useful while make no-auth-run isn't
+           bypassing the gate. Remove (or hide) once the root cause is
+           identified. -->
+      <div class="diag-banner" data-testid="login-diag">
+        <strong>auth state:</strong>
+        authDisabled={{ String(debugInfo.authDisabled) }} ·
+        hasToken={{ String(debugInfo.hasToken) }} ·
+        hasUser={{ String(debugInfo.hasUser) }} ·
+        isAuthenticated={{ String(debugInfo.isAuthenticated) }} ·
+        providers=[{{ debugInfo.providers || 'none' }}]
+      </div>
       <header class="brand">
         <div class="logo">⌬</div>
         <h1>Argus</h1>
@@ -177,6 +205,14 @@ function onOAuthError(msg) {
   box-shadow: var(--shadow2);
 }
 .brand { text-align: center; margin-bottom: 1.5rem; }
+.diag-banner {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; line-height: 1.4;
+  background: rgba(251, 191, 36, 0.12); color: #fde68a;
+  border: 1px solid #f59e0b; border-radius: 4px;
+  padding: 0.5rem 0.75rem; margin: 0 0 1rem;
+  word-break: break-all;
+}
 .brand .logo { font-size: 2.25rem; color: var(--accent); margin-bottom: .25rem; }
 .brand h1 { font-size: 1.5rem; letter-spacing: .02em; }
 .brand .subtitle { font-size: .85rem; color: var(--text2); margin-top: .25rem; }
