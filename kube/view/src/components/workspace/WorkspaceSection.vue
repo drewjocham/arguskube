@@ -9,6 +9,7 @@ import { storeToRefs } from 'pinia'
 import { useSectionTabsStore } from '../../stores/sectionTabs'
 import { SECTIONS } from '../../lib/sectionTabs'
 import ConnectionPanel from './ConnectionPanel.vue'
+import SlackPanel from './SlackPanel.vue'
 
 const sectionTabsStore = useSectionTabsStore()
 const { tabs: sectionTabValues } = storeToRefs(sectionTabsStore)
@@ -33,6 +34,7 @@ function setTab(id) {
       >{{ t.label }}</button>
     </nav>
     <ConnectionPanel v-if="active === 'connections'" />
+    <SlackPanel v-else-if="active === 'slack'" @switch-tab="setTab" />
   </div>
 </template>
 

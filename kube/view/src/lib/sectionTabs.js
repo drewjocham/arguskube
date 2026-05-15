@@ -153,6 +153,7 @@ export const SECTIONS = Object.freeze({
     icon: 'M20 7h-4V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2zM10 5h4v2h-4V5z',
     tabs: [
       { id: 'connections', label: 'Connections' },
+      { id: 'slack', label: 'Slack' },
     ],
   },
   admin: {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 )
 
 // Manager is the entry point the App holds. It routes Start/Complete
@@ -21,13 +22,28 @@ type Manager struct {
 	providers map[Service]Provider
 
 	// pendingMu guards pending; pending maps an opaque state nonce
-	// (returned by Provider.Start) to the userID that initiated the
-	// flow. The callback handler looks the state up to know who to
-	// upsert the connection for. Entries stay until Complete consumes
-	// them; we don't TTL them in 1A — that's a 1B follow-up.
+	// (returned by Provider.Start) to the binding the callback needs
+	// to know which user + service the flow belongs to. Entries TTL
+	// out after 10 minutes — a slow user shouldn't tie up state forever
+	// and a stale entry shouldn't be reusable.
 	pendingMu sync.Mutex
-	pending   map[string]string
+	pending   map[string]pendingFlow
+	now       func() time.Time
 }
+
+// pendingFlow is the (userID, service) tuple bound to an OAuth state
+// nonce. The callback handler resolves the binding by state without
+// trusting the redirect URL params.
+type pendingFlow struct {
+	userID    string
+	service   Service
+	createdAt time.Time
+}
+
+// pendingTTL is how long an unredeemed pending state stays valid.
+// Slack/Google's own OAuth round-trip rarely exceeds 60s; 10m covers
+// the user-fumbles-the-password case.
+const pendingTTL = 10 * time.Minute
 
 func NewManager(store *Store, logger *slog.Logger) *Manager {
 	if logger == nil {
@@ -37,7 +53,8 @@ func NewManager(store *Store, logger *slog.Logger) *Manager {
 		store:     store,
 		logger:    logger,
 		providers: map[Service]Provider{},
-		pending:   map[string]string{},
+		pending:   map[string]pendingFlow{},
+		now:       time.Now,
 	}
 }
 
@@ -89,9 +106,35 @@ func (m *Manager) Start(ctx context.Context, userID string, svc Service, redirec
 	}
 
 	m.pendingMu.Lock()
-	m.pending[a.State] = userID
+	m.gcPendingLocked()
+	m.pending[a.State] = pendingFlow{userID: userID, service: svc, createdAt: m.now()}
 	m.pendingMu.Unlock()
 	return a, nil
+}
+
+// LookupPendingService returns the service a pending state belongs to
+// without consuming it — used by the HTTP callback handler so the
+// confirmation page can postMessage the right service back to the
+// opener. Returns ErrNotFound if state is unknown or expired.
+func (m *Manager) LookupPendingService(state string) (Service, error) {
+	m.pendingMu.Lock()
+	defer m.pendingMu.Unlock()
+	m.gcPendingLocked()
+	flow, ok := m.pending[state]
+	if !ok {
+		return "", ErrNotFound
+	}
+	return flow.service, nil
+}
+
+// gcPendingLocked drops expired entries. Caller must hold pendingMu.
+func (m *Manager) gcPendingLocked() {
+	cutoff := m.now().Add(-pendingTTL)
+	for state, flow := range m.pending {
+		if flow.createdAt.Before(cutoff) {
+			delete(m.pending, state)
+		}
+	}
 }
 
 // Complete is the OAuth callback path. It claims the pending state,
@@ -103,7 +146,8 @@ func (m *Manager) Complete(ctx context.Context, svc Service, state, code string)
 	}
 
 	m.pendingMu.Lock()
-	userID, known := m.pending[state]
+	m.gcPendingLocked()
+	flow, known := m.pending[state]
 	if known {
 		delete(m.pending, state)
 	}
@@ -111,6 +155,7 @@ func (m *Manager) Complete(ctx context.Context, svc Service, state, code string)
 	if !known {
 		return Connection{}, errors.New("workspace: unknown or expired state — restart the connect flow")
 	}
+	userID := flow.userID
 
 	res, err := p.Complete(ctx, state, code)
 	if err != nil {

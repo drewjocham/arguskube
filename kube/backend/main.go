@@ -202,6 +202,19 @@ func run() error {
 	if os.Getenv("ARGUS_MODE") != "saas" {
 		wsStore := workspace.NewStore(db.DB, workspace.NewCrypto(secretstore.New("Argus")))
 		workspaceMgr = workspace.NewManager(wsStore, logger.With("component", "workspace"))
+
+		// Slack provider: only register when both client id + secret are
+		// set. The OAuth callback lands on PublicBaseURL +
+		// /workspace/oauth/callback — the same URL the user pastes into
+		// their Slack app's "OAuth Redirect URLs" config.
+		if id, sec := os.Getenv("ARGUS_SLACK_CLIENT_ID"), os.Getenv("ARGUS_SLACK_CLIENT_SECRET"); id != "" && sec != "" {
+			workspaceMgr.Register(&workspace.SlackProvider{
+				ClientID:     id,
+				ClientSecret: sec,
+				RedirectURL:  strings.TrimRight(cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback",
+			})
+			logger.Info("workspace: Slack provider registered")
+		}
 	}
 
 	setupMgr := setup.NewManager(

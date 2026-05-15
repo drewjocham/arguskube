@@ -44,6 +44,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const loading = ref(false)
   const error = ref(null)
 
+  // Per-connection channel cache. Keyed by connectionID so flipping between
+  // two Slack workspaces doesn't blow away the other's list.
+  const slackChannels = ref({})
+  const slackLoading = ref(false)
+  const slackSendError = ref(null)
+  // { text, at: epochMs, channelID } — set on a successful send; the UI
+  // shows it as a transient confirmation and the timer below clears it.
+  const slackSendStatus = ref(null)
+  let slackStatusTimer = null
+
   const connectionsByService = computed(() => {
     const out = {}
     for (const c of connections.value) {
@@ -52,6 +62,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     return out
   })
+
+  // Convenience getter for the SlackPanel — empty array when none.
+  const slackConnections = computed(() =>
+    connections.value.filter((c) => c.service === 'slack'),
+  )
 
   async function loadServices() {
     try {
@@ -143,15 +158,75 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  async function loadSlackChannels(connectionID) {
+    if (!connectionID) return
+    slackLoading.value = true
+    try {
+      const token = getSessionTokenSync()
+      const result = await cachedCallGo(
+        'ListSlackChannels',
+        [token, connectionID],
+        FAST_TTL,
+      )
+      slackChannels.value = {
+        ...slackChannels.value,
+        [connectionID]: Array.isArray(result) ? result : [],
+      }
+    } catch (e) {
+      error.value = e?.message || String(e)
+    } finally {
+      slackLoading.value = false
+    }
+  }
+
+  function clearSlackSendStatus() {
+    slackSendError.value = null
+    slackSendStatus.value = null
+    if (slackStatusTimer) {
+      clearTimeout(slackStatusTimer)
+      slackStatusTimer = null
+    }
+  }
+
+  async function sendSlackMessage(connectionID, channelID, text) {
+    // Clear any in-flight status so a fast retry doesn't compound timers.
+    clearSlackSendStatus()
+    try {
+      const token = getSessionTokenSync()
+      await callGo('SendSlackMessage', token, connectionID, channelID, text)
+      slackSendStatus.value = { text, channelID, at: Date.now() }
+      slackStatusTimer = setTimeout(() => {
+        slackSendStatus.value = null
+        slackStatusTimer = null
+      }, 4000)
+      return true
+    } catch (e) {
+      slackSendError.value = e?.message || String(e)
+      slackStatusTimer = setTimeout(() => {
+        slackSendError.value = null
+        slackStatusTimer = null
+      }, 4000)
+      throw e
+    }
+  }
+
   return {
     services,
     connections,
     loading,
     error,
     connectionsByService,
+    slackChannels,
+    slackLoading,
+    slackSendError,
+    slackSendStatus,
+    slackConnections,
     loadServices,
     loadConnections,
     startConnect,
     disconnect,
+    loadSlackChannels,
+    sendSlackMessage,
+    clearSlackSendStatus,
   }
 })
