@@ -502,6 +502,49 @@ func TestPresetList_AllValidShapes(t *testing.T) {
 	}
 }
 
+// TestEngine_ConcurrentSnapshotDuringRun exercises the recorder's
+// snapshot path under contention with the engine's publish loop. Run
+// with `go test -race` — a regression would fire a data-race report
+// rather than a logical assertion failure. Without this coverage,
+// adding a field to Sample/ScaleEvent or refactoring recorder locking
+// could silently introduce a race that only surfaces in production
+// where the frontend polls Snapshot every few hundred milliseconds.
+func TestEngine_ConcurrentSnapshotDuringRun(t *testing.T) {
+	spec := minimalSpec()
+	spec.Count = 500
+	spec.Ramp = Ramp{Kind: RampConstant, Rate: 5000}
+
+	e := New(spec, slog.Default())
+	e.NewPublisher = func(_ context.Context, _ broker.Config, _ *slog.Logger) (broker.Publisher, error) {
+		return &fakePublisher{ackLatency: 50 * time.Microsecond}, nil
+	}
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = e.Snapshot()
+			}
+		}
+	}()
+
+	rec, err := e.Run(context.Background())
+	close(stop)
+	<-done
+
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if rec.Summary.Sent != 500 {
+		t.Errorf("Sent = %d, want 500", rec.Summary.Sent)
+	}
+}
+
 // --- Helpers ----------------------------------------------------------------
 
 func absDur(d time.Duration) time.Duration {
