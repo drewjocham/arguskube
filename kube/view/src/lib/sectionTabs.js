@@ -154,6 +154,7 @@ export const SECTIONS = Object.freeze({
     tabs: [
       { id: 'connections', label: 'Connections' },
       { id: 'slack', label: 'Slack' },
+      { id: 'slack-events', label: 'Slack Events' },
       { id: 'gdocs', label: 'Docs' },
       { id: 'gsheets', label: 'Sheets' },
       { id: 'gtasks', label: 'Tasks' },

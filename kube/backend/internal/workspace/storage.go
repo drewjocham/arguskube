@@ -284,6 +284,34 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// ListExpiringSoon returns every connection whose token expires
+// before the given unix-second cutoff. Rows with expires_at=0
+// (non-expiring tokens, e.g. Slack bot tokens) are excluded. Used by
+// the background RefreshWorker — passing in a cutoff lets the worker
+// pick its own "refresh ahead" window without storage caring.
+func (s *Store) ListExpiringSoon(ctx context.Context, beforeUnix int64) ([]Connection, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT c.id, c.user_id, c.service, c.external_workspace_id,
+		       c.display_name, c.email, c.avatar_url, c.connected_at, c.updated_at
+		FROM workspace_connections c
+		JOIN workspace_tokens t ON t.connection_id = c.id
+		WHERE t.expires_at > 0 AND t.expires_at < ?
+		ORDER BY t.expires_at ASC`, beforeUnix)
+	if err != nil {
+		return nil, fmt.Errorf("workspace: list expiring: %w", err)
+	}
+	defer rows.Close()
+	var out []Connection
+	for rows.Next() {
+		c, err := scanConnection(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // findByIdentity is the per-(user, service, external_workspace_id)
 // lookup used by Upsert to detect re-auth vs new-connect.
 func (s *Store) findByIdentity(ctx context.Context, userID string, svc Service, externalID string) (Connection, error) {

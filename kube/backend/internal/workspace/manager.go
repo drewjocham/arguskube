@@ -236,6 +236,15 @@ func (m *Manager) Token(ctx context.Context, connectionID string) (Token, error)
 		return tok, nil
 	}
 
+	return m.runRefresh(ctx, connectionID, rf, tok)
+}
+
+// runRefresh single-flights the actual refresh exchange. Shared between
+// Token() (lazy, on expiry) and RefreshIfStale() (eager, by the
+// background worker) so a worker tick + an adapter call hitting the
+// same connection at the same instant coalesce into one upstream
+// request.
+func (m *Manager) runRefresh(ctx context.Context, connectionID string, rf Refresher, tok Token) (Token, error) {
 	v, err, _ := m.refreshSF.Do(connectionID, func() (interface{}, error) {
 		fresh, err := rf.Refresh(ctx, tok.RefreshToken)
 		if err != nil {
@@ -261,4 +270,47 @@ func (m *Manager) Token(ctx context.Context, connectionID string) (Token, error)
 		return Token{}, err
 	}
 	return v.(Token), nil
+}
+
+// RefreshIfStale proactively refreshes a token when it expires within
+// the threshold window. The background worker calls this on every
+// connection it knows about so the first user action of the day
+// doesn't pay synchronous refresh latency.
+//
+// When the token is still fresh, the refresh is a no-op (returns nil
+// without contacting the upstream). When the threshold trips, the
+// refresh runs through the same singleflight key as Token's on-demand
+// path — concurrent worker + adapter calls coalesce into one request.
+func (m *Manager) RefreshIfStale(ctx context.Context, connectionID string, threshold time.Duration) error {
+	tok, err := m.store.GetToken(ctx, connectionID)
+	if err != nil {
+		return err
+	}
+	if tok.ExpiresAt.IsZero() {
+		// Non-expiring tokens (Slack bot tokens) — nothing to do.
+		return nil
+	}
+	if time.Until(tok.ExpiresAt) > threshold {
+		return nil
+	}
+	if tok.RefreshToken == "" {
+		// Without a refresh token there's nothing the worker can do;
+		// the next adapter call will surface a 401 and the UI will
+		// prompt the user to reconnect.
+		return nil
+	}
+	svc, err := m.store.GetService(ctx, connectionID)
+	if err != nil {
+		return err
+	}
+	prov, ok := m.providers[svc]
+	if !ok {
+		return nil
+	}
+	rf, ok := prov.(Refresher)
+	if !ok {
+		return nil
+	}
+	_, err = m.runRefresh(ctx, connectionID, rf, tok)
+	return err
 }
