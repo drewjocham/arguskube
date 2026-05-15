@@ -51,9 +51,6 @@ export const useAuthStore = defineStore('auth', () => {
   // form renders even if no OAuth is configured.
   const providers = ref([])
   const allowSignup = ref(true)
-  // providersError holds the most recent /auth/providers failure so the
-  // LoginView diagnostic banner can show it inline. Empty on success.
-  const providersError = ref('')
   // authDisabled is set by /auth/providers when the backend is running
   // with ARGUS_AUTH_DISABLED=true. App.vue uses it to skip the
   // LoginView gate entirely. We default to false so a network failure
@@ -127,7 +124,6 @@ export const useAuthStore = defineStore('auth', () => {
       providers.value = r.providers || []
       allowSignup.value = r.allowSignup !== false
       authDisabled.value = r.authDisabled === true
-      providersError.value = ''
       if (authDisabled.value) {
         console.info('[auth] dev-mode ON — gate bypassed (server reports authDisabled=true)')
       } else {
@@ -138,7 +134,6 @@ export const useAuthStore = defineStore('auth', () => {
       providers.value = []
       allowSignup.value = true
       authDisabled.value = false
-      providersError.value = (err && err.message) ? `${err.message} (apiBase=${apiBase})` : `unknown error (apiBase=${apiBase})`
       console.error('[auth] /auth/providers failed — falling back to login screen. Check that the backend is up at',
         apiBase, 'and that ARGUS_AUTH_DISABLED reached it:', err)
     }
@@ -223,7 +218,6 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     expiresAt,
     providers,
-    providersError,
     allowSignup,
     authDisabled,
     isAuthenticated,
