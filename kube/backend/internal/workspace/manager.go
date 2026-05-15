@@ -217,6 +217,44 @@ func (m *Manager) Token(ctx context.Context, connectionID string) (Token, error)
 	if !tok.Expired() {
 		return tok, nil
 	}
+	return m.refreshNow(ctx, connectionID, tok)
+}
+
+// RefreshIfStale proactively refreshes a token when it expires within
+// the threshold window. The background worker calls this on every
+// connection it knows about so the first user action of the day
+// doesn't pay synchronous refresh latency.
+//
+// When the token is still fresh, the refresh is a no-op (returns nil
+// without contacting the upstream). When the threshold trips, the
+// refresh runs through the same singleflight key as Token's on-demand
+// path — concurrent worker + adapter calls coalesce into one request.
+func (m *Manager) RefreshIfStale(ctx context.Context, connectionID string, threshold time.Duration) error {
+	tok, err := m.store.GetToken(ctx, connectionID)
+	if err != nil {
+		return err
+	}
+	if tok.ExpiresAt.IsZero() {
+		// Non-expiring tokens (Slack bot tokens) — nothing to do.
+		return nil
+	}
+	if time.Until(tok.ExpiresAt) > threshold {
+		return nil
+	}
+	if tok.RefreshToken == "" {
+		// Without a refresh token there's nothing the worker can do;
+		// the next adapter call will surface a 401 and the UI will
+		// prompt the user to reconnect.
+		return nil
+	}
+	_, err = m.refreshNow(ctx, connectionID, tok)
+	return err
+}
+
+// refreshNow runs the actual refresh round-trip. Single-flighted per
+// connectionID so the background worker and an on-demand adapter call
+// arriving in the same second don't hammer the upstream token endpoint.
+func (m *Manager) refreshNow(ctx context.Context, connectionID string, tok Token) (Token, error) {
 	if tok.RefreshToken == "" {
 		// No refresh material; nothing to do. Return the (expired) token
 		// and let the adapter surface the upstream 401 — that's the

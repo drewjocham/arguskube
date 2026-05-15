@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/wailsapp/wails/v2"
@@ -200,8 +202,9 @@ func run() error {
 	// the user upgrades.
 	var workspaceMgr *workspace.Manager
 	var slackEvents *workspace.EventBus
+	var wsStore *workspace.Store
 	if os.Getenv("ARGUS_MODE") != "saas" {
-		wsStore := workspace.NewStore(db.DB, workspace.NewCrypto(secretstore.New("Argus")))
+		wsStore = workspace.NewStore(db.DB, workspace.NewCrypto(secretstore.New("Argus")))
 		workspaceMgr = workspace.NewManager(wsStore, logger.With("component", "workspace"))
 
 		// Slack provider: only register when both client id + secret are
@@ -247,6 +250,18 @@ func run() error {
 			})
 			logger.Info("workspace: Google provider registered")
 		}
+
+		// Background token-refresh worker. Walks every connection whose
+		// token expires within the next 15 minutes and proactively
+		// refreshes it, so the first user action of the day doesn't pay
+		// the synchronous round-trip cost. Runs for the lifetime of the
+		// process; we don't plumb a cancel because Wails kills the
+		// goroutine on shutdown anyway and refresh round-trips are
+		// bounded by the HTTP client's 15s timeout.
+		refresher := workspace.NewRefreshWorker(workspaceMgr, wsStore,
+			logger.With("component", "workspace-refresh"),
+			5*time.Minute, 15*time.Minute)
+		go refresher.Run(context.Background())
 	}
 
 	setupMgr := setup.NewManager(

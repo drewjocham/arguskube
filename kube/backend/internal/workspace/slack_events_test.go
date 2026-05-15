@@ -12,11 +12,7 @@ import (
 	"time"
 )
 
-// silentLogger satisfies loggerLike without writing anywhere.
-type silentLogger struct{}
-
-func (silentLogger) Info(msg string, args ...any) {}
-func (silentLogger) Warn(msg string, args ...any) {}
+// (silentLogger is now defined in refresh_worker.go; tests share it.)
 
 func signBody(t *testing.T, secret string, ts int64, body []byte) string {
 	t.Helper()
