@@ -188,6 +188,18 @@ func (a *App) startLocalDistLoad(spec saasapi.DistLoadSpec) (string, error) {
 	// Throttle live progress emits so a 1M-message run doesn't drown
 	// the WebView in events. 250 ms ≈ 4 fps, plenty for the chart.
 	progress := newProgressThrottler(a, id, 250*time.Millisecond)
+	// The throttler spawns a ticker goroutine that only exits when
+	// flush() closes its channel. flush is called from runLoadTest
+	// after the engine returns — so if startLocalDistLoad bails out
+	// between throttler creation and ownership transfer to the
+	// goroutine, the ticker leaks. Guard with a deferred flush that
+	// disarms once runLoadTest has taken over.
+	throttlerOwned := false
+	defer func() {
+		if !throttlerOwned {
+			progress.flush()
+		}
+	}()
 	engine.OnSample(progress.onSample)
 	engine.OnScale(func(ev loadtest.ScaleEvent) {
 		evCopy := ev
@@ -205,6 +217,7 @@ func (a *App) startLocalDistLoad(spec saasapi.DistLoadSpec) (string, error) {
 	// reserveLocalQuotaSlot transaction) — no second insert.
 
 	go a.runLoadTest(ctx, run, progress)
+	throttlerOwned = true
 	return id, nil
 }
 
