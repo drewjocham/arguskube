@@ -85,6 +85,16 @@ func (s *EventStream) Emit(evt saasapi.RunnerEvent) {
 	}
 }
 
+// NumSubscribers returns the count of currently attached subscribers.
+// Used by the runner HTTP layer to detect when the last SSE client has
+// disconnected so it can schedule an auto-cancel — leaving a costly
+// provisioned GKE cluster running with nobody watching is a footgun.
+func (s *EventStream) NumSubscribers() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.channels)
+}
+
 // Close shuts down the stream, closing all subscriber channels.
 func (s *EventStream) Close() {
 	s.mu.Lock()

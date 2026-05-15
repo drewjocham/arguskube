@@ -73,13 +73,15 @@ func run() error {
 	}
 
 	srv := &RunnerServer{
-		logger:     logger,
-		projectID:  projectID,
-		modulePath: modulePath,
-		workspace:  workspace,
-		apiKey:     apiKey,
-		runners:    map[string]*runner.Runner{},
-		sem:        make(chan struct{}, maxConcurrent),
+		logger:         logger,
+		projectID:      projectID,
+		modulePath:     modulePath,
+		workspace:      workspace,
+		apiKey:         apiKey,
+		runners:        map[string]*runner.Runner{},
+		sem:            make(chan struct{}, maxConcurrent),
+		sseHeartbeat:   15 * time.Second,
+		abandonedGrace: 60 * time.Second,
 	}
 
 	mux := http.NewServeMux()
@@ -147,6 +149,43 @@ type RunnerServer struct {
 	// when the background goroutine completes. Configurable via
 	// RUNNER_MAX_CONCURRENT env var (default 5).
 	sem chan struct{}
+
+	// sseHeartbeat is how often serveSSE sends a `:keepalive` comment.
+	// 15s keeps proxies (Cloud Run frontends, corporate egress) from
+	// silently dropping the long-lived stream, and makes a half-closed
+	// TCP socket detectable via Write error in under a minute.
+	sseHeartbeat time.Duration
+
+	// abandonedGrace is the window between the last SSE client
+	// disconnecting and the runner auto-cancelling the run. Tuned for
+	// "user closed laptop / reloaded the page" — long enough to allow a
+	// reconnect, short enough that a forgotten run doesn't burn a
+	// provisioned GKE cluster for 2h.
+	abandonedGrace time.Duration
+}
+
+// minCreditsForRun returns a conservative lower bound on the credits
+// the spec will consume. The desktop client computes a tighter
+// estimate via saasapi.EstimateRunnerCost; this server-side floor
+// catches obvious under-funding (CreditsHeld=0, spec tampered) so
+// the runner doesn't burn an hour of spot-VM time before the SaaS
+// API later refuses to settle the bill.
+//
+// Formula: regions × node_count × minPerNodeRun. Tuned against the
+// cheapest expected node-hour (e2-small spot ≈ $0.01/hr → ~0.1 cred)
+// over the shortest sensible run (5 min). Intentionally low — final
+// settlement happens SaaS-side at completion.
+func minCreditsForRun(spec saasapi.RunnerSpec) float64 {
+	const minPerNodeRun = 0.5
+	total := 0.0
+	for _, r := range spec.Regions {
+		n := r.Count
+		if n < 1 {
+			n = 1
+		}
+		total += float64(n) * minPerNodeRun
+	}
+	return total
 }
 
 func (s *RunnerServer) withAuth(next http.HandlerFunc) http.HandlerFunc {
@@ -186,6 +225,26 @@ func (s *RunnerServer) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(spec.Regions) == 0 {
 		http.Error(w, "at least one region required", http.StatusBadRequest)
+		return
+	}
+
+	// CreditsHeld must reflect a real SaaS-side reservation. Without
+	// this gate, a client could send creditsHeld=0 and burn an hour of
+	// spot-VM time before the SaaS API rejects the settlement. Final
+	// reconciliation still happens SaaS-side; this is a cheap fast-fail.
+	if spec.CreditsHeld <= 0 {
+		http.Error(w, "creditsHeld must be positive — reserve credits before starting the run", http.StatusPaymentRequired)
+		return
+	}
+	if minCreds := minCreditsForRun(spec); spec.CreditsHeld < minCreds {
+		http.Error(w,
+			"creditsHeld below the floor for this spec — refresh the cost estimate and re-reserve",
+			http.StatusPaymentRequired)
+		s.logger.Warn("rejecting run: creditsHeld below floor",
+			"runId", spec.RunID,
+			"creditsHeld", spec.CreditsHeld,
+			"minCredits", minCreds,
+			"regions", len(spec.Regions))
 		return
 	}
 
@@ -273,6 +332,18 @@ func (s *RunnerServer) handleRunner(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveSSE streams runner events to the desktop via Server-Sent Events.
+//
+// Two reliability features layered on top of the basic fan-out:
+//
+//   - Heartbeat: a periodic `:keepalive` SSE comment keeps intermediaries
+//     (Cloud Run frontends, corporate egress proxies) from silently
+//     dropping the long-lived connection, and turns a half-closed TCP
+//     socket into a Write error within one heartbeat interval.
+//   - Auto-cancel on disconnect: when this handler returns, if no other
+//     subscribers remain attached AND the run is still active, schedule
+//     a delayed cancel after `abandonedGrace`. A reconnect inside the
+//     grace window cancels the cancel, so a page reload doesn't kill
+//     the run.
 func (s *RunnerServer) serveSSE(w http.ResponseWriter, r *http.Request, run *runner.Runner) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -285,13 +356,24 @@ func (s *RunnerServer) serveSSE(w http.ResponseWriter, r *http.Request, run *run
 	w.Header().Set("Connection", "keep-alive")
 
 	ch := run.Stream.Subscribe()
-	defer run.Stream.Unsubscribe(ch)
+	defer func() {
+		run.Stream.Unsubscribe(ch)
+		s.scheduleAbandonedCancel(run)
+	}()
+
+	heartbeat := time.NewTicker(s.sseHeartbeat)
+	defer heartbeat.Stop()
 
 	ctx := r.Context()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-heartbeat.C:
+			if _, err := w.Write([]byte(":keepalive\n\n")); err != nil {
+				return
+			}
+			flusher.Flush()
 		case evt, ok := <-ch:
 			if !ok {
 				return
@@ -307,6 +389,32 @@ func (s *RunnerServer) serveSSE(w http.ResponseWriter, r *http.Request, run *run
 			flusher.Flush()
 		}
 	}
+}
+
+// scheduleAbandonedCancel arms a delayed cancel for a run that just
+// lost its last SSE subscriber. The check happens twice — once
+// immediately to avoid spawning a goroutine for the common case where
+// other clients are still attached, and once after the grace window
+// so a reconnecting page refresh disarms the cancel.
+func (s *RunnerServer) scheduleAbandonedCancel(run *runner.Runner) {
+	if run.Stream.NumSubscribers() > 0 {
+		return
+	}
+	if state := run.State(); state != "running" && state != "pending" {
+		return
+	}
+	go func() {
+		time.Sleep(s.abandonedGrace)
+		if run.Stream.NumSubscribers() > 0 {
+			return
+		}
+		if state := run.State(); state != "running" && state != "pending" {
+			return
+		}
+		s.logger.Warn("cancelling abandoned run — no SSE subscribers after grace period",
+			"grace", s.abandonedGrace)
+		run.Cancel()
+	}()
 }
 
 // ── Middleware ─────────────────────────────────────────────────────────
