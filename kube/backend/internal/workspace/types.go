@@ -1,18 +1,16 @@
-// Package workspace manages Argus' integrations with messaging
-// (Slack, Google Chat) and document/task systems (Google Docs, Sheets,
-// Tasks). Phase 1A — this commit — ships the foundation only:
+// Package workspace manages Argus' integrations with Google
+// document/task systems (Docs, Sheets, Tasks). Phase 1A — already
+// landed — shipped the foundation:
 //
 //   - Connection + Token storage with AES-256-GCM at-rest encryption
 //     (master key from secretstore, same chain as dbconfig).
 //   - OAuth orchestration via a pluggable Provider interface so
-//     subsequent phases bolt on Slack / Google without touching the
-//     manager.
+//     per-service adapters bolt on without touching the manager.
 //   - A WorkspaceManager exposed through a small Wails API for
 //     listing, deleting, and round-tripping connections.
 //
-// Per-service adapters (Slack messaging, Google Docs CRUD, …) land in
-// Phase 1B+. The Integration interface stub below documents the
-// contract those adapters will satisfy.
+// Phase 1B+ wires real Google adapters against the narrow
+// capability interfaces below (DocEditor, SheetEditor, TaskManager).
 package workspace
 
 import (
@@ -26,16 +24,19 @@ import (
 type Service string
 
 const (
-	ServiceSlack  Service = "slack"
-	ServiceGChat  Service = "gchat"
+	// Messaging services. Slack uses bot tokens (never expire); Google
+	// Chat shares the unified Google grant via additional scopes.
+	ServiceSlack Service = "slack"
+	ServiceGChat Service = "gchat"
 	// ServiceGoogle is the unified Google Workspace service: one OAuth
 	// grant covers Docs + Sheets + Tasks. Adapters key off this single
 	// connection rather than three separate ones.
 	ServiceGoogle Service = "google"
 
-	// Deprecated: ServiceGDocs/GSheets/GTasks are retained for migration
-	// friendliness only. New code uses ServiceGoogle — all three
-	// capabilities share one connection's token.
+	// ServiceGDocs/GSheets/GTasks are retained as per-capability
+	// aliases so callers that only need one slice (a Docs-only test
+	// fixture, e.g.) can name it directly. The active OAuth grant
+	// lives under ServiceGoogle when the full unified flow is wired.
 	ServiceGDocs   Service = "gdocs"
 	ServiceGSheets Service = "gsheets"
 	ServiceGTasks  Service = "gtasks"
@@ -45,20 +46,18 @@ const (
 // new service means adding it here AND registering a Provider in
 // WorkspaceManager.
 var supportedServices = map[Service]bool{
-	ServiceSlack:  true,
-	ServiceGChat:  true,
-	ServiceGoogle: true,
-	// Deprecated aliases — accepted so existing rows still load, but
-	// new connections should use ServiceGoogle.
+	ServiceSlack:   true,
+	ServiceGChat:   true,
+	ServiceGoogle:  true,
 	ServiceGDocs:   true,
 	ServiceGSheets: true,
 	ServiceGTasks:  true,
 }
 
 // Connection is one user's link to a specific external workspace —
-// e.g. "user 42 → Slack team T012345". A single user can hold multiple
-// connections per service (prod + corp Slack workspaces) thanks to the
-// UNIQUE(user_id, service, external_workspace_id) index.
+// e.g. "user 42 → Google account alice@example.com". A user can hold
+// multiple connections per service (work + personal Google accounts)
+// thanks to the UNIQUE(user_id, service, external_workspace_id) index.
 type Connection struct {
 	ID                  string  `json:"id"`
 	UserID              string  `json:"user_id"`
@@ -90,7 +89,6 @@ type Token struct {
 // caller).
 func (t *Token) Expired() bool {
 	if t.ExpiresAt.IsZero() {
-		// Zero expiry = non-expiring (Slack bot tokens behave this way).
 		return false
 	}
 	return time.Now().Add(30 * time.Second).After(t.ExpiresAt)
@@ -105,20 +103,16 @@ type AuthURL struct {
 }
 
 // Provider abstracts an OAuth flow + identity lookup. Each integration
-// (Slack, Google) implements this. The WorkspaceManager doesn't know
-// which provider is which — it routes by Service.
-//
-// Phase 1A ships only a test provider; real Slack/Google providers
-// land in 1B/2.
+// implements this. The WorkspaceManager doesn't know which provider is
+// which — it routes by Service.
 type Provider interface {
 	Service() Service
 	// Start returns the URL the user must visit to authorize the
 	// integration. The opaque state is round-tripped to Complete.
 	Start(ctx context.Context, userID, redirectURL string) (AuthURL, error)
 	// Complete validates the callback parameters, exchanges the code
-	// for tokens, and fetches the external identity (workspace ID,
-	// display name, email, avatar). Returns the data the storage
-	// layer needs to persist.
+	// for tokens, and fetches the external identity. Returns the data
+	// the storage layer needs to persist.
 	Complete(ctx context.Context, state, code string) (CompleteResult, error)
 }
 
@@ -145,27 +139,27 @@ type CompleteResult struct {
 	Token               Token
 }
 
-// Integration is the post-OAuth surface every adapter ships. Phase 1A
-// defines the interface but no real adapters implement it yet — the
-// shape captures the WHAT so future phases plug in without
-// re-litigating the design.
-//
-// Adapters that only need a subset of these should satisfy the
-// narrower interfaces (Messenger, DocEditor, etc.) instead of returning
-// errors from no-op methods.
+// Integration is the marker every post-OAuth adapter satisfies. The
+// narrower capability interfaces (Messenger, DocEditor, SheetEditor,
+// TaskManager) live in the adapter source files so each one can carry
+// the richer shape its API actually returns (Doc with title+url, Task
+// with status+updated, etc.) without bloating this types file.
 type Integration interface {
 	Service() Service
 }
 
 // Messenger is implemented by chat integrations (Slack, Google Chat).
+// Adapter files (slack.go, gchat.go) implement it with a per-service
+// channel/space ID convention.
 type Messenger interface {
 	Integration
 	ListChannels(ctx context.Context, token Token) ([]Channel, error)
 	Send(ctx context.Context, token Token, channelID, text string) error
 }
 
-// Channel is a Slack channel or Google Chat space — the addressable
-// destination for Send.
+// Channel is the addressable destination a Messenger sends into. The
+// ID is opaque to callers — Slack channel IDs (`C…`), Google Chat
+// space resource names (`spaces/…`).
 type Channel struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`

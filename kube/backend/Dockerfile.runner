@@ -1,0 +1,47 @@
+# ---------- Build stage ----------
+FROM golang:1.25-alpine AS builder
+
+RUN apk add --no-cache gcc musl-dev
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+RUN CGO_ENABLED=1 GOOS=linux \
+    go build -ldflags '-s -w' \
+    -o /argus-runner ./cmd/runner
+
+# ---------- Tofu stage ----------
+FROM hashicorp/terraform:1.9 AS tofu
+# We use OpenTofu but the official image bundles terraform; the binary
+# interface is identical. Replace with the official OpenTofu image once
+# it's widely available.
+
+# ---------- Runtime stage ----------
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata curl google-cloud-cli
+
+RUN addgroup -S runner && adduser -S runner -G runner
+
+# Copy OpenTofu binary.
+COPY --from=tofu /bin/terraform /usr/local/bin/tofu
+
+# Copy runner binary.
+COPY --from=builder /argus-runner /usr/local/bin/argus-runner
+
+# Copy OpenTofu module.
+COPY deploy/terraform/modules/runner-region /etc/argus/terraform/modules/runner-region
+
+# Workspace for per-run tofu state.
+RUN mkdir -p /var/argus/runner && chown runner:runner /var/argus/runner
+VOLUME /var/argus/runner
+
+EXPOSE 8080
+
+USER runner
+WORKDIR /home/runner
+
+ENTRYPOINT ["argus-runner"]

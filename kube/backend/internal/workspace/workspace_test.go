@@ -61,7 +61,7 @@ func newStore(t *testing.T) *Store {
 func newManager(t *testing.T) *Manager {
 	logger := slog.New(slog.NewTextHandler(testDiscard{}, nil))
 	m := NewManager(newStore(t), logger)
-	m.Register(NewTestProvider(ServiceSlack))
+	m.Register(NewTestProvider(ServiceGDocs))
 	return m
 }
 
@@ -98,7 +98,7 @@ func TestManager_StartAndCompleteFlow(t *testing.T) {
 	m := newManager(t)
 	ctx := context.Background()
 
-	auth, err := m.Start(ctx, "user-1", ServiceSlack, "https://callback.example/cb")
+	auth, err := m.Start(ctx, "user-1", ServiceGDocs, "https://callback.example/cb")
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -106,11 +106,11 @@ func TestManager_StartAndCompleteFlow(t *testing.T) {
 		t.Fatalf("auth url incomplete: %+v", auth)
 	}
 
-	c, err := m.Complete(ctx, ServiceSlack, auth.State, "ok-code")
+	c, err := m.Complete(ctx, ServiceGDocs, auth.State, "ok-code")
 	if err != nil {
 		t.Fatalf("complete: %v", err)
 	}
-	if c.UserID != "user-1" || c.Service != ServiceSlack {
+	if c.UserID != "user-1" || c.Service != ServiceGDocs {
 		t.Fatalf("connection has wrong identity: %+v", c)
 	}
 
@@ -126,7 +126,7 @@ func TestManager_StartAndCompleteFlow(t *testing.T) {
 func TestManager_RejectsUnknownState(t *testing.T) {
 	m := newManager(t)
 	ctx := context.Background()
-	_, err := m.Complete(ctx, ServiceSlack, "never-issued-state", "code")
+	_, err := m.Complete(ctx, ServiceGDocs, "never-issued-state", "code")
 	if err == nil {
 		t.Fatal("expected error for unknown state")
 	}
@@ -135,8 +135,8 @@ func TestManager_RejectsUnknownState(t *testing.T) {
 func TestManager_ProviderFailurePropagates(t *testing.T) {
 	m := newManager(t)
 	ctx := context.Background()
-	auth, _ := m.Start(ctx, "user-1", ServiceSlack, "https://cb")
-	_, err := m.Complete(ctx, ServiceSlack, auth.State, "fail")
+	auth, _ := m.Start(ctx, "user-1", ServiceGDocs, "https://cb")
+	_, err := m.Complete(ctx, ServiceGDocs, auth.State, "fail")
 	if err == nil {
 		t.Fatal("expected error from TestProvider when code=fail")
 	}
@@ -146,7 +146,7 @@ func TestStore_Reauth_KeepsID(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
 	c := Connection{
-		UserID: "u", Service: ServiceSlack, ExternalWorkspaceID: "T1",
+		UserID: "u", Service: ServiceGDocs, ExternalWorkspaceID: "T1",
 		DisplayName: "First",
 	}
 	tok := Token{AccessToken: "v1"}
@@ -156,7 +156,7 @@ func TestStore_Reauth_KeepsID(t *testing.T) {
 	}
 
 	c2 := Connection{
-		UserID: "u", Service: ServiceSlack, ExternalWorkspaceID: "T1",
+		UserID: "u", Service: ServiceGDocs, ExternalWorkspaceID: "T1",
 		DisplayName: "Updated",
 	}
 	tok2 := Token{AccessToken: "v2"}
@@ -178,12 +178,13 @@ func TestStore_Reauth_KeepsID(t *testing.T) {
 
 func TestStore_MultipleWorkspacesPerService(t *testing.T) {
 	// The reviewer flagged this as a missing requirement in the
-	// original design: a user CAN connect two Slack workspaces.
+	// original design: a user CAN connect two accounts of the same
+	// service (e.g. work + personal Google).
 	s := newStore(t)
 	ctx := context.Background()
 	for _, ext := range []string{"T-prod", "T-corp"} {
 		if _, err := s.Upsert(ctx, Connection{
-			UserID: "u", Service: ServiceSlack, ExternalWorkspaceID: ext, DisplayName: ext,
+			UserID: "u", Service: ServiceGDocs, ExternalWorkspaceID: ext, DisplayName: ext,
 		}, Token{AccessToken: "tok"}); err != nil {
 			t.Fatalf("upsert %s: %v", ext, err)
 		}
@@ -202,7 +203,7 @@ func TestStore_TokenIsEncryptedAtRest(t *testing.T) {
 	s := NewStore(db, NewCrypto(secretstore.NewMemoryStore()))
 	ctx := context.Background()
 	c, err := s.Upsert(ctx, Connection{
-		UserID: "u", Service: ServiceSlack, ExternalWorkspaceID: "T",
+		UserID: "u", Service: ServiceGDocs, ExternalWorkspaceID: "T",
 	}, Token{AccessToken: "xoxb-plaintext-leak"})
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
@@ -220,7 +221,7 @@ func TestStore_DeleteCascadesToken(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
 	c, _ := s.Upsert(ctx, Connection{
-		UserID: "u", Service: ServiceSlack, ExternalWorkspaceID: "T",
+		UserID: "u", Service: ServiceGDocs, ExternalWorkspaceID: "T",
 	}, Token{AccessToken: "v"})
 	if err := s.Delete(ctx, c.ID); err != nil {
 		t.Fatalf("delete: %v", err)
@@ -247,13 +248,13 @@ func TestStore_RejectsUnsupportedService(t *testing.T) {
 func TestManager_AvailableServices(t *testing.T) {
 	m := newManager(t)
 	got := m.AvailableServices()
-	if len(got) != 1 || got[0] != ServiceSlack {
-		t.Fatalf("expected [slack], got %v", got)
+	if len(got) != 1 || got[0] != ServiceGDocs {
+		t.Fatalf("expected [gdocs], got %v", got)
 	}
-	if !m.HasProvider(ServiceSlack) {
-		t.Fatal("HasProvider(slack) should be true")
+	if !m.HasProvider(ServiceGDocs) {
+		t.Fatal("HasProvider(gdocs) should be true")
 	}
-	if m.HasProvider(ServiceGDocs) {
-		t.Fatal("HasProvider(gdocs) should be false in phase 1A")
+	if m.HasProvider(ServiceGSheets) {
+		t.Fatal("HasProvider(gsheets) should be false when no provider is registered")
 	}
 }

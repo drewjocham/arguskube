@@ -46,9 +46,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("api-gov-middleware")
 
-# Hop-by-hop headers per RFC 7230 §6.1 — these describe a single TCP hop and
-# must never be propagated. Capturing them as "API metadata" is meaningless
-# and may leak proxy details. Stored lowercase so comparison is cheap.
 _HOP_BY_HOP_HEADERS = frozenset(
     {
         "connection",

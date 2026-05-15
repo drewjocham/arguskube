@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "argus-runner.fullname" . }}
+  labels:
+    {{- include "argus-runner.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "argus-runner.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "argus-runner.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "argus-runner.serviceAccountName" . }}
+      containers:
+        - name: runner
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          env:
+            - name: GCP_PROJECT
+              value: {{ .Values.env.GCP_PROJECT | quote }}
+            - name: RUNNER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "argus-runner.fullname" . }}-secret
+                  key: api-key
+            - name: RUNNER_MODULE_PATH
+              value: /etc/argus/terraform/modules/runner-region
+            - name: RUNNER_WORKSPACE
+              value: /var/argus/runner
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: workspace
+              mountPath: /var/argus/runner
+      volumes:
+        - name: workspace
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

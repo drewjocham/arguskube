@@ -81,7 +81,7 @@ describe('callGo', () => {
 
       expect(mockFetch).toHaveBeenCalledOnce()
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8080/api/GetClusterInfo',
+        'http://127.0.0.1:8080/api/GetClusterInfo',
         expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -101,7 +101,7 @@ describe('callGo', () => {
       await callGo('ListContexts')
 
       const callArgs = mockFetch.mock.calls[0]
-      expect(callArgs[0]).toBe('http://localhost:8080/api/ListContexts')
+      expect(callArgs[0]).toBe('http://127.0.0.1:8080/api/ListContexts')
     })
 
     it('passes arguments in request body', async () => {

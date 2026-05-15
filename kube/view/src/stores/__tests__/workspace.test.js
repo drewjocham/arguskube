@@ -38,24 +38,24 @@ async function freshStore() {
 
 describe('workspace store', () => {
   it('loadServices populates services from the bridge', async () => {
-    mockCachedCallGo.mockResolvedValueOnce(['slack'])
+    mockCachedCallGo.mockResolvedValueOnce(['gdocs'])
     const s = await freshStore()
     await s.loadServices()
     expect(mockCachedCallGo).toHaveBeenCalledWith('ListWorkspaceServices', [], 5_000)
-    expect(s.services).toEqual(['slack'])
+    expect(s.services).toEqual(['gdocs'])
   })
 
   it('loadConnections stores rows and groups by service', async () => {
     memStorage['argus.auth.session'] = JSON.stringify({ token: 'tok' })
     mockCallGo.mockResolvedValueOnce([
-      { id: 'a', service: 'slack', display_name: 'Acme' },
-      { id: 'b', service: 'slack', display_name: 'Beta' },
+      { id: 'a', service: 'gdocs', display_name: 'Acme' },
+      { id: 'b', service: 'gdocs', display_name: 'Beta' },
     ])
     const s = await freshStore()
     await s.loadConnections()
     expect(mockCallGo).toHaveBeenCalledWith('ListWorkspaceConnections', 'tok')
     expect(s.connections.length).toBe(2)
-    expect(s.connectionsByService.slack.length).toBe(2)
+    expect(s.connectionsByService.gdocs.length).toBe(2)
   })
 
   it('loadConnections records error message on failure', async () => {

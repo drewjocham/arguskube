@@ -1,0 +1,14 @@
+apiVersion: v2
+name: argus-runner
+description: Distributed load-test runner service (GCP Cloud Run / K8s)
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+keywords:
+  - load-testing
+  - distributed
+  - event-bus
+home: https://github.com/drewjocham/argus
+maintainers:
+  - name: Argus Infrastructure
+    email: dev@argusinfra.com

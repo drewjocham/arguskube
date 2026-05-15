@@ -39,51 +39,55 @@ func (a *App) distLoadClient() *saasapi.Client {
 	return a.saasClient
 }
 
-// resolveRunner returns "local" or "cloud" with empty defaulting to
-// cloud. Anything else is rejected so a typo doesn't silently fall
-// through to the cloud path with billed credits.
+// resolveRunner returns "local", "cloud", or "runner" with empty
+// defaulting to "cloud" for back-compat. Anything else is rejected
+// so a typo doesn't silently fall through to the wrong execution path.
+//
+//   - "local"  — runs pkg/loadtest in-process on the desktop
+//   - "cloud"  — legacy SaaS VM provisioning (kept for back-compat)
+//   - "runner" — new GCP runner service (spot GKE + OpenTofu + SSE)
 func resolveRunner(spec saasapi.DistLoadSpec) (string, error) {
 	switch spec.Runner {
 	case "":
 		return runnerCloud, nil
-	case "local", "cloud":
+	case "local", "cloud", "runner":
 		return spec.Runner, nil
 	default:
-		return "", fmt.Errorf("unknown runner %q (want \"local\" or \"cloud\")", spec.Runner)
+		return "", fmt.Errorf("unknown runner %q (want \"local\", \"cloud\", or \"runner\")", spec.Runner)
 	}
 }
 
-// StartDistributedLoadTest starts a run on either runner. Returns a
-// single runID that addresses subsequent status/cancel calls regardless
-// of runner mode.
+// StartDistributedLoadTest starts a run. Returns a single runID that
+// addresses subsequent status/cancel calls regardless of runner mode.
+//
+// Dispatch:
+//   - "local"  → in-process loadtest.Engine (desktop)
+//   - "runner" → GCP runner service (spot GKE + OpenTofu + SSE)
+//   - "cloud"  → legacy SaaS VMs (back-compat)
 func (a *App) StartDistributedLoadTest(spec saasapi.DistLoadSpec) (string, error) {
-	// Validate the scenario shape on the desktop so a malformed plan
-	// fails fast with a clear error pointing at the bad field, instead
-	// of bouncing off the SaaS API and surfacing a generic 400.
-	if spec.Scenario != nil {
-		if err := spec.Scenario.Validate(); err != nil {
+	mode, err := resolveRunner(spec)
+	if err != nil {
+		return "", err
+	}
+	switch mode {
+	case "local":
+		return a.startLocalDistLoad(spec)
+	case "runner":
+		return a.StartRunnerLoadTest(spec)
+	default: // "cloud" — legacy path
+		if err := a.checkDistLoadGate(); err != nil {
 			return "", err
 		}
+		client := a.distLoadClient()
+		if client == nil {
+			return "", fmt.Errorf("SaaS client not configured — set ARGUS_SAAS_BASE_URL and ARGUS_SAAS_API_KEY")
+		}
+		runID, err := client.StartDistLoad(a.appCtx(), spec)
+		if err != nil {
+			return "", fmt.Errorf("start distributed load test: %w", err)
+		}
+		return runID, nil
 	}
-	runner, err := resolveRunner(spec)
-	if err != nil {
-		return "", err
-	}
-	if runner == "local" {
-		return a.startLocalDistLoad(spec)
-	}
-	if err := a.checkDistLoadGate(); err != nil {
-		return "", err
-	}
-	client := a.distLoadClient()
-	if client == nil {
-		return "", fmt.Errorf("SaaS client not configured — set ARGUS_SAAS_BASE_URL and ARGUS_SAAS_API_KEY")
-	}
-	runID, err := client.StartDistLoad(a.appCtx(), spec)
-	if err != nil {
-		return "", fmt.Errorf("start distributed load test: %w", err)
-	}
-	return runID, nil
 }
 
 // GetDistributedLoadTestStatus is the unified status RPC. Local runs

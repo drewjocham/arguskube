@@ -181,6 +181,21 @@ clean: agent-clean helm-clean ## Remove all build artifacts
 clean-vue: ## Remove Vue node_modules only
 	rm -rf $(VIEW_DIR)/node_modules
 
+# ── Runner ───────────────────────────────────────────────────────
+
+RUNNER_DIR := kube/backend
+
+.PHONY: runner-build runner-image runner-test
+
+runner-build: ## Build the runner Go binary (distributed load-test engine)
+	cd $(RUNNER_DIR) && CGO_ENABLED=0 go build -ldflags '-s -w' -o build/bin/argus-runner ./cmd/runner
+
+runner-image: ## Build the runner Docker image (includes OpenTofu + terraform module)
+	docker build -t argus-runner:latest -f $(RUNNER_DIR)/Dockerfile.runner $(RUNNER_DIR)
+
+runner-test: ## Run runner Go tests
+	cd $(RUNNER_DIR) && go test ./internal/runner/... -count=1
+
 # ── Flink ────────────────────────────────────────────────────────
 
 FLINK_DIR := kube/flink

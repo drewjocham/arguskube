@@ -188,6 +188,18 @@ func (a *App) startLocalDistLoad(spec saasapi.DistLoadSpec) (string, error) {
 	// Throttle live progress emits so a 1M-message run doesn't drown
 	// the WebView in events. 250 ms ≈ 4 fps, plenty for the chart.
 	progress := newProgressThrottler(a, id, 250*time.Millisecond)
+	// The throttler spawns a ticker goroutine that only exits when
+	// flush() closes its channel. flush is called from runLoadTest
+	// after the engine returns — so if startLocalDistLoad bails out
+	// between throttler creation and ownership transfer to the
+	// goroutine, the ticker leaks. Guard with a deferred flush that
+	// disarms once runLoadTest has taken over.
+	throttlerOwned := false
+	defer func() {
+		if !throttlerOwned {
+			progress.flush()
+		}
+	}()
 	engine.OnSample(progress.onSample)
 	engine.OnScale(func(ev loadtest.ScaleEvent) {
 		evCopy := ev
@@ -205,6 +217,7 @@ func (a *App) startLocalDistLoad(spec saasapi.DistLoadSpec) (string, error) {
 	// reserveLocalQuotaSlot transaction) — no second insert.
 
 	go a.runLoadTest(ctx, run, progress)
+	throttlerOwned = true
 	return id, nil
 }
 
@@ -408,40 +421,15 @@ func distLoadSpecToRunSpec(spec saasapi.DistLoadSpec) (loadtest.RunSpec, error) 
 
 // buildRamp resolves the user-facing ramp configuration into a
 // loadtest.Ramp. Precedence: the nested spec.Ramp block (rich, sent by
-// the unified form) wins; the flat RampProfile/RampRate/TimeoutMins
-// fields are the back-compat fallback used by older clients and the
-// cloud worker payload.
+// the unified form) wins via the shared saasapi.DistLoadRamp.ToLoadtest
+// helper; the flat RampProfile/RampRate/TimeoutMins fields are the
+// back-compat fallback used by older clients and the cloud worker
+// payload.
 func buildRamp(spec saasapi.DistLoadSpec) loadtest.Ramp {
-	// Rich path: nested Ramp block carries per-profile knobs verbatim.
-	if r := spec.Ramp; r != nil {
-		out := loadtest.Ramp{Rate: float64(r.Rate)}
-		if r.DurationSec > 0 {
-			out.Duration = time.Duration(r.DurationSec) * time.Second
-		}
-		switch strings.ToLower(r.Profile) {
-		case "linear":
-			out.Kind = loadtest.RampLinear
-			out.RampTo = float64(r.RampTo)
-		case "step":
-			out.Kind = loadtest.RampStep
-			out.StepBy = float64(r.StepBy)
-			if r.StepEvery > 0 {
-				out.StepEvery = time.Duration(r.StepEvery) * time.Second
-			}
-		case "spike":
-			out.Kind = loadtest.RampSpike
-			out.SpikeCount = r.SpikeCount
-			out.SpikeSize = r.SpikeSize
-			if r.SpikeIdle > 0 {
-				out.SpikeIdle = time.Duration(r.SpikeIdle) * time.Second
-			}
-		default:
-			out.Kind = loadtest.RampConstant
-			if out.Rate <= 0 {
-				out.Rate = 100
-			}
-		}
-		return out
+	// Rich path: delegate to the shared translation table so the
+	// runner orchestrator and the local dispatcher stay in lock-step.
+	if spec.Ramp != nil {
+		return spec.Ramp.ToLoadtest()
 	}
 
 	// Back-compat path: only the flat fields are populated.

@@ -10,7 +10,7 @@ import (
 
 // TestProvider is a dev/test-only Provider that satisfies the OAuth
 // flow without contacting any external service. Phase 1A ships it so
-// the end-to-end Connect path can be exercised before Slack/Google
+// the end-to-end Connect path can be exercised before the real Google
 // providers land.
 //
 // Lives in a *_test.go file so production builds don't pick it up.

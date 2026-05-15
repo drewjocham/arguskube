@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/argues/argus/pkg/loadtest"
 )
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -78,6 +81,48 @@ type DistLoadRamp struct {
 	SpikeSize   int    `json:"spikeSize,omitempty"`   // spike: messages per burst
 	SpikeIdle   int    `json:"spikeIdleSec,omitempty"`// spike: gap between bursts (seconds)
 	DurationSec int    `json:"durationSec,omitempty"` // linear/step total runtime
+}
+
+// ToLoadtest translates this DistLoadRamp into the engine's
+// loadtest.Ramp. One translation table for both the local dispatcher
+// (api/pkg/app_distload_local.go) and the runner orchestrator
+// (internal/runner/runner.go) — the load-test review flagged the two
+// copies as drift-prone (the runner copy was missing case-insensitive
+// profile matching and the default-rate-100 floor for constant
+// profiles). Returns the zero Ramp when called on a nil receiver so
+// callers can chain on optional fields.
+func (r *DistLoadRamp) ToLoadtest() loadtest.Ramp {
+	if r == nil {
+		return loadtest.Ramp{}
+	}
+	out := loadtest.Ramp{Rate: float64(r.Rate)}
+	if r.DurationSec > 0 {
+		out.Duration = time.Duration(r.DurationSec) * time.Second
+	}
+	switch strings.ToLower(r.Profile) {
+	case "linear":
+		out.Kind = loadtest.RampLinear
+		out.RampTo = float64(r.RampTo)
+	case "step":
+		out.Kind = loadtest.RampStep
+		out.StepBy = float64(r.StepBy)
+		if r.StepEvery > 0 {
+			out.StepEvery = time.Duration(r.StepEvery) * time.Second
+		}
+	case "spike":
+		out.Kind = loadtest.RampSpike
+		out.SpikeCount = r.SpikeCount
+		out.SpikeSize = r.SpikeSize
+		if r.SpikeIdle > 0 {
+			out.SpikeIdle = time.Duration(r.SpikeIdle) * time.Second
+		}
+	default:
+		out.Kind = loadtest.RampConstant
+		if out.Rate <= 0 {
+			out.Rate = 100
+		}
+	}
+	return out
 }
 
 type DistLoadPayload struct {
