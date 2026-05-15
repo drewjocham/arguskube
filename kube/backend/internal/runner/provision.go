@@ -59,6 +59,14 @@ tags         = { argus-managed = "true", argus-run-id = "%s" }
 		return "", fmt.Errorf("tofu init: %w", err)
 	}
 
+	// Mark provisioned before invoking apply, not after. A partial apply
+	// (e.g. VPC and subnets created but GKE cluster creation fails)
+	// leaves real cloud resources behind that must be torn down via
+	// `tofu destroy`. Gating the destroy on a flag set only after a
+	// successful apply would leak those resources for ~2h until the
+	// spot quota auto-reclaims them.
+	cs.provisioned = true
+
 	// tofu apply.
 	if err := r.runTofu(ctx, workDir, "apply", "-auto-approve", "-input=false", "-no-color"); err != nil {
 		return "", fmt.Errorf("tofu apply: %w", err)

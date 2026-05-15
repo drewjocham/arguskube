@@ -217,7 +217,11 @@ func (r *Runner) executeRegion(ctx context.Context, index int, reg saasapi.Regio
 	cleanup := &cleanupState{runID: r.spec.RunID, region: reg.Region, workspace: r.workspace}
 	defer func() {
 		cleanup.run(regionLogger)
-		if cleanup.workDir != "" {
+		// Gate on `provisioned` (set by tofuApply just before invoking
+		// `tofu apply`), not on workDir alone. That way a partial apply
+		// — VPC + subnets created, GKE failed — still triggers destroy
+		// instead of leaking until spot quota auto-reclaims.
+		if cleanup.provisioned {
 			// Use a background context with timeout so deferred cleanup
 			// still runs even when the run context is already cancelled,
 			// but doesn't hang forever if tofu destroy stalls.
@@ -229,12 +233,12 @@ func (r *Runner) executeRegion(ctx context.Context, index int, reg saasapi.Regio
 		}
 	}()
 
-	// 1. Provision via OpenTofu.
+	// 1. Provision via OpenTofu. tofuApply marks cleanup.provisioned
+	// itself so partial-apply failures still get destroyed.
 	endpoint, err := r.tofuApply(regionCtx, reg, cleanup)
 	if err != nil {
 		return nil, fmt.Errorf("provision %s: %w", reg.Region, err)
 	}
-	cleanup.provisioned = true
 
 	r.Stream.Emit(saasapi.RunnerEvent{
 		RunID: r.spec.RunID, Type: saasapi.EventProvisioned,
