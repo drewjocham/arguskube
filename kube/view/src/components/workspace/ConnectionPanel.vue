@@ -64,7 +64,7 @@ function avatarStyle(meta) {
 
     <div v-if="!visibleServices.length" class="empty">
       <p>No workspace integrations are wired in this build.</p>
-      <p class="hint">Slack lands in Phase 1B; Google in Phase 2.</p>
+      <p class="hint">Google Docs, Sheets, and Tasks adapters land in Phase 1B.</p>
     </div>
 
     <ul v-else class="tiles">
