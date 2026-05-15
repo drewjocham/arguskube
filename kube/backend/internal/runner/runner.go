@@ -330,32 +330,11 @@ func (r *Runner) toRunSpec(endpoint string) (loadtest.RunSpec, error) {
 	}
 
 	if ls.Ramp != nil {
-		spec.Ramp = loadtest.Ramp{
-			Rate: float64(ls.Ramp.Rate),
-		}
-		switch ls.Ramp.Profile {
-		case "linear":
-			spec.Ramp.Kind = loadtest.RampLinear
-			spec.Ramp.RampTo = float64(ls.Ramp.RampTo)
-			if ls.Ramp.DurationSec > 0 {
-				spec.Ramp.Duration = time.Duration(ls.Ramp.DurationSec) * time.Second
-			}
-		case "step":
-			spec.Ramp.Kind = loadtest.RampStep
-			spec.Ramp.StepBy = float64(ls.Ramp.StepBy)
-			if ls.Ramp.StepEvery > 0 {
-				spec.Ramp.StepEvery = time.Duration(ls.Ramp.StepEvery) * time.Second
-			}
-		case "spike":
-			spec.Ramp.Kind = loadtest.RampSpike
-			spec.Ramp.SpikeCount = ls.Ramp.SpikeCount
-			spec.Ramp.SpikeSize = ls.Ramp.SpikeSize
-			if ls.Ramp.SpikeIdle > 0 {
-				spec.Ramp.SpikeIdle = time.Duration(ls.Ramp.SpikeIdle) * time.Second
-			}
-		default:
-			spec.Ramp.Kind = loadtest.RampConstant
-		}
+		// Shared translation table — same helper the local dispatcher
+		// uses. Previously two near-identical switches drifted; the
+		// runner copy missed case-insensitive matching and the
+		// default-rate-100 floor for constant profiles.
+		spec.Ramp = ls.Ramp.ToLoadtest()
 		if spec.Workers <= 0 {
 			spec.Workers = 50
 		}

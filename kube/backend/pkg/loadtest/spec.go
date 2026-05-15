@@ -143,6 +143,22 @@ type ScalePlan struct {
 	// PostScaleTimeout caps the wait for MinReplicas ready pods
 	// after the scale-up. Default is applied in Validate.
 	PostScaleTimeout time.Duration `json:"postScaleTimeoutNs,omitempty"`
+
+	// DrainObserveDuration controls how long the engine samples the
+	// deployment after replicas are ready, so the agent can describe
+	// the drain curve. Defaults to one minute when zero — tune up for
+	// slow consumers (long message-processing tail) or down for very
+	// fast drains where the extra minute is wasted time.
+	DrainObserveDuration time.Duration `json:"drainObserveDurationNs,omitempty"`
+}
+
+// drainObserveDuration returns the configured drain-observation window,
+// or the one-minute default when the field is zero or negative.
+func (s *ScalePlan) drainObserveDuration() time.Duration {
+	if s.DrainObserveDuration > 0 {
+		return s.DrainObserveDuration
+	}
+	return time.Minute
 }
 
 // RunSpec is the full description of a load test, end to end. Built
