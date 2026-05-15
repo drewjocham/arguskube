@@ -10,7 +10,13 @@ import (
 
 // Google Tasks adapter — list-CRUD against tasks v1.
 
-const gtasksAPIBase = "https://tasks.googleapis.com/tasks/v1"
+const (
+	gtasksAPIBase = "https://tasks.googleapis.com/tasks/v1"
+	// gtasksListPath prefixes every per-list URL. Extracted so the
+	// four endpoints (list, create, update, delete) share one source
+	// of truth for the path shape.
+	gtasksListPath = "/lists/"
+)
 
 type TaskList struct {
 	ID    string `json:"id"`
@@ -73,7 +79,7 @@ func (a *GTasksAdapter) ListTasks(ctx context.Context, token Token, listID strin
 		return nil, fmt.Errorf("gtasks: listID required")
 	}
 	hc := googleClient(a.HTTPClient)
-	endpoint := a.base() + "/lists/" + url.PathEscape(listID) + "/tasks?maxResults=100&showCompleted=true&showHidden=false"
+	endpoint := a.base() + gtasksListPath + url.PathEscape(listID) + "/tasks?maxResults=100&showCompleted=true&showHidden=false"
 	var out gtasksTasksResp
 	if err := googleAPICall(ctx, hc, token, http.MethodGet, endpoint, nil, &out); err != nil {
 		return nil, err
@@ -92,7 +98,7 @@ func (a *GTasksAdapter) CreateTask(ctx context.Context, token Token, listID stri
 		t.Status = "needsAction"
 	}
 	hc := googleClient(a.HTTPClient)
-	endpoint := a.base() + "/lists/" + url.PathEscape(listID) + "/tasks"
+	endpoint := a.base() + gtasksListPath + url.PathEscape(listID) + "/tasks"
 	var out Task
 	if err := googleAPICall(ctx, hc, token, http.MethodPost, endpoint, t, &out); err != nil {
 		return Task{}, err
@@ -107,7 +113,7 @@ func (a *GTasksAdapter) UpdateTask(ctx context.Context, token Token, listID, tas
 		return Task{}, fmt.Errorf("gtasks: listID + taskID required")
 	}
 	hc := googleClient(a.HTTPClient)
-	endpoint := a.base() + "/lists/" + url.PathEscape(listID) + "/tasks/" + url.PathEscape(taskID)
+	endpoint := a.base() + gtasksListPath + url.PathEscape(listID) + "/tasks/" + url.PathEscape(taskID)
 	patch.ID = taskID
 	var out Task
 	if err := googleAPICall(ctx, hc, token, http.MethodPatch, endpoint, patch, &out); err != nil {
@@ -121,6 +127,6 @@ func (a *GTasksAdapter) DeleteTask(ctx context.Context, token Token, listID, tas
 		return fmt.Errorf("gtasks: listID + taskID required")
 	}
 	hc := googleClient(a.HTTPClient)
-	endpoint := a.base() + "/lists/" + url.PathEscape(listID) + "/tasks/" + url.PathEscape(taskID)
+	endpoint := a.base() + gtasksListPath + url.PathEscape(listID) + "/tasks/" + url.PathEscape(taskID)
 	return googleAPICall(ctx, hc, token, http.MethodDelete, endpoint, nil, nil)
 }

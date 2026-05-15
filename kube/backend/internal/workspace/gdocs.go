@@ -13,7 +13,13 @@ import (
 // for run-summaries and notes; round-tripping rich-text styling would
 // triple the surface and isn't needed for that use case.
 
-const gdocsAPIBase = "https://docs.googleapis.com/v1"
+const (
+	gdocsAPIBase = "https://docs.googleapis.com/v1"
+	// gdocsDocPath prefixes every per-document URL. Extracted so the
+	// three endpoints (create-batchUpdate, get, append-batchUpdate)
+	// share one source of truth for the path shape.
+	gdocsDocPath = "/documents/"
+)
 
 // Doc is the lightweight document view returned to the UI.
 type Doc struct {
@@ -92,7 +98,7 @@ func (a *GDocsAdapter) CreateDoc(ctx context.Context, token Token, title, body s
 			}},
 		}
 		if err := googleAPICall(ctx, hc, token, http.MethodPost,
-			a.base()+"/documents/"+created.DocumentID+":batchUpdate", req, nil); err != nil {
+			a.base()+gdocsDocPath+created.DocumentID+":batchUpdate", req, nil); err != nil {
 			return Doc{}, fmt.Errorf("gdocs: insert initial body: %w", err)
 		}
 	}
@@ -112,7 +118,7 @@ func (a *GDocsAdapter) GetDoc(ctx context.Context, token Token, docID string) (D
 	hc := googleClient(a.HTTPClient)
 	var d gdocsRawDoc
 	if err := googleAPICall(ctx, hc, token, http.MethodGet,
-		a.base()+"/documents/"+docID, nil, &d); err != nil {
+		a.base()+gdocsDocPath+docID, nil, &d); err != nil {
 		return DocBody{}, err
 	}
 	var sb strings.Builder
@@ -151,5 +157,5 @@ func (a *GDocsAdapter) AppendDoc(ctx context.Context, token Token, docID, text s
 		}},
 	}
 	return googleAPICall(ctx, hc, token, http.MethodPost,
-		a.base()+"/documents/"+docID+":batchUpdate", req, nil)
+		a.base()+gdocsDocPath+docID+":batchUpdate", req, nil)
 }

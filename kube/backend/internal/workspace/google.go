@@ -27,6 +27,9 @@ const (
 	googleAuthURL     = "https://accounts.google.com/o/oauth2/v2/auth"
 	googleTokenURL    = "https://oauth2.googleapis.com/token"
 	googleUserinfoURL = "https://www.googleapis.com/oauth2/v3/userinfo"
+	// contentTypeJSON is shared by every Google REST call we make so a
+	// future header set doesn't drift across files.
+	contentTypeJSON = "application/json"
 
 	googleScopes = "https://www.googleapis.com/auth/documents " +
 		"https://www.googleapis.com/auth/spreadsheets " +
@@ -269,7 +272,7 @@ func (p *GoogleProvider) postToken(ctx context.Context, form url.Values) (google
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, p.tokenURL(),
 		strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", contentTypeJSON)
 
 	resp, err := p.client().Do(req)
 	if err != nil {
@@ -299,7 +302,7 @@ func (p *GoogleProvider) postToken(ctx context.Context, form url.Values) (google
 func (p *GoogleProvider) fetchUserinfo(ctx context.Context, accessToken string) (googleUserinfo, error) {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.userinfoURL(), nil)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", contentTypeJSON)
 
 	resp, err := p.client().Do(req)
 	if err != nil {
@@ -357,9 +360,9 @@ func googleAPICall(ctx context.Context, hc *http.Client, token Token, method, en
 		return fmt.Errorf("google: build request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", contentTypeJSON)
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", contentTypeJSON)
 	}
 	resp, err := hc.Do(req)
 	if err != nil {

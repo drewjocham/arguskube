@@ -177,28 +177,32 @@ function avatarLetter(name) {
           </div>
         </div>
         <div v-if="slackConnections.length > 1" class="ws-picker">
-          <label>Workspace</label>
-          <Select
-            v-model="activeConnectionID"
-            :options="connectionOptions"
-            size="sm"
-            width="220px"
-            aria-label="Slack workspace"
-          />
+          <label for="slack-workspace-select-wrap">Workspace</label>
+          <div id="slack-workspace-select-wrap">
+            <Select
+              v-model="activeConnectionID"
+              :options="connectionOptions"
+              size="sm"
+              width="220px"
+              aria-label="Slack workspace"
+            />
+          </div>
         </div>
       </header>
 
       <section class="row">
-        <label>Channel</label>
-        <Select
-          v-model="selectedChannelID"
-          :options="channelOptions"
-          :disabled="slackLoading || !channelOptions.length"
-          :placeholder="slackLoading ? 'Loading channels…' : 'Pick a channel'"
-          width="280px"
-          aria-label="Slack channel"
-          testid="slack-channel-select"
-        />
+        <label for="slack-channel-select-wrap">Channel</label>
+        <div id="slack-channel-select-wrap">
+          <Select
+            v-model="selectedChannelID"
+            :options="channelOptions"
+            :disabled="slackLoading || !channelOptions.length"
+            :placeholder="slackLoading ? 'Loading channels…' : 'Pick a channel'"
+            width="280px"
+            aria-label="Slack channel"
+            testid="slack-channel-select"
+          />
+        </div>
         <button class="btn-ghost" :disabled="slackLoading" @click="refreshChannels">
           Refresh
         </button>
@@ -318,7 +322,7 @@ function avatarLetter(name) {
 .grow { flex: 1; }
 .sent-badge {
   font-size: 11.5px; font-weight: 600;
-  color: #4ade80;
+  color: #86efac;
   background: rgba(74, 222, 128, 0.10);
   padding: 3px 8px; border-radius: 999px;
   animation: fade-in 0.15s ease-out;

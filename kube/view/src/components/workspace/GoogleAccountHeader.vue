@@ -61,15 +61,17 @@ function pick(id) {
       </div>
     </div>
     <div v-if="googleConnections.length > 1" class="ws-picker">
-      <label>Account</label>
-      <Select
-        :modelValue="modelValue"
-        :options="connectionOptions"
-        size="sm"
-        width="220px"
-        aria-label="Google account"
-        @update:modelValue="pick"
-      />
+      <label for="google-account-select-wrap">Account</label>
+      <div id="google-account-select-wrap">
+        <Select
+          :modelValue="modelValue"
+          :options="connectionOptions"
+          size="sm"
+          width="220px"
+          aria-label="Google account"
+          @update:modelValue="pick"
+        />
+      </div>
     </div>
   </header>
 </template>
@@ -87,7 +89,7 @@ function pick(id) {
 .empty-icon {
   width: 48px; height: 48px;
   border-radius: 50%;
-  background: #4285F4; color: white;
+  background: #1a56db; color: white;
   display: flex; align-items: center; justify-content: center;
   font-size: 22px; font-weight: 700;
   margin: 0 auto 14px;
@@ -105,7 +107,7 @@ function pick(id) {
 .ws-info { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ws-avatar {
   width: 32px; height: 32px; border-radius: 50%;
-  background: #4285F4; color: white;
+  background: #1a56db; color: white;
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; overflow: hidden; flex-shrink: 0;
 }

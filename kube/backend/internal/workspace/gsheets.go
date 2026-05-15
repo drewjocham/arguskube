@@ -12,7 +12,13 @@ import (
 // the v4 API. A1 notation everywhere; the UI builds it from a sheet +
 // rect picker.
 
-const gsheetsAPIBase = "https://sheets.googleapis.com/v4"
+const (
+	gsheetsAPIBase = "https://sheets.googleapis.com/v4"
+	// gsheetsPath prefixes every per-spreadsheet URL. Extracted so
+	// the three endpoints (get-metadata, values:read, values:write)
+	// share one source of truth.
+	gsheetsPath = "/spreadsheets/"
+)
 
 type Sheet struct {
 	ID    string   `json:"id"`
@@ -87,7 +93,7 @@ func (a *GSheetsAdapter) GetSheet(ctx context.Context, token Token, sheetID stri
 	hc := googleClient(a.HTTPClient)
 	// fields= keeps the payload small — without it Google returns the
 	// full grid which can be megabytes.
-	endpoint := a.base() + "/spreadsheets/" + url.PathEscape(sheetID) +
+	endpoint := a.base() + gsheetsPath + url.PathEscape(sheetID) +
 		"?fields=spreadsheetId,properties.title,sheets.properties.title"
 	var out gsheetsRaw
 	if err := googleAPICall(ctx, hc, token, http.MethodGet, endpoint, nil, &out); err != nil {
@@ -111,7 +117,7 @@ func (a *GSheetsAdapter) ReadRange(ctx context.Context, token Token, sheetID, a1
 	}
 	hc := googleClient(a.HTTPClient)
 	// PathEscape the range — it can contain spaces, "!", and "$".
-	endpoint := a.base() + "/spreadsheets/" + url.PathEscape(sheetID) +
+	endpoint := a.base() + gsheetsPath + url.PathEscape(sheetID) +
 		"/values/" + url.PathEscape(a1Range) +
 		"?valueRenderOption=FORMATTED_VALUE"
 	var resp gsheetsValuesResp
@@ -129,7 +135,7 @@ func (a *GSheetsAdapter) WriteRange(ctx context.Context, token Token, sheetID, a
 		return fmt.Errorf("gsheets: sheetID + a1Range required")
 	}
 	hc := googleClient(a.HTTPClient)
-	endpoint := a.base() + "/spreadsheets/" + url.PathEscape(sheetID) +
+	endpoint := a.base() + gsheetsPath + url.PathEscape(sheetID) +
 		"/values/" + url.PathEscape(a1Range) + "?valueInputOption=RAW"
 	body := map[string]any{
 		"range":          a1Range,

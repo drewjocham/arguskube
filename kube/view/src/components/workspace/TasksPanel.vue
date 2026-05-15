@@ -144,15 +144,17 @@ async function submitAdd() {
     <template v-if="googleConnections.length">
       <section class="card">
         <div class="row">
-          <label>Task list</label>
-          <Select
-            v-model="listID"
-            :options="listOptions"
-            :disabled="googleLoading || !listOptions.length"
-            :placeholder="googleLoading ? 'Loading…' : 'Pick a list'"
-            width="260px"
-            aria-label="Task list"
-          />
+          <label for="tasks-list-select-wrap">Task list</label>
+          <div id="tasks-list-select-wrap">
+            <Select
+              v-model="listID"
+              :options="listOptions"
+              :disabled="googleLoading || !listOptions.length"
+              :placeholder="googleLoading ? 'Loading…' : 'Pick a list'"
+              width="260px"
+              aria-label="Task list"
+            />
+          </div>
           <button class="btn-ghost" :disabled="googleLoading" @click="refreshLists">
             Refresh lists
           </button>
@@ -362,7 +364,7 @@ async function submitAdd() {
 .ok-badge {
   align-self: flex-start;
   font-size: 11.5px; font-weight: 600;
-  color: #4ade80;
+  color: #86efac;
   background: rgba(74,222,128,0.10);
   padding: 3px 8px; border-radius: 999px;
 }

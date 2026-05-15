@@ -24,6 +24,10 @@ import (
 
 const (
 	gchatAPIBaseURL = "https://chat.googleapis.com/v1"
+	// gchatSpacePrefix is the resource-name prefix every Google Chat
+	// space ID carries. Extracted once so we trim/prepend consistently
+	// instead of sprinkling the literal across the file.
+	gchatSpacePrefix = "spaces/"
 )
 
 // GChatAdapter satisfies the Messenger interface for Google Chat.
@@ -92,7 +96,7 @@ func (a *GChatAdapter) ListChannels(ctx context.Context, token Token) ([]Channel
 			// DMs / unnamed group chats — label them so the dropdown
 			// doesn't show a blank. The space resource name is
 			// "spaces/<opaque>" — surface the suffix as a hint.
-			suffix := strings.TrimPrefix(s.Name, "spaces/")
+			suffix := strings.TrimPrefix(s.Name, gchatSpacePrefix)
 			if a.isDirectMessage(s.SpaceType, s.Type) {
 				name = "Direct message · " + shortID(suffix)
 			} else {
@@ -131,10 +135,10 @@ func (a *GChatAdapter) Send(ctx context.Context, token Token, spaceID, text stri
 		return fmt.Errorf("gchat: space is required")
 	}
 	// The resource name is "spaces/AAA…"; the URL is
-	// /v1/{name=spaces/*}/messages. Trim a stray "spaces/" if the
+	// /v1/{name=spaces/*}/messages. Trim a stray gchatSpacePrefix if the
 	// caller supplied the bare ID.
-	if !strings.HasPrefix(spaceID, "spaces/") {
-		spaceID = "spaces/" + spaceID
+	if !strings.HasPrefix(spaceID, gchatSpacePrefix) {
+		spaceID = gchatSpacePrefix + spaceID
 	}
 	endpoint := a.base() + "/" + spaceID + "/messages"
 	body, _ := json.Marshal(gchatMessageBody{Text: text})

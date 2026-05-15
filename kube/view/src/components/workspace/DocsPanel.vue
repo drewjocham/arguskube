@@ -262,11 +262,11 @@ async function onAppend() {
 
 .ok-badge {
   font-size: 11.5px; font-weight: 600;
-  color: #4ade80;
+  color: #86efac;
   background: rgba(74, 222, 128, 0.10);
   padding: 3px 8px; border-radius: 999px;
 }
-.ok-badge a { color: #4ade80; text-decoration: underline; }
+.ok-badge a { color: #86efac; text-decoration: underline; }
 
 .btn-primary {
   padding: 7px 16px;

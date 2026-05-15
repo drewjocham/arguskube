@@ -28,7 +28,7 @@ const created = ref(null)      // last-created Sheet for the link badge
 // A1 notation: optional sheet name + ! + start + optional :end. Sheet
 // names can include letters, digits, _ and spaces. The regex is loose by
 // design — the backend gives precise errors.
-const A1_RX = /^([A-Za-z0-9_ ]+!)?[A-Z]+[0-9]+(:[A-Z]+[0-9]+)?$/
+const A1_RX = /^([\w ]+!)?[A-Z]+\d+(:[A-Z]+\d+)?$/
 
 const rangeValid = computed(() => A1_RX.test(range.value.trim()))
 
@@ -100,6 +100,13 @@ async function onWrite() {
       activeID.value, sheetID.value.trim(), range.value.trim(), matrix.value,
     )
   } catch { /* surfaced */ }
+}
+
+// A1 column letter (0 -> A, 25 -> Z, 26 -> AA) for table headers.
+function colLetter(i) {
+  let n = i, s = ''
+  do { s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26) - 1 } while (n >= 0)
+  return s
 }
 
 function setCell(r, c, v) {
@@ -176,6 +183,13 @@ function setCell(r, c, v) {
 
         <div v-if="matrix.length" class="table-wrap">
           <table class="grid">
+            <thead>
+              <tr>
+                <th v-for="(_, ci) in matrix[0]" :key="ci" scope="col">
+                  {{ colLetter(ci) }}
+                </th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="(row, ri) in matrix" :key="ri">
                 <td v-for="(cell, ci) in row" :key="ci">
@@ -265,6 +279,7 @@ function setCell(r, c, v) {
   max-height: 360px;
 }
 .grid { border-collapse: collapse; width: 100%; }
+.grid th { border: 1px solid var(--border); background: var(--bg3); color: var(--text2); font-size: 11px; font-weight: 600; padding: 3px 6px; min-width: 90px; text-align: center; }
 .grid td { border: 1px solid var(--border); padding: 0; min-width: 90px; }
 .grid input {
   width: 100%; box-sizing: border-box;
@@ -290,11 +305,11 @@ function setCell(r, c, v) {
 
 .ok-badge {
   font-size: 11.5px; font-weight: 600;
-  color: #4ade80;
+  color: #86efac;
   background: rgba(74,222,128,0.10);
   padding: 3px 8px; border-radius: 999px;
 }
-.ok-badge a { color: #4ade80; text-decoration: underline; }
+.ok-badge a { color: #86efac; text-decoration: underline; }
 
 .btn-primary {
   padding: 7px 16px; border-radius: 6px;

@@ -176,35 +176,51 @@ func TestGoogleProvider_RefreshSurfacesError(t *testing.T) {
 
 // --- Adapter tests -------------------------------------------------------
 
-func TestGDocsAdapter_CreateAndGetAndAppend(t *testing.T) {
-	var (
-		gotBatchUpdate string
-	)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// gdocsTestHandler routes the three endpoints the adapter calls to
+// small per-endpoint helpers. The split is here purely so each handler
+// has low cognitive complexity (sonar's threshold is 15).
+func gdocsTestHandler(t *testing.T, gotBatchUpdate *string) http.HandlerFunc {
+	t.Helper()
+	const docBody = `{
+		"documentId":"D1","title":"Run notes",
+		"body":{"content":[
+			{"paragraph":{"elements":[{"textRun":{"content":"Hello "}}]}},
+			{"paragraph":{"elements":[{"textRun":{"content":"world\n"}}]}}
+		]}
+	}`
+	handleCreate := func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(b), `"title":"Run notes"`) {
+			t.Errorf("create body wrong: %s", b)
+		}
+		_, _ = w.Write([]byte(`{"documentId":"D1","title":"Run notes"}`))
+	}
+	handleBatchUpdate := func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		*gotBatchUpdate = string(b)
+		_, _ = w.Write([]byte(`{}`))
+	}
+	handleGet := func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(docBody))
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/documents" && r.Method == http.MethodPost:
-			b, _ := io.ReadAll(r.Body)
-			if !strings.Contains(string(b), `"title":"Run notes"`) {
-				t.Errorf("create body wrong: %s", b)
-			}
-			_, _ = w.Write([]byte(`{"documentId":"D1","title":"Run notes"}`))
+			handleCreate(w, r)
 		case strings.HasSuffix(r.URL.Path, ":batchUpdate") && r.Method == http.MethodPost:
-			b, _ := io.ReadAll(r.Body)
-			gotBatchUpdate = string(b)
-			_, _ = w.Write([]byte(`{}`))
+			handleBatchUpdate(w, r)
 		case r.URL.Path == "/documents/D1" && r.Method == http.MethodGet:
-			_, _ = w.Write([]byte(`{
-				"documentId":"D1","title":"Run notes",
-				"body":{"content":[
-					{"paragraph":{"elements":[{"textRun":{"content":"Hello "}}]}},
-					{"paragraph":{"elements":[{"textRun":{"content":"world\n"}}]}}
-				]}
-			}`))
+			handleGet(w, r)
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(404)
 		}
-	}))
+	}
+}
+
+func TestGDocsAdapter_CreateAndGetAndAppend(t *testing.T) {
+	var gotBatchUpdate string
+	srv := httptest.NewServer(gdocsTestHandler(t, &gotBatchUpdate))
 	defer srv.Close()
 	a := &GDocsAdapter{HTTPClient: http.DefaultClient, APIBase: srv.URL}
 	tok := Token{AccessToken: "ya29.x"}
@@ -326,30 +342,52 @@ func TestGSheetsAdapter_CreateAndGet(t *testing.T) {
 	}
 }
 
-func TestGTasksAdapter_CRUD(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// gtasksTestHandler routes the five tasks-API endpoints the adapter
+// exercises. Same split-for-complexity rationale as gdocsTestHandler.
+func gtasksTestHandler(t *testing.T) http.HandlerFunc {
+	t.Helper()
+	handleListLists := func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"items":[{"id":"L1","title":"Inbox"}]}`))
+	}
+	handleListTasks := func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"items":[{"id":"T1","title":"do","status":"needsAction"}]}`))
+	}
+	handleCreate := func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var t1 Task
+		_ = json.Unmarshal(body, &t1)
+		if t1.Status != "needsAction" {
+			t.Errorf("expected default status set, got %q", t1.Status)
+		}
+		_, _ = w.Write([]byte(`{"id":"T2","title":"` + t1.Title + `","status":"needsAction"}`))
+	}
+	handlePatch := func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"T2","title":"renamed","status":"completed"}`))
+	}
+	handleDelete := func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(204)
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/users/@me/lists":
-			_, _ = w.Write([]byte(`{"items":[{"id":"L1","title":"Inbox"}]}`))
+			handleListLists(w, r)
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/lists/L1/tasks"):
-			_, _ = w.Write([]byte(`{"items":[{"id":"T1","title":"do","status":"needsAction"}]}`))
+			handleListTasks(w, r)
 		case r.Method == http.MethodPost && r.URL.Path == "/lists/L1/tasks":
-			body, _ := io.ReadAll(r.Body)
-			var t1 Task
-			_ = json.Unmarshal(body, &t1)
-			if t1.Status != "needsAction" {
-				t.Errorf("expected default status set, got %q", t1.Status)
-			}
-			_, _ = w.Write([]byte(`{"id":"T2","title":"` + t1.Title + `","status":"needsAction"}`))
+			handleCreate(w, r)
 		case r.Method == http.MethodPatch && r.URL.Path == "/lists/L1/tasks/T2":
-			_, _ = w.Write([]byte(`{"id":"T2","title":"renamed","status":"completed"}`))
+			handlePatch(w, r)
 		case r.Method == http.MethodDelete && r.URL.Path == "/lists/L1/tasks/T2":
-			w.WriteHeader(204)
+			handleDelete(w, r)
 		default:
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(404)
 		}
-	}))
+	}
+}
+
+func TestGTasksAdapter_CRUD(t *testing.T) {
+	srv := httptest.NewServer(gtasksTestHandler(t))
 	defer srv.Close()
 	a := &GTasksAdapter{HTTPClient: http.DefaultClient, APIBase: srv.URL}
 	tok := Token{AccessToken: "x"}

@@ -95,14 +95,17 @@ onBeforeUnmount(() => store.clearGChatSendStatus())
       </div>
 
       <div class="row">
-        <label class="field-label">Space</label>
-        <Select
-          v-model="selectedSpace"
-          :options="spaceOptions"
-          :disabled="gchatLoading"
-          width="100%"
-          testid="gchat-space-select"
-        />
+        <label class="field-label" for="gchat-space-select-wrap">Space</label>
+        <div id="gchat-space-select-wrap" class="grow">
+          <Select
+            v-model="selectedSpace"
+            :options="spaceOptions"
+            :disabled="gchatLoading"
+            width="100%"
+            testid="gchat-space-select"
+            aria-label="Space"
+          />
+        </div>
         <button class="btn-ghost" :disabled="gchatLoading" @click="refreshSpaces" data-testid="gchat-refresh">
           Refresh
         </button>
@@ -144,19 +147,20 @@ onBeforeUnmount(() => store.clearGChatSendStatus())
 .gchat-panel { padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
 .composer-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
 .row { display: flex; gap: 0.5rem; align-items: center; }
+.row .grow { flex: 1; }
 .row.footer { margin-top: 0.5rem; }
 .field-label { font-size: 12px; color: var(--text2); white-space: nowrap; }
 .composer { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 8px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; resize: vertical; }
 .composer:focus { outline: 2px solid var(--accent, #4f8cff); outline-offset: 1px; }
 .counter { font-size: 11px; color: var(--text3); align-self: flex-end; }
 .counter.over { color: #ef4444; font-weight: 600; }
-.btn-primary { background: var(--accent, #4f8cff); color: #fff; border: none; padding: 0.45rem 0.9rem; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.btn-primary { background: var(--accent, #2563eb); color: #fff; border: none; padding: 0.45rem 0.9rem; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 600; }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-ghost { background: transparent; border: 1px solid var(--border); padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer; color: var(--text); font-size: 12px; }
 .btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 .status-ok { color: #10b981; font-size: 12px; }
 .status-err { color: #ef4444; font-size: 12px; }
-.warn-banner { background: rgba(251, 191, 36, 0.1); border: 1px solid #f59e0b; color: #fbbf24; padding: 0.5rem 0.75rem; border-radius: 4px; font-size: 12px; line-height: 1.4; }
+.warn-banner { background: rgba(251, 191, 36, 0.1); border: 1px solid #f59e0b; color: #fde68a; padding: 0.5rem 0.75rem; border-radius: 4px; font-size: 12px; line-height: 1.4; }
 .history { margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
 .history-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
 .history ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.2rem; }
