@@ -25,6 +25,14 @@ import (
 // Called from main.go after the App is constructed.
 func (a *App) WorkspaceRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/workspace/oauth/callback", a.handleWorkspaceCallback)
+	// Slack Events API + slash commands. Only registers when the bus
+	// is wired (ARGUS_SLACK_SIGNING_SECRET set). When unwired the
+	// route stays unregistered so a curious internet caller gets a
+	// 404 rather than a misleading 401.
+	if a.slackEvents != nil {
+		mux.HandleFunc("/workspace/slack/events", a.handleSlackEvents)
+		mux.HandleFunc("/workspace/slack/commands", a.handleSlackCommands)
+	}
 }
 
 func (a *App) handleWorkspaceCallback(w http.ResponseWriter, r *http.Request) {

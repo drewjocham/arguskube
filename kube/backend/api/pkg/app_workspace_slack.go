@@ -90,6 +90,21 @@ func (a *App) ListSlackChannels(sessionToken, connectionID string) ([]SlackChann
 	return out, nil
 }
 
+// ListSlackEvents returns the bus's ring buffer (most recent first).
+// SaaS-only — when the bus isn't wired (no signing secret) this
+// returns an empty slice so the UI can render "events disabled" rather
+// than 500. Wails-only: events contain channel names and user IDs we
+// don't want to fan out over the SaaS HTTP shim.
+func (a *App) ListSlackEvents(sessionToken string) ([]workspace.RecentEvent, error) {
+	if a.slackEvents == nil {
+		return []workspace.RecentEvent{}, nil
+	}
+	if _, err := a.workspaceUserID(sessionToken); err != nil {
+		return nil, err
+	}
+	return a.slackEvents.RecentEvents(), nil
+}
+
 // SendSlackMessage posts plain text to a channel via chat.postMessage.
 // Slack auto-renders mrkdwn so backticks/asterisks are formatted.
 //

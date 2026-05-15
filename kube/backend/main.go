@@ -199,6 +199,7 @@ func run() error {
 	// with no providers, so the UI shows an empty service list until
 	// the user upgrades.
 	var workspaceMgr *workspace.Manager
+	var slackEvents *workspace.EventBus
 	if os.Getenv("ARGUS_MODE") != "saas" {
 		wsStore := workspace.NewStore(db.DB, workspace.NewCrypto(secretstore.New("Argus")))
 		workspaceMgr = workspace.NewManager(wsStore, logger.With("component", "workspace"))
@@ -214,6 +215,22 @@ func run() error {
 				RedirectURL:  strings.TrimRight(cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback",
 			})
 			logger.Info("workspace: Slack provider registered")
+		}
+
+		// Slack Events bus — registers separately because the OAuth flow
+		// works without it (outbound-only). Events + slash commands
+		// require ARGUS_SLACK_SIGNING_SECRET; the HTTP routes refuse to
+		// register without one (the workspace_slack_events handler
+		// short-circuits on a nil bus).
+		if sigSec := os.Getenv("ARGUS_SLACK_SIGNING_SECRET"); sigSec != "" {
+			slackEvents = workspace.NewEventBus(sigSec, logger.With("component", "slack-events"))
+			// One built-in command — a ping the operator can use to
+			// confirm the webhook plumbing works end-to-end without
+			// writing handler code first.
+			slackEvents.RegisterCommand("/argus-ping", func(c workspace.SlashCommand) string {
+				return "pong from Argus · user=" + c.UserName + " · team=" + c.TeamDomain
+			})
+			logger.Info("workspace: Slack events bus registered")
 		}
 
 		// Google provider: unified grant covering Docs + Sheets + Tasks.
@@ -278,6 +295,7 @@ func run() error {
 		DBConfigs:       dbConfigStore,
 		DBPool:          dbPool,
 		Workspace:       workspaceMgr,
+		SlackEvents:     slackEvents,
 		AppMode:         appMode,
 	})
 
