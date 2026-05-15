@@ -13,8 +13,8 @@ import (
 // returns via the Store, and lists/deletes connections.
 //
 // Phase 1A wires the OAuth state-tracking and the Provider registry.
-// Phase 1B+ implementations of Integration (Slack, Google, …) plug into
-// the same Manager without changes.
+// Phase 1B+ implementations of Integration (Google Docs/Sheets/Tasks)
+// plug into the same Manager without changes.
 type Manager struct {
 	store     *Store
 	logger    *slog.Logger
