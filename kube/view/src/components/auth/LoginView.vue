@@ -83,12 +83,17 @@ function onOAuthError(msg) {
            bypassing the gate. Remove (or hide) once the root cause is
            identified. -->
       <div class="diag-banner" data-testid="login-diag">
-        <strong>auth state:</strong>
-        authDisabled={{ String(debugInfo.authDisabled) }} ·
-        hasToken={{ String(debugInfo.hasToken) }} ·
-        hasUser={{ String(debugInfo.hasUser) }} ·
-        isAuthenticated={{ String(debugInfo.isAuthenticated) }} ·
-        providers=[{{ debugInfo.providers || 'none' }}]
+        <div>
+          <strong>auth state:</strong>
+          authDisabled={{ String(debugInfo.authDisabled) }} ·
+          hasToken={{ String(debugInfo.hasToken) }} ·
+          hasUser={{ String(debugInfo.hasUser) }} ·
+          isAuthenticated={{ String(debugInfo.isAuthenticated) }} ·
+          providers=[{{ debugInfo.providers || 'none' }}]
+        </div>
+        <div v-if="auth.providersError" class="diag-err">
+          <strong>/auth/providers error:</strong> {{ auth.providersError }}
+        </div>
       </div>
       <header class="brand">
         <div class="logo">⌬</div>
@@ -212,6 +217,11 @@ function onOAuthError(msg) {
   border: 1px solid #f59e0b; border-radius: 4px;
   padding: 0.5rem 0.75rem; margin: 0 0 1rem;
   word-break: break-all;
+}
+.diag-err {
+  margin-top: 0.5rem; padding-top: 0.4rem;
+  border-top: 1px dashed rgba(251, 191, 36, 0.5);
+  color: #fca5a5;
 }
 .brand .logo { font-size: 2.25rem; color: var(--accent); margin-bottom: .25rem; }
 .brand h1 { font-size: 1.5rem; letter-spacing: .02em; }

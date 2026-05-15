@@ -26,6 +26,10 @@ export function AnalyzeLabelMatch(arg1, arg2) {
   return window['go']['pkg']['App']['AnalyzeLabelMatch'](arg1, arg2);
 }
 
+export function AppendGoogleDoc(arg1, arg2, arg3, arg4) {
+  return window['go']['pkg']['App']['AppendGoogleDoc'](arg1, arg2, arg3, arg4);
+}
+
 export function ApplyYaml(arg1) {
   return window['go']['pkg']['App']['ApplyYaml'](arg1);
 }
@@ -106,6 +110,18 @@ export function CreateExternalBridge(arg1) {
   return window['go']['pkg']['App']['CreateExternalBridge'](arg1);
 }
 
+export function CreateGoogleDoc(arg1, arg2, arg3, arg4) {
+  return window['go']['pkg']['App']['CreateGoogleDoc'](arg1, arg2, arg3, arg4);
+}
+
+export function CreateGoogleSheet(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['CreateGoogleSheet'](arg1, arg2, arg3);
+}
+
+export function CreateGoogleTask(arg1, arg2, arg3, arg4) {
+  return window['go']['pkg']['App']['CreateGoogleTask'](arg1, arg2, arg3, arg4);
+}
+
 export function CreateIncident(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['pkg']['App']['CreateIncident'](arg1, arg2, arg3, arg4, arg5);
 }
@@ -132,6 +148,10 @@ export function DeleteCodeReviewReport(arg1, arg2) {
 
 export function DeleteDBConnection(arg1, arg2) {
   return window['go']['pkg']['App']['DeleteDBConnection'](arg1, arg2);
+}
+
+export function DeleteGoogleTask(arg1, arg2, arg3, arg4) {
+  return window['go']['pkg']['App']['DeleteGoogleTask'](arg1, arg2, arg3, arg4);
 }
 
 export function DeleteIncident(arg1) {
@@ -350,6 +370,10 @@ export function GetGatewayStatusByRole(arg1) {
   return window['go']['pkg']['App']['GetGatewayStatusByRole'](arg1);
 }
 
+export function GetGoogleSheet(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['GetGoogleSheet'](arg1, arg2, arg3);
+}
+
 export function GetLocalDistLoadQuota() {
   return window['go']['pkg']['App']['GetLocalDistLoadQuota']();
 }
@@ -546,6 +570,18 @@ export function ListGitHubPullRequests() {
   return window['go']['pkg']['App']['ListGitHubPullRequests']();
 }
 
+export function ListGoogleChatSpaces(arg1, arg2) {
+  return window['go']['pkg']['App']['ListGoogleChatSpaces'](arg1, arg2);
+}
+
+export function ListGoogleTaskLists(arg1, arg2) {
+  return window['go']['pkg']['App']['ListGoogleTaskLists'](arg1, arg2);
+}
+
+export function ListGoogleTasks(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['ListGoogleTasks'](arg1, arg2, arg3);
+}
+
 export function ListHTTPRoutes(arg1) {
   return window['go']['pkg']['App']['ListHTTPRoutes'](arg1);
 }
@@ -580,6 +616,10 @@ export function ListRunbooks() {
 
 export function ListServiceSelectors(arg1) {
   return window['go']['pkg']['App']['ListServiceSelectors'](arg1);
+}
+
+export function ListSlackChannels(arg1, arg2) {
+  return window['go']['pkg']['App']['ListSlackChannels'](arg1, arg2);
 }
 
 export function ListSpotChecks() {
@@ -644,6 +684,14 @@ export function QueryPromQL(arg1, arg2, arg3) {
 
 export function QueryTimeSeriesMetrics(arg1, arg2) {
   return window['go']['pkg']['App']['QueryTimeSeriesMetrics'](arg1, arg2);
+}
+
+export function ReadGoogleDoc(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['ReadGoogleDoc'](arg1, arg2, arg3);
+}
+
+export function ReadGoogleSheetRange(arg1, arg2, arg3, arg4) {
+  return window['go']['pkg']['App']['ReadGoogleSheetRange'](arg1, arg2, arg3, arg4);
 }
 
 export function RecordView(arg1, arg2, arg3) {
@@ -744,6 +792,14 @@ export function SendChatMessage(arg1, arg2) {
 
 export function SendExecInput(arg1) {
   return window['go']['pkg']['App']['SendExecInput'](arg1);
+}
+
+export function SendGoogleChatMessage(arg1, arg2, arg3, arg4) {
+  return window['go']['pkg']['App']['SendGoogleChatMessage'](arg1, arg2, arg3, arg4);
+}
+
+export function SendSlackMessage(arg1, arg2, arg3, arg4) {
+  return window['go']['pkg']['App']['SendSlackMessage'](arg1, arg2, arg3, arg4);
 }
 
 export function SendTerminalInput(arg1) {
@@ -862,6 +918,10 @@ export function UpdateBillingRates(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['UpdateBillingRates'](arg1, arg2, arg3);
 }
 
+export function UpdateGoogleTask(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['pkg']['App']['UpdateGoogleTask'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function UpdateIncident(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['UpdateIncident'](arg1, arg2, arg3);
 }
@@ -876,4 +936,12 @@ export function UpsertDBConnection(arg1, arg2) {
 
 export function ValidateEnvFile(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['ValidateEnvFile'](arg1, arg2, arg3);
+}
+
+export function WorkspaceRoutes(arg1) {
+  return window['go']['pkg']['App']['WorkspaceRoutes'](arg1);
+}
+
+export function WriteGoogleSheetRange(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['pkg']['App']['WriteGoogleSheetRange'](arg1, arg2, arg3, arg4, arg5);
 }
