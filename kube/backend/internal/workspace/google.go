@@ -31,6 +31,14 @@ const (
 	googleScopes = "https://www.googleapis.com/auth/documents " +
 		"https://www.googleapis.com/auth/spreadsheets " +
 		"https://www.googleapis.com/auth/tasks " +
+		// Google Chat scopes — chat.spaces.readonly lists the spaces
+		// the user is in; chat.messages.create lets the adapter post.
+		// Connected users from before Phase 3 won't have these grants
+		// in their token; the UI tells them to disconnect+reconnect to
+		// pick up the new scopes (Google's incremental auth would also
+		// work but requires extra round-trips we skip for v1).
+		"https://www.googleapis.com/auth/chat.spaces.readonly " +
+		"https://www.googleapis.com/auth/chat.messages.create " +
 		"https://www.googleapis.com/auth/userinfo.email " +
 		"https://www.googleapis.com/auth/userinfo.profile"
 )

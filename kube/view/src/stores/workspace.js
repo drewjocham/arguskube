@@ -54,6 +54,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const slackSendStatus = ref(null)
   let slackStatusTimer = null
 
+  // ---------- Phase 3 — Google Chat (shares the same `google` connection) -
+  // Mirrors the Slack pattern: per-connection space cache + send-status
+  // timer. Spaces are listed via the chat.spaces.readonly scope that
+  // Phase 3 added to GoogleProvider — existing connections from Phase 2
+  // need a reconnect to pick up the scope, surfaced in the UI.
+  const gchatSpaces = ref({})
+  const gchatLoading = ref(false)
+  const gchatSendError = ref(null)
+  const gchatSendStatus = ref(null)
+  let gchatStatusTimer = null
+
   // ---------- Phase 2 — Google Workspace (Docs / Sheets / Tasks) ----------
   // Per-connection caches. Docs+Sheets aren't preloaded today (no list-all
   // backend method), but the maps stay here so the panels can shove
@@ -229,6 +240,58 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  // -------------------- Google Chat actions --------------------
+  async function loadGChatSpaces(connectionID) {
+    if (!connectionID) return
+    gchatLoading.value = true
+    try {
+      const token = getSessionTokenSync()
+      const result = await cachedCallGo(
+        'ListGoogleChatSpaces',
+        [token, connectionID],
+        FAST_TTL,
+      )
+      gchatSpaces.value = {
+        ...gchatSpaces.value,
+        [connectionID]: Array.isArray(result) ? result : [],
+      }
+    } catch (e) {
+      error.value = e?.message || String(e)
+    } finally {
+      gchatLoading.value = false
+    }
+  }
+
+  function clearGChatSendStatus() {
+    gchatSendError.value = null
+    gchatSendStatus.value = null
+    if (gchatStatusTimer) {
+      clearTimeout(gchatStatusTimer)
+      gchatStatusTimer = null
+    }
+  }
+
+  async function sendGChatMessage(connectionID, spaceID, text) {
+    clearGChatSendStatus()
+    try {
+      const token = getSessionTokenSync()
+      await callGo('SendGoogleChatMessage', token, connectionID, spaceID, text)
+      gchatSendStatus.value = { text, spaceID, at: Date.now() }
+      gchatStatusTimer = setTimeout(() => {
+        gchatSendStatus.value = null
+        gchatStatusTimer = null
+      }, 4000)
+      return true
+    } catch (e) {
+      gchatSendError.value = e?.message || String(e)
+      gchatStatusTimer = setTimeout(() => {
+        gchatSendError.value = null
+        gchatStatusTimer = null
+      }, 4000)
+      throw e
+    }
+  }
+
   // -------------------- Google: shared status helpers --------------------
   // Centralized so every google action shares one timer slot. Auto-clear
   // mirrors the Slack pattern so the UX feels uniform across panels.
@@ -375,6 +438,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     loadSlackChannels,
     sendSlackMessage,
     clearSlackSendStatus,
+    // Phase 3 — Google Chat
+    gchatSpaces,
+    gchatLoading,
+    gchatSendError,
+    gchatSendStatus,
+    loadGChatSpaces,
+    sendGChatMessage,
+    clearGChatSendStatus,
     // Phase 2 — Google
     docs,
     sheets,

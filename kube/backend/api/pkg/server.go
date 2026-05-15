@@ -444,11 +444,12 @@ var httpExposedMethods = map[string]struct{}{
 	// SaaS-mode dashboard can show context to the user. Mutating
 	// methods (Create/Append/Write/Update/Delete) stay Wails-only — same
 	// posture as Slack's Send.
-	"ReadGoogleDoc":        {},
-	"GetGoogleSheet":       {},
-	"ReadGoogleSheetRange": {},
-	"ListGoogleTaskLists":  {},
-	"ListGoogleTasks":      {},
+	"ReadGoogleDoc":          {},
+	"GetGoogleSheet":         {},
+	"ReadGoogleSheetRange":   {},
+	"ListGoogleTaskLists":    {},
+	"ListGoogleTasks":        {},
+	"ListGoogleChatSpaces":   {},
 }
 
 func methodAllowedOverHTTP(name string) bool {
