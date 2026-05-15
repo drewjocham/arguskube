@@ -71,15 +71,31 @@ func (a *App) SetupAuth(store *auth.Store, cfg config.AuthConfig) {
 	// entire auth gate. We refuse to honor it when ARGUS_API_BIND
 	// points at anything other than loopback, so a deploy that
 	// accidentally inherits this env var doesn't ship without a gate.
+	//
+	// We log both the raw env value AND the resolved DevMode so an
+	// operator running `make no-auth-run` can confirm at a glance
+	// whether the env reached the binary. The prior single-line log
+	// was easy to miss in noisy startup output.
+	rawEnv := os.Getenv("ARGUS_AUTH_DISABLED")
 	devMode := cfg.DevMode
+	a.logger.Info("auth: resolving devMode",
+		slog.String("ARGUS_AUTH_DISABLED", rawEnv),
+		slog.Bool("cfg.DevMode", cfg.DevMode),
+		slog.String("ARGUS_API_BIND", os.Getenv("ARGUS_API_BIND")),
+	)
 	if devMode && !isLoopbackBind(os.Getenv("ARGUS_API_BIND")) {
 		a.logger.Warn("ARGUS_AUTH_DISABLED ignored — API is not bound to loopback",
-			"bind", os.Getenv("ARGUS_API_BIND"),
+			slog.String("bind", os.Getenv("ARGUS_API_BIND")),
 		)
 		devMode = false
 	}
 	if devMode {
-		a.logger.Warn("AUTH IS DISABLED — every /api request is unauthenticated. Local-dev mode only.")
+		a.logger.Warn("════════════════════════════════════════════════════════════")
+		a.logger.Warn("AUTH IS DISABLED — every /api request is unauthenticated.")
+		a.logger.Warn("Local-dev mode only. /auth/providers returns authDisabled=true.")
+		a.logger.Warn("════════════════════════════════════════════════════════════")
+	} else {
+		a.logger.Info("auth: dev-mode OFF — login required")
 	}
 	a.auth = &authState{
 		store:       store,

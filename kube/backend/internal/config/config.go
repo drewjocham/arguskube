@@ -370,7 +370,7 @@ func New() (*OnlineDataConfig, error) {
 			OIDCClientSecret:   env("ARGUS_OIDC_CLIENT_SECRET", ""),
 			OIDCDisplayName:    env("ARGUS_OIDC_DISPLAY_NAME", "Corporate SSO"),
 			AllowLocalSignup:   env("ARGUS_AUTH_ALLOW_SIGNUP", "true") != "false",
-			DevMode:            env("ARGUS_AUTH_DISABLED", "false") == "true",
+			DevMode:            envBool("ARGUS_AUTH_DISABLED", false),
 		},
 	}
 
@@ -395,6 +395,24 @@ func (c *OnlineDataConfig) validate() error {
 		return fmt.Errorf("cannot set both KUBECONFIG and in-cluster mode")
 	}
 	return nil
+}
+
+// envBool reads a boolean env var, accepting the conventional set of
+// truthy spellings. The previous `== "true"` check silently rejected
+// `=1`, `=yes`, `=on`, `=TRUE` — a common foot-gun for ops who set
+// ARGUS_AUTH_DISABLED on the command line and expected it to work.
+func envBool(key string, fallback bool) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	if v == "" {
+		return fallback
+	}
+	switch v {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	}
+	return fallback
 }
 
 func env(key, fallback string) string {
