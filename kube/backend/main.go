@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/wailsapp/wails/v2"
