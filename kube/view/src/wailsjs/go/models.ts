@@ -4400,6 +4400,32 @@ export namespace pkg {
 		    return a;
 		}
 	}
+	export class WorkspaceConnectionView {
+	    id: string;
+	    service: string;
+	    external_workspace_id?: string;
+	    display_name: string;
+	    email?: string;
+	    avatar_url?: string;
+	    connected_at: number;
+	    updated_at: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new WorkspaceConnectionView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.service = source["service"];
+	        this.external_workspace_id = source["external_workspace_id"];
+	        this.display_name = source["display_name"];
+	        this.email = source["email"];
+	        this.avatar_url = source["avatar_url"];
+	        this.connected_at = source["connected_at"];
+	        this.updated_at = source["updated_at"];
+	    }
+	}
 
 }
 
@@ -6154,6 +6180,25 @@ export namespace workflows {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace workspace {
+	
+	export class AuthURL {
+	    url: string;
+	    state: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AuthURL(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.url = source["url"];
+	        this.state = source["state"];
+	    }
 	}
 
 }

@@ -16,7 +16,13 @@ export const apiBase = (() => {
   if (typeof window !== 'undefined' && window.__argus_API_BASE__) {
     return window.__argus_API_BASE__
   }
-  return 'http://localhost:8080'
+  // 127.0.0.1 — not "localhost" — because on macOS `localhost` resolves
+  // to ::1 first. Argus binds 127.0.0.1:8080 (IPv4) by default, so when
+  // anything else (Docker, a stray ipv6 listener) is on the IPv6 :8080
+  // socket the webview silently hits *that* instead and /auth/providers
+  // never reaches us. ARGUS_AUTH_DISABLED then looks broken because
+  // loadProviders falls back to authDisabled=false.
+  return 'http://127.0.0.1:8080'
 })()
 
 // ---------------------------------------------------------------------------

@@ -86,6 +86,10 @@ export function CompleteOAuthFlow(arg1, arg2) {
   return window['go']['pkg']['App']['CompleteOAuthFlow'](arg1, arg2);
 }
 
+export function CompleteWorkspaceConnect(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['CompleteWorkspaceConnect'](arg1, arg2, arg3);
+}
+
 export function ConnectToAgent(arg1) {
   return window['go']['pkg']['App']['ConnectToAgent'](arg1);
 }
@@ -156,6 +160,10 @@ export function DeleteVaultSecret(arg1) {
 
 export function DeleteWorkflow(arg1) {
   return window['go']['pkg']['App']['DeleteWorkflow'](arg1);
+}
+
+export function DeleteWorkspaceConnection(arg1, arg2) {
+  return window['go']['pkg']['App']['DeleteWorkspaceConnection'](arg1, arg2);
 }
 
 export function DeployAgent(arg1) {
@@ -394,6 +402,10 @@ export function GetRunbook(arg1) {
   return window['go']['pkg']['App']['GetRunbook'](arg1);
 }
 
+export function GetRunnerStreamURL(arg1) {
+  return window['go']['pkg']['App']['GetRunnerStreamURL'](arg1);
+}
+
 export function GetSecretStoreInfo() {
   return window['go']['pkg']['App']['GetSecretStoreInfo']();
 }
@@ -584,6 +596,14 @@ export function ListVulnerabilities() {
 
 export function ListWorkflows() {
   return window['go']['pkg']['App']['ListWorkflows']();
+}
+
+export function ListWorkspaceConnections(arg1) {
+  return window['go']['pkg']['App']['ListWorkspaceConnections'](arg1);
+}
+
+export function ListWorkspaceServices() {
+  return window['go']['pkg']['App']['ListWorkspaceServices']();
 }
 
 export function LoginSaaS(arg1) {
@@ -778,8 +798,16 @@ export function StartOAuthFlow(arg1) {
   return window['go']['pkg']['App']['StartOAuthFlow'](arg1);
 }
 
+export function StartRunnerLoadTest(arg1) {
+  return window['go']['pkg']['App']['StartRunnerLoadTest'](arg1);
+}
+
 export function StartTerminal(arg1, arg2) {
   return window['go']['pkg']['App']['StartTerminal'](arg1, arg2);
+}
+
+export function StartWorkspaceConnect(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['StartWorkspaceConnect'](arg1, arg2, arg3);
 }
 
 export function StreamPodLogsFollow(arg1, arg2, arg3, arg4) {

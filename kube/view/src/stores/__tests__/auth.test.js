@@ -12,7 +12,7 @@ Object.defineProperty(window, 'localStorage', {
   writable: true, configurable: true,
 })
 
-const API_BASE = 'http://localhost:8080'
+const API_BASE = 'http://127.0.0.1:8080'
 
 vi.mock('../../composables/useBridge', () => ({
   apiBase: API_BASE,
