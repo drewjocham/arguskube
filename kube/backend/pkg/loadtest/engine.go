@@ -266,12 +266,12 @@ func (e *Engine) postScale(ctx context.Context) error {
 		return fmt.Errorf("wait for %d replicas: %w", sp.MinReplicas, err)
 	}
 	e.observe(tctx, "draining")
-	// Coarse drain observation: every 5 seconds for up to a minute
-	// after readiness. The agent uses this curve to comment on
-	// drain rate.
+	// Coarse drain observation: every 5 seconds for up to ScalePlan's
+	// DrainObserveDuration (default 1 min) after readiness. The agent
+	// uses this curve to comment on drain rate.
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
-	deadline := time.Now().Add(time.Minute)
+	deadline := time.Now().Add(sp.drainObserveDuration())
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
@@ -284,9 +284,10 @@ func (e *Engine) postScale(ctx context.Context) error {
 	return nil
 }
 
-// observe captures a single ScaleEvent. Silent on error — partial
+// observe captures a single ScaleEvent. Continues on error — partial
 // records are better than no records when the cluster connection
-// blips mid-run.
+// blips mid-run — but logs at Warn so a flatlined scale timeline
+// can be diagnosed instead of silently masked.
 func (e *Engine) observe(ctx context.Context, phase string) {
 	if e.Scaler == nil {
 		return
@@ -294,6 +295,11 @@ func (e *Engine) observe(ctx context.Context, phase string) {
 	sp := e.spec.Scale
 	specRep, ready, err := e.Scaler.Observe(ctx, sp.Namespace, sp.Deployment)
 	if err != nil {
+		e.logger.Warn("scale observe failed; skipping data point",
+			slog.String("phase", phase),
+			slog.String("namespace", sp.Namespace),
+			slog.String("deployment", sp.Deployment),
+			slog.String("error", err.Error()))
 		return
 	}
 	ev := ScaleEvent{
