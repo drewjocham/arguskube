@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { callGo, cachedCallGo, invalidateCache, FAST_TTL } from '../composables/useBridge'
 
 // Workspace store — owns the user's third-party integration connections
-// (Slack today; Google services land in Phase 2). Tokens never travel
+// (Google Docs/Sheets/Tasks). Tokens never travel
 // through this store; the backend keeps them encrypted at rest and
 // only the redacted WorkspaceConnectionView shape comes over the wire.
 //

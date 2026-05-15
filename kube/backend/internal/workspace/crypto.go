@@ -80,8 +80,7 @@ func (c *Crypto) loadOrCreateKey(ctx context.Context) ([]byte, error) {
 }
 
 // Encrypt returns base64(nonce||ciphertext||tag). Empty input → empty
-// output so a refresh-tokenless OAuth (Slack bot tokens) round-trips
-// cleanly.
+// output so a refresh-tokenless OAuth round-trips cleanly.
 func (c *Crypto) Encrypt(ctx context.Context, plaintext string) (string, error) {
 	if plaintext == "" {
 		return "", nil

@@ -8,9 +8,9 @@ import (
 )
 
 // app_workspace.go — Wails bindings for the Workspace integrations
-// (Slack, Google Chat/Docs/Sheets/Tasks). Phase 1A surface only:
-// listing, deleting, OAuth start/complete. Per-service operations
-// (send message, list channels, …) land in 1B+.
+// (Google Docs/Sheets/Tasks). Phase 1A surface only: listing,
+// deleting, OAuth start/complete. Per-service operations (read doc,
+// append row, create task, …) land in 1B+.
 //
 // User scoping: methods take the caller's sessionToken so userID is
 // resolved consistently between desktop (Wails) and SaaS (HTTP). The

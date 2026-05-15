@@ -15,8 +15,6 @@ const connecting = ref({})  // service -> bool
 // Service metadata is local — the backend's authoritative list is
 // service *ids* only; labels/colors/icons are presentation concerns.
 const SERVICE_META = {
-  slack:   { label: 'Slack',         color: '#4A154B', letter: 'S' },
-  gchat:   { label: 'Google Chat',   color: '#0F9D58', letter: 'C' },
   gdocs:   { label: 'Google Docs',   color: '#4285F4', letter: 'D' },
   gsheets: { label: 'Google Sheets', color: '#0F9D58', letter: 'S' },
   gtasks:  { label: 'Google Tasks',  color: '#4285F4', letter: 'T' },
@@ -66,7 +64,7 @@ function avatarStyle(meta) {
 
     <div v-if="!visibleServices.length" class="empty">
       <p>No workspace integrations are wired in this build.</p>
-      <p class="hint">Slack lands in Phase 1B; Google in Phase 2.</p>
+      <p class="hint">Google Docs, Sheets, and Tasks adapters land in Phase 1B.</p>
     </div>
 
     <ul v-else class="tiles">

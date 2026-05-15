@@ -29,11 +29,11 @@ describe('ConnectionPanel.vue', () => {
   })
 
   it('renders a tile with a Connect button when no connections exist', async () => {
-    mockCachedCallGo.mockResolvedValueOnce(['slack'])
+    mockCachedCallGo.mockResolvedValueOnce(['gdocs'])
     mockCallGo.mockResolvedValueOnce([])
     const w = mount(ConnectionPanel)
     await flushPromises()
-    expect(w.text()).toContain('Slack')
+    expect(w.text()).toContain('Google Docs')
     expect(w.text()).toContain('Not connected')
     const connectBtn = w.find('.connect-btn')
     expect(connectBtn.exists()).toBe(true)
@@ -41,10 +41,10 @@ describe('ConnectionPanel.vue', () => {
   })
 
   it('renders one row per connection with a Disconnect button', async () => {
-    mockCachedCallGo.mockResolvedValueOnce(['slack'])
+    mockCachedCallGo.mockResolvedValueOnce(['gdocs'])
     mockCallGo.mockResolvedValueOnce([
-      { id: 'a', service: 'slack', display_name: 'Acme HQ' },
-      { id: 'b', service: 'slack', display_name: 'Beta Corp' },
+      { id: 'a', service: 'gdocs', display_name: 'Acme HQ' },
+      { id: 'b', service: 'gdocs', display_name: 'Beta Corp' },
     ])
     const w = mount(ConnectionPanel)
     await flushPromises()

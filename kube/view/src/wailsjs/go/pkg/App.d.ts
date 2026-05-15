@@ -6,8 +6,8 @@ import {k8s} from '../models';
 import {http} from '../models';
 import {setup} from '../models';
 import {oauthproviders} from '../models';
-import {agentconn} from '../models';
 import {pkg} from '../models';
+import {agentconn} from '../models';
 import {incidents} from '../models';
 import {runbooks} from '../models';
 import {alerts} from '../models';
@@ -25,6 +25,7 @@ import {vulnscan} from '../models';
 import {popeye} from '../models';
 import {envprobe} from '../models';
 import {auth} from '../models';
+import {workspace} from '../models';
 
 export function AcceptSuggestion(arg1:string,arg2:string):Promise<void>;
 
@@ -68,6 +69,8 @@ export function CloseExecSession():Promise<void>;
 
 export function CompleteOAuthFlow(arg1:string,arg2:string):Promise<oauthproviders.UserInfo>;
 
+export function CompleteWorkspaceConnect(arg1:string,arg2:string,arg3:string):Promise<pkg.WorkspaceConnectionView>;
+
 export function ConnectToAgent(arg1:string):Promise<Array<agentconn.Anomaly>>;
 
 export function CorrelatePodEvents(arg1:string,arg2:string,arg3:number):Promise<k8s.CorrelationResult>;
@@ -103,6 +106,8 @@ export function DeleteRunbook(arg1:string):Promise<void>;
 export function DeleteVaultSecret(arg1:string):Promise<void>;
 
 export function DeleteWorkflow(arg1:string):Promise<void>;
+
+export function DeleteWorkspaceConnection(arg1:string,arg2:string):Promise<void>;
 
 export function DeployAgent(arg1:string):Promise<setup.SetupResult>;
 
@@ -222,6 +227,8 @@ export function GetRouteTopologyGraph(arg1:string):Promise<k8s.GatewayRouteGraph
 
 export function GetRunbook(arg1:string):Promise<string>;
 
+export function GetRunnerStreamURL(arg1:string):Promise<string>;
+
 export function GetSecretStoreInfo():Promise<pkg.SecretStoreInfo>;
 
 export function GetServicePods(arg1:string,arg2:string):Promise<Array<k8s.ServicePod>>;
@@ -317,6 +324,10 @@ export function ListVaultSecrets():Promise<Array<pkg.VaultSecret>>;
 export function ListVulnerabilities():Promise<Array<vulnscan.ScannedImage>>;
 
 export function ListWorkflows():Promise<Array<workflows.WorkflowSummary>>;
+
+export function ListWorkspaceConnections(arg1:string):Promise<Array<pkg.WorkspaceConnectionView>>;
+
+export function ListWorkspaceServices():Promise<Array<string>>;
 
 export function LoginSaaS(arg1:string):Promise<string>;
 
@@ -414,7 +425,11 @@ export function StartHTTPServer(arg1:number):Promise<void>;
 
 export function StartOAuthFlow(arg1:string):Promise<string>;
 
+export function StartRunnerLoadTest(arg1:saasapi.DistLoadSpec):Promise<string>;
+
 export function StartTerminal(arg1:number,arg2:number):Promise<void>;
+
+export function StartWorkspaceConnect(arg1:string,arg2:string,arg3:string):Promise<workspace.AuthURL>;
 
 export function StreamPodLogsFollow(arg1:string,arg2:string,arg3:string,arg4:number):Promise<Array<string>>;
 

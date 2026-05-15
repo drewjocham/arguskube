@@ -49,7 +49,7 @@ const SECTION_HINTS = Object.freeze({
   config: 'Config Maps, Secrets, HPAs',
   storage: 'PVCs, PVs, Storage Classes — useful for stateful workloads',
   knowledge: 'Local documents + S3-backed notebooks',
-  workspace: 'Slack + Google Workspace integrations (Phase 1A: connections only)',
+  workspace: 'Google Workspace integrations (Phase 1A: connections only)',
   admin: 'Setup & Tools and Settings',
 })
 
