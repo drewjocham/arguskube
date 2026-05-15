@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -503,6 +504,53 @@ func TestLocalDistLoad_QuotaIsAtomic(t *testing.T) {
 	}
 	if rejCount != goroutines-int32(localQuotaFreeLimit) {
 		t.Fatalf("expected %d rejections, got %d", goroutines-int32(localQuotaFreeLimit), rejCount)
+	}
+}
+
+// TestProgressThrottler_FlushTerminatesGoroutine guards the fix for
+// the throttler-goroutine leak: newProgressThrottler spawns a ticker
+// goroutine that only exits when flush() closes its channel. If
+// startLocalDistLoad bails out between throttler creation and
+// ownership transfer, the guarded defer in the caller must flush so
+// the goroutine doesn't leak. This test exercises the flush directly.
+func TestProgressThrottler_FlushTerminatesGoroutine(t *testing.T) {
+	a := quietApp(t)
+	before := runtime.NumGoroutine()
+
+	p := newProgressThrottler(a, "rid", 50*time.Millisecond)
+
+	// Confirm a goroutine was spawned. If the implementation ever
+	// changed to lazy-start, the leak guard would become unnecessary —
+	// this assertion makes that pivot visible.
+	if got := runtime.NumGoroutine(); got <= before {
+		t.Fatalf("newProgressThrottler did not spawn a goroutine; before=%d after=%d", before, got)
+	}
+
+	p.flush()
+
+	// Allow the ticker goroutine to observe closeCh and exit. The
+	// runtime scheduler doesn't synchronously rendezvous, so poll.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() <= before {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("throttler goroutine did not exit after flush(); before=%d after=%d",
+		before, runtime.NumGoroutine())
+}
+
+// TestProgressThrottler_FlushIsIdempotent guards the second half of
+// the leak fix: the caller defers a guarded flush AND runLoadTest
+// also flushes after the engine returns. Both calls hit the same
+// throttler in the happy path, so flush() must be safe to call
+// repeatedly (sync.Once around close(closeCh)).
+func TestProgressThrottler_FlushIsIdempotent(t *testing.T) {
+	a := quietApp(t)
+	p := newProgressThrottler(a, "rid", 50*time.Millisecond)
+	for i := 0; i < 3; i++ {
+		p.flush()
 	}
 }
 
