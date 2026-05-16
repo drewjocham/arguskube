@@ -124,17 +124,50 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   async function startConnect(service) {
     error.value = null
-    const token = getSessionTokenSync()
-    // The redirectURL is left blank: the backend picks the right loopback
-    // listener for desktop builds (or the SaaS callback path in cloud
-    // builds). Passing "" keeps the frontend out of that decision.
-    const auth = await callGo('StartWorkspaceConnect', token, service, '')
-    if (!auth?.url) throw new Error('workspace: backend did not return an auth URL')
 
+    // STAGE 1 — ask the backend for an auth URL. This is the path
+    // where a missing/misconfigured client_id silently broke before:
+    // the call threw, the caller's catch was empty, store.error was
+    // never updated, and the user saw nothing happen at all.
+    let auth
+    try {
+      const token = getSessionTokenSync()
+      // The redirectURL is left blank: the backend picks the right
+      // loopback listener for desktop builds (or the SaaS callback
+      // path in cloud builds). Passing "" keeps the frontend out of
+      // that decision.
+      auth = await callGo('StartWorkspaceConnect', token, service, '')
+    } catch (e) {
+      // Two common causes here: (1) provider isn't configured server-
+      // side (missing GOOGLE_CLIENT_ID/SECRET) → backend returns a
+      // descriptive error string, (2) the session isn't valid →
+      // 401. Surface both verbatim — they're already actionable.
+      error.value = humanizeStartError(service, e)
+      throw e
+    }
+    if (!auth?.url) {
+      error.value = `Could not start the ${service} sign-in flow — the backend did not return a redirect URL. Check that the OAuth client credentials are configured in Settings.`
+      throw new Error(error.value)
+    }
+
+    // STAGE 2 — open the popup. Browsers will block window.open
+    // when it isn't synchronous with a user gesture, or when the
+    // user has a popup blocker. Previously a null popup meant the
+    // promise waited 5 minutes then rejected with "Connection timed
+    // out" — leaving the user clueless. Fail loud and fast.
     const popup = window.open(auth.url, '_blank', 'noopener,noreferrer,width=520,height=720')
-    // popup may be null when noopener is honored; in that case the
-    // callback page still needs to ping us via BroadcastChannel or
-    // localStorage. For phase 1A we assume noopener returns a handle.
+    if (!popup) {
+      error.value = 'The browser blocked the sign-in pop-up. Allow pop-ups for Argus, then click Connect again.'
+      throw new Error(error.value)
+    }
+
+    // STAGE 3 — wait for the callback. The callback page posts back
+    // one of:
+    //   workspace:complete  → success (state/code present)
+    //   workspace:error     → upstream failure (consent denied,
+    //                          expired state, missing code, etc.)
+    // The pre-fix backend only postMessaged on success; failures
+    // just rendered HTML in the popup and the parent timed out.
     return await new Promise((resolve, reject) => {
       const start = Date.now()
       let done = false
@@ -145,9 +178,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       }
       const onMessage = async (ev) => {
         const d = ev.data
-        if (!d || d.type !== 'workspace:complete') return
-        if (d.service !== service || d.state !== auth.state) return
+        if (!d || (d.type !== 'workspace:complete' && d.type !== 'workspace:error')) return
+        // Service / state must match the attempt we started — drops
+        // stale messages from previous attempts in the same tab.
+        if (d.type === 'workspace:complete' && (d.service !== service || d.state !== auth.state)) return
         cleanup()
+        if (d.type === 'workspace:error') {
+          // Backend already gave us an actionable upstream message.
+          error.value = d.error || 'The provider rejected the sign-in attempt.'
+          try { popup?.close?.() } catch { /* cross-origin close — harmless */ }
+          reject(new Error(error.value))
+          return
+        }
         try {
           const conn = await callGo('CompleteWorkspaceConnect', d.service, d.state, d.code)
           invalidateCache('ListWorkspaceConnections')
@@ -155,7 +197,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           try { popup?.close?.() } catch { /* cross-origin close — harmless */ }
           resolve(conn)
         } catch (e) {
-          error.value = e?.message || String(e)
+          error.value = humanizeCompleteError(service, e)
           reject(e)
         }
       }
@@ -164,15 +206,53 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (done) return
         if (Date.now() - start > OAUTH_TIMEOUT_MS) {
           cleanup()
-          reject(new Error('Connection timed out — please try again'))
+          error.value = 'Connection timed out — please try again. If the pop-up reached the provider, check that the OAuth redirect URI is registered for this service.'
+          reject(new Error(error.value))
           return
         }
         if (popup && popup.closed) {
           cleanup()
-          reject(new Error('Connection canceled before sign-in finished'))
+          // popup.closed=true with no preceding message usually means
+          // (a) user actually canceled, (b) cross-origin close detection
+          // misfired. Surface a friendly message either way and let
+          // the user retry.
+          error.value = 'Sign-in window closed before the provider returned. Click Connect to try again.'
+          reject(new Error(error.value))
         }
       }, POPUP_POLL_MS)
     })
+  }
+
+  // humanizeStartError keeps server-side error strings readable
+  // — most "configuration missing" failures come back as plain
+  // sentences from the backend and pass through unchanged. The
+  // exception is bare "HTTP error! status: NNN" strings from the
+  // bridge, which we expand into something a user can act on.
+  function humanizeStartError(service, err) {
+    const raw = err?.message || String(err || '')
+    if (/status:\s*401/.test(raw)) {
+      return `You must be signed in to connect ${service}. Sign out and back in, then try again.`
+    }
+    if (/status:\s*403/.test(raw)) {
+      return `Argus refused to start the ${service} sign-in flow. Check that the workspace integration is enabled for your tier.`
+    }
+    if (/status:\s*5\d\d/.test(raw)) {
+      return `Argus backend hit an error starting the ${service} sign-in flow. Check the backend logs for "workspace" entries.`
+    }
+    return raw || `Could not start the ${service} sign-in flow.`
+  }
+
+  // humanizeCompleteError is the same for the second leg — the
+  // token-exchange and profile-fetch round-trip. Token-exchange
+  // failures (mis-registered redirect URI, invalid_grant, scopes
+  // mismatch) come back as descriptive backend errors and pass
+  // through unchanged.
+  function humanizeCompleteError(service, err) {
+    const raw = err?.message || String(err || '')
+    if (/invalid_grant|invalid_client/i.test(raw)) {
+      return `The ${service} provider rejected the auth code: ${raw}. This usually means the OAuth client credentials or the redirect URI registered with the provider are out of date.`
+    }
+    return raw || `Could not finish the ${service} sign-in flow.`
   }
 
   async function disconnect(id) {
