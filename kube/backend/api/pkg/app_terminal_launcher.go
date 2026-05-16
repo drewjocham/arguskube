@@ -49,7 +49,11 @@ func (a *App) LaunchPopOutTerminal() error {
 	if err != nil {
 		a.logger.Warn("LaunchPopOutTerminal: lufis binary not resolvable",
 			slog.String("error", err.Error()))
-		return err
+		// %w preserves ErrLufisNotFound for errors.Is callers (the
+		// frontend doesn't go through errors.Is, but in-tree Go
+		// callers can still tell "binary missing" from a generic
+		// resolver failure).
+		return fmt.Errorf("LaunchPopOutTerminal: resolve binary: %w", err)
 	}
 
 	env := a.buildPopOutEnv(os.Environ())
@@ -93,10 +97,19 @@ func (a *App) LaunchPopOutTerminal() error {
 // (helps in dev where both binaries sit in the same build dir).
 func resolveLufisBinary() (string, error) {
 	if p := os.Getenv("ARGUS_LUFIS_PATH"); p != "" {
-		if _, err := os.Stat(p); err == nil {
+		info, err := os.Stat(p)
+		if err == nil && !info.IsDir() {
 			return p, nil
 		}
-		return "", fmt.Errorf("ARGUS_LUFIS_PATH=%s does not exist", p)
+		if err == nil {
+			// Path exists but isn't a regular file (someone pointed
+			// the env at a directory). errors.New is fine — no
+			// upstream error to wrap.
+			return "", fmt.Errorf("ARGUS_LUFIS_PATH=%s is a directory, not an executable", p)
+		}
+		// Preserve the *os.PathError (permission denied, ELOOP, …)
+		// so callers/logs see the OS-level reason.
+		return "", fmt.Errorf("ARGUS_LUFIS_PATH=%s stat: %w", p, err)
 	}
 
 	if p, err := exec.LookPath(lufisBinaryName); err == nil {
