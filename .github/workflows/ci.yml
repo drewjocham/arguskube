@@ -61,7 +61,47 @@ jobs:
         # developer machines without -short — they have a real
         # environment. Without this, the setup package consistently
         # stalls the 2-minute test budget on CI runners.
-        run: go test -short -race -count=1 -timeout 180s ./...
+        #
+        # -coverprofile/-covermode=atomic add a coverage capture; the
+        # next step parses the profile and asserts a floor. atomic
+        # mode is required alongside -race.
+        run: go test -short -race -count=1 -timeout 180s -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Coverage threshold
+        # Compute the total coverage and assert it stays above the
+        # floor below. Treat the threshold as a regression guard, not
+        # a quality target — the value is intended to ratchet up over
+        # time as the untested packages from CR P1.6 land more tests.
+        # Setting `continue-on-error: true` for the first cycle so the
+        # baseline can be observed in CI output before the gate flips
+        # to enforcing.
+        continue-on-error: true
+        env:
+          MIN_COVERAGE: '25.0'
+        run: |
+          set -euo pipefail
+          if [ ! -f coverage.out ]; then
+            echo "::error::coverage.out not produced by the Test step"
+            exit 1
+          fi
+          COVERAGE=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | tr -d '%')
+          echo "Total backend coverage: ${COVERAGE}%"
+          echo "## Backend coverage: ${COVERAGE}%" >> "$GITHUB_STEP_SUMMARY"
+          awk -v c="${COVERAGE}" -v m="${MIN_COVERAGE}" 'BEGIN {
+            if (c+0 < m+0) {
+              printf "Coverage %s%% is below the %s%% threshold.\n", c, m
+              exit 1
+            }
+            printf "Coverage %s%% \xe2\x89\xa5 %s%% threshold OK.\n", c, m
+          }'
+
+      - name: Upload coverage profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: kube/backend/coverage.out
+          if-no-files-found: warn
 
       # Lint is non-blocking on the consolidation PR: the kube/backend/
       # restructure makes every pre-existing issue appear "new" because the
