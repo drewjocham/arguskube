@@ -2,6 +2,15 @@ module github.com/argues/argus
 
 go 1.25.0
 
+require github.com/argues/argus-pty v0.0.0-00010101000000-000000000000
+
+// Local replace — the argus-pty module lives in this repo at
+// ../../pkg/pty/. go.work at the repo root makes this transparent
+// for normal `go build`, but the replace keeps `go test` /
+// `goimports` happy when invoked without workspace mode (e.g.
+// in CI with GOFLAGS=-mod=mod).
+replace github.com/argues/argus-pty => ../../pkg/pty
+
 require (
 	cloud.google.com/go/pubsub v1.50.2
 	github.com/Azure/go-amqp v1.6.0

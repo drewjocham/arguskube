@@ -1,141 +1,59 @@
+// Package pty wraps the shared github.com/argues/argus-pty PTY core
+// in the Terminal type lufis-terminal's render layer already imports.
+// The actual PTY lifecycle, error wrapping, restart semantics, and
+// read loop live in the shared package — see docs/lufis-terminal-
+// audit-plan.md PR-3.
 package pty
 
 import (
-	"errors"
-	"fmt"
-	"io"
 	"log/slog"
-	"os"
-	"os/exec"
-	"sync"
 
-	"github.com/creack/pty"
+	sharedpty "github.com/argues/argus-pty"
 )
 
+// Terminal is lufis's per-window PTY surface. The underlying lifecycle
+// is the shared sharedpty.PTY; this wrapper preserves the Terminal /
+// Terminal.OnOutput field-style API the GLFW + ansi parser callers
+// have always used.
 type Terminal struct {
-	cmd      *exec.Cmd
-	ptmx     *os.File
-	mu       sync.Mutex
-	closed   bool
-	logger   *slog.Logger
+	pty *sharedpty.PTY
+
+	// OnOutput is the per-Terminal callback assigned by the render
+	// layer. Kept as a field (rather than a setter) so the existing
+	// `term.OnOutput = func(...) { ... }` callsites compile unchanged.
 	OnOutput func(data string)
 }
 
+// New constructs a Terminal. A nil logger is accepted.
 func New(logger *slog.Logger) *Terminal {
-	if logger == nil {
-		logger = slog.New(slog.DiscardHandler)
+	t := &Terminal{pty: sharedpty.New(logger)}
+	t.pty.OnOutput = func(data string) {
+		if t.OnOutput != nil {
+			t.OnOutput(data)
+		}
 	}
-	return &Terminal{logger: logger}
+	return t
 }
 
+// Start spawns the shell behind a fresh PTY. The shell argument can
+// be empty — the shared core falls back to $SHELL then "zsh".
 func (t *Terminal) Start(shell string, rows, cols uint16) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if t.closed {
-		return nil
-	}
-
-	cmd := exec.Command(shell, "-l")
-	cmd.Env = append(os.Environ(),
-		"TERM=xterm-256color",
-		"COLORTERM=truecolor",
-	)
-
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
-	if err != nil {
-		return fmt.Errorf("pty start: %w", err)
-	}
-
-	t.cmd = cmd
-	t.ptmx = ptmx
-
-	go t.readLoop(ptmx)
-
-	return nil
+	return t.pty.Start(sharedpty.Options{
+		Shell:      shell,
+		Rows:       rows,
+		Cols:       cols,
+		LoginShell: true,
+	})
 }
 
-func (t *Terminal) Write(data string) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+// Write sends raw bytes to the PTY (keystrokes).
+func (t *Terminal) Write(data string) error { return t.pty.Write(data) }
 
-	if t.closed || t.ptmx == nil {
-		return nil
-	}
+// Resize updates the PTY's window dimensions.
+func (t *Terminal) Resize(rows, cols uint16) error { return t.pty.Resize(rows, cols) }
 
-	_, err := t.ptmx.Write([]byte(data))
-	if err != nil {
-		return fmt.Errorf("pty write: %w", err)
-	}
-	return nil
-}
+// Close tears down the PTY. Idempotent.
+func (t *Terminal) Close() error { return t.pty.Close() }
 
-func (t *Terminal) Resize(rows, cols uint16) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if t.ptmx == nil {
-		return nil
-	}
-
-	if err := pty.Setsize(t.ptmx, &pty.Winsize{Rows: rows, Cols: cols}); err != nil {
-		return fmt.Errorf("pty resize: %w", err)
-	}
-	return nil
-}
-
-func (t *Terminal) Close() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	return t.closeLocked()
-}
-
-func (t *Terminal) closeLocked() error {
-	if t.closed {
-		return nil
-	}
-	t.closed = true
-
-	var errs []error
-
-	if t.ptmx != nil {
-		if err := t.ptmx.Close(); err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	if t.cmd != nil && t.cmd.Process != nil {
-		if err := t.cmd.Process.Kill(); err != nil {
-			errs = append(errs, err)
-		}
-		if err := t.cmd.Wait(); err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	return errors.Join(errs...)
-}
-
-func (t *Terminal) IsRunning() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	return !t.closed && t.cmd != nil && t.cmd.Process != nil
-}
-
-func (t *Terminal) readLoop(ptmx *os.File) {
-	buf := make([]byte, 8192)
-	for {
-		n, err := ptmx.Read(buf)
-		if err != nil {
-			if err != io.EOF {
-				t.logger.Debug("pty read error", "error", err)
-			}
-			return
-		}
-		if n > 0 && t.OnOutput != nil {
-			t.OnOutput(string(buf[:n]))
-		}
-	}
-}
+// IsRunning reports whether the PTY is up.
+func (t *Terminal) IsRunning() bool { return t.pty.IsRunning() }
