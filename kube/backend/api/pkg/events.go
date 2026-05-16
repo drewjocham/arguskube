@@ -90,7 +90,7 @@ func (a *App) pollAlerts(ctx context.Context) {
 						})
 
 						// Trigger auto-investigation (non-blocking).
-						a.agent.AutoInvestigate(ctx, alert, a.cachedMetrics, alertList)
+						a.agent.AutoInvestigate(ctx, alert, a.cachedMetrics.Load(), alertList)
 					}
 				}
 
@@ -144,7 +144,7 @@ func (a *App) pollMetrics(ctx context.Context) {
 			if err != nil {
 				continue
 			}
-			a.cachedMetrics = m
+			a.cachedMetrics.Store(m)
 			runtime.EventsEmit(ctx, EventMetricsUpdate, m)
 		}
 	}

@@ -66,7 +66,7 @@ func (a *App) SendChatMessage(alertID string, message string) (string, error) {
 
 	// Assemble the enriched diagnostic context.
 	diagCtx := &ai.DiagnosticContext{
-		Metrics: a.cachedMetrics,
+		Metrics: a.cachedMetrics.Load(),
 	}
 
 	// Add recent warning events from the cluster.

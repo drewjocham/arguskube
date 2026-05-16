@@ -60,7 +60,7 @@ func (n *spotcheckNotifier) Notify(checkName string, f spotcheck.Finding) {
 // cached snapshot. The cached value is refreshed on the existing
 // metrics polling loop, so this never blocks on the K8s API.
 func (a *App) CurrentMetrics() *alerts.ClusterMetrics {
-	return a.cachedMetrics
+	return a.cachedMetrics.Load()
 }
 
 // startSpotChecks builds the engine, registers the default checks,
