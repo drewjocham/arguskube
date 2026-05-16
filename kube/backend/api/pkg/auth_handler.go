@@ -33,7 +33,8 @@ func isLoopbackBind(bind string) bool {
 type authState struct {
 	store       *auth.Store
 	oidc        *auth.OIDCManager
-	apple       *auth.AppleManager // nil unless Sign in with Apple is configured
+	apple       *auth.AppleManager   // nil unless Sign in with Apple is configured
+	passkey     *auth.PasskeyManager // nil when ARGUS_PASSKEY_ENABLED=false
 	allowSignup bool
 	// devMode disables the entire gate. Only honored when the API
 	// binds to loopback — see SetupAuth for the safety check.
@@ -125,13 +126,33 @@ func (a *App) SetupAuth(store *auth.Store, cfg config.AuthConfig) {
 			a.logger.Info("Sign in with Apple registered", slog.String("servicesID", cfg.AppleServicesID))
 		}
 	}
+	if cfg.PasskeyEnabled {
+		mgr, err := auth.NewPasskeyManager(cfg.PasskeyRPID, cfg.PasskeyRPName, cfg.PasskeyRPOrigin, store.PasskeyStore())
+		if err != nil {
+			a.logger.Error("passkey: disabled — config rejected",
+				slog.String("error", err.Error()),
+				slog.String("rp_id", cfg.PasskeyRPID),
+				slog.String("rp_origin", cfg.PasskeyRPOrigin),
+			)
+		} else {
+			a.auth.passkey = mgr
+			a.logger.Info("passkey: enabled",
+				slog.String("rp_id", cfg.PasskeyRPID),
+				slog.String("rp_origin", cfg.PasskeyRPOrigin),
+			)
+		}
+	}
 	// Best-effort cleanup loop — runs every hour so the session table
 	// doesn't grow without bound on long-running installs.
+	pk := a.auth.passkey
 	go func() {
 		t := time.NewTicker(1 * time.Hour)
 		defer t.Stop()
 		for range t.C {
 			store.PurgeExpired()
+			if pk != nil {
+				pk.PurgeExpired()
+			}
 		}
 	}()
 }
@@ -154,6 +175,16 @@ func (a *App) AuthRoutes(mux *http.ServeMux) {
 	// redirecting via GET.
 	mux.HandleFunc("/auth/apple/start", a.handleAppleStart)
 	mux.HandleFunc("/auth/apple/callback", a.handleAppleCallback)
+	// Passkey (WebAuthn) endpoints. Register-begin/finish are
+	// authenticated (you can only add a passkey to your own account);
+	// login-begin/finish are public so a user without a session can
+	// sign in.
+	mux.HandleFunc("/auth/passkey/register/begin", a.handlePasskeyRegisterBegin)
+	mux.HandleFunc("/auth/passkey/register/finish", a.handlePasskeyRegisterFinish)
+	mux.HandleFunc("/auth/passkey/login/begin", a.handlePasskeyLoginBegin)
+	mux.HandleFunc("/auth/passkey/login/finish", a.handlePasskeyLoginFinish)
+	mux.HandleFunc("/auth/passkey/list", a.handlePasskeyList)
+	mux.HandleFunc("/auth/passkey/", a.handlePasskeyDelete) // DELETE /auth/passkey/{id}
 }
 
 // preflight applies the same CORS gate as /api/*. Auth endpoints don't
@@ -205,9 +236,10 @@ func (a *App) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"providers":    providers,
-		"allowSignup":  a.auth.allowSignup,
-		"authDisabled": a.auth.devMode,
+		"providers":      providers,
+		"allowSignup":    a.auth.allowSignup,
+		"authDisabled":   a.auth.devMode,
+		"passkeyEnabled": a.auth.passkey != nil,
 	})
 }
 
@@ -433,7 +465,8 @@ func loginResponse(user *auth.User, sess *auth.Session) map[string]any {
 // leak to the client as 4xx.
 func writeAuthError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, auth.ErrInvalidCredentials), errors.Is(err, auth.ErrSessionInvalid):
+	case errors.Is(err, auth.ErrInvalidCredentials), errors.Is(err, auth.ErrSessionInvalid),
+		errors.Is(err, auth.ErrPasskeySessionInvalid), errors.Is(err, auth.ErrPasskeyNotFound):
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 	case errors.Is(err, auth.ErrEmailTaken), errors.Is(err, auth.ErrProviderMismatch):
 		http.Error(w, err.Error(), http.StatusConflict)
