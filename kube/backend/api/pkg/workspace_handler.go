@@ -4,9 +4,13 @@ import (
 	"net/http"
 	"strings"
 
+	gochi "github.com/go-chi/chi/v5"
+
 	"github.com/argues/argus/internal/auth"
 	"github.com/argues/argus/internal/workspace"
 )
+
+const workspacePathOAuthCallback = "/workspace/oauth/callback"
 
 // workspace_handler.go — the OAuth callback page for workspace
 // providers. Mirrors the auth /auth/*/callback pattern: a tiny HTML
@@ -21,10 +25,13 @@ import (
 // flows. The state nonce is server-issued (Manager.Start) so the
 // callback can't be forged by an unrelated browser.
 
-// WorkspaceRoutes registers the public callback endpoint on a mux.
-// Called from main.go after the App is constructed.
-func (a *App) WorkspaceRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/workspace/oauth/callback", a.handleWorkspaceCallback)
+// WorkspaceRoutes builds the /workspace/* router and returns it as a
+// chi sub-tree the parent server mounts. Matches the pim-agl
+// "Routes() http.Handler" composition pattern.
+func (a *App) WorkspaceRoutes() http.Handler {
+	r := gochi.NewRouter()
+	r.Get(workspacePathOAuthCallback, a.handleWorkspaceCallback)
+	return r
 }
 
 func (a *App) handleWorkspaceCallback(w http.ResponseWriter, r *http.Request) {

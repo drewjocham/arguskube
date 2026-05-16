@@ -10,7 +10,8 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
+
+	gochi "github.com/go-chi/chi/v5"
 
 	"github.com/argues/argus/internal/auth"
 )
@@ -208,24 +209,20 @@ func (a *App) handlePasskeyList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"credentials": out})
 }
 
-// handlePasskeyDelete is the catch-all for DELETE /auth/passkey/{id}.
-// Tied to the prefix path because http.ServeMux doesn't do path
-// parameter parsing for us; the trailing-slash registration in
-// AuthRoutes routes /auth/passkey/<anything> here.
+// handlePasskeyDelete handles DELETE /auth/passkey/{id}. With the chi
+// router registered in AuthRoutes, the {id} is a real URL parameter
+// — no more r.URL.Path string-trimming. The method-allowed guard is
+// also gone: chi enforces it at the route registration (r.Delete only
+// matches DELETE).
 func (a *App) handlePasskeyDelete(w http.ResponseWriter, r *http.Request) {
 	if !a.passkeyAvailable(w, r) {
-		return
-	}
-	if r.Method != http.MethodDelete {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	user := a.requireSession(w, r)
 	if user == nil {
 		return
 	}
-	idStr := strings.TrimPrefix(r.URL.Path, "/auth/passkey/")
-	idStr = strings.TrimSuffix(idStr, "/")
+	idStr := gochi.URLParam(r, urlParamPasskeyID)
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "invalid credential id", http.StatusBadRequest)

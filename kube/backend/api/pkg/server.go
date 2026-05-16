@@ -12,8 +12,19 @@ import (
 	"strings"
 	"time"
 
+	gochi "github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+
 	"github.com/argues/argus/internal/alerts"
 	"github.com/google/uuid"
+)
+
+// Top-level HTTP routes — pinned as constants so the frontend's
+// hard-coded URLs and the Wails-binding canary can both grep for them.
+const (
+	httpPathAPIPrefix        = "/api/*"
+	httpPathWebhookAnomstack = "/webhooks/anomstack"
+	httpPathTunnel           = "/tunnel"
 )
 
 // apiRequestMaxBytes caps inbound RPC bodies. The Wails-style RPC over
@@ -236,17 +247,33 @@ func (a *App) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 // Override via ARGUS_API_BIND="0.0.0.0" once you've also configured
 // ARGUS_API_TOKEN and ARGUS_API_ALLOWED_ORIGINS.
 func (a *App) StartHTTPServer(port int) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/", a.ServeHTTP)
-	mux.HandleFunc("/webhooks/anomstack", a.HandleWebhook)
+	r := gochi.NewRouter()
+
+	// Middleware stack mirrors pim-agl-online-data-relay/internal/api:
+	// clean-path normalization first, then request-correlation, real
+	// client IP behind a load balancer, and panic recovery so a single
+	// bad handler can't crash the listener.
+	r.Use(middleware.CleanPath)
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Recoverer)
+
+	// The Wails-style reflective RPC under /api/* keeps its existing
+	// dispatcher — the logic is built on App's method set, not on
+	// chi-style route registration. http.HandlerFunc-wraps ServeHTTP
+	// so chi can mount it like any other handler.
+	r.Handle(httpPathAPIPrefix, http.HandlerFunc(a.ServeHTTP))
+	r.Post(httpPathWebhookAnomstack, a.HandleWebhook)
+
 	if a.auth != nil {
-		a.AuthRoutes(mux)
+		r.Mount("/", a.AuthRoutes())
 	}
 	if a.workspaceAvailable() {
-		a.WorkspaceRoutes(mux)
+		r.Mount("/", a.WorkspaceRoutes())
 	}
+
 	go a.hub.Run(a.ctx)
-	mux.HandleFunc("/tunnel", a.hub.HandleTunnel)
+	r.Get(httpPathTunnel, a.hub.HandleTunnel)
 
 	addr := envBindAddr(port)
 	tokenSet := os.Getenv("ARGUS_API_TOKEN") != ""
@@ -267,7 +294,7 @@ func (a *App) StartHTTPServer(port int) {
 	go func() {
 		srv := &http.Server{
 			Addr:              addr,
-			Handler:           mux,
+			Handler:           r,
 			ReadHeaderTimeout: 10 * time.Second,
 		}
 		if err := srv.ListenAndServe(); err != nil {
