@@ -100,8 +100,11 @@ type App struct {
 	// paused stops background polling when the window is hidden/minimized.
 	paused atomic.Bool
 
-	// cachedMetrics holds the latest metrics for agent context.
-	cachedMetrics *alerts.ClusterMetrics
+	// cachedMetrics holds the latest metrics for agent context. Accessed
+	// concurrently by pollMetrics (writer) and pollAlerts (reader, via
+	// AutoInvestigate), so guarded with atomic.Pointer to avoid a torn
+	// pointer read / data race.
+	cachedMetrics atomic.Pointer[alerts.ClusterMetrics]
 
 	// webhookAlerts stores alerts received via the /webhooks/anomstack endpoint.
 	webhookAlerts []alerts.Alert
@@ -228,7 +231,7 @@ func (a *App) Startup(ctx context.Context) {
 	// Eagerly populate cached metrics so AI agent has context from first message.
 	if a.k8s != nil {
 		if m, err := a.k8s.GetMetrics(ctx); err == nil && m != nil {
-			a.cachedMetrics = m
+			a.cachedMetrics.Store(m)
 			a.logger.Info("cached initial cluster metrics")
 		}
 	}

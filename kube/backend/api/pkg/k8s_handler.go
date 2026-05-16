@@ -105,7 +105,7 @@ func (h *K8sHandler) GetMetrics() (*alerts.ClusterMetrics, error) {
 	}
 	m, err := h.app.k8s.GetMetrics(h.app.ctx)
 	if err == nil && m != nil {
-		h.app.cachedMetrics = m
+		h.app.cachedMetrics.Store(m)
 	}
 	return m, err
 }
