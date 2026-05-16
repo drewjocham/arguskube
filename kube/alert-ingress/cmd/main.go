@@ -9,9 +9,14 @@ import (
 	"syscall"
 	"time"
 
+	gochi "github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+
 	"github.com/argues/argus/alert-ingress/internal/pubsub"
 	"github.com/argues/argus/alert-ingress/internal/webhook"
 )
+
+const ingressPathWebhookAnomstack = "/webhooks/anomstack"
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -20,8 +25,12 @@ func main() {
 	publisher := initPublisher(ctx)
 	defer publisher.Close()
 
-	mux := http.NewServeMux()
-	mux.Handle("/webhooks/anomstack", webhook.New(publisher))
+	r := gochi.NewRouter()
+	r.Use(middleware.CleanPath)
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Recoverer)
+	r.Mount(ingressPathWebhookAnomstack, webhook.New(publisher))
 
 	port := os.Getenv("ALERT_INGRESS_PORT")
 	if port == "" {
@@ -30,7 +39,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:         ":" + port,
-		Handler:      withLogging(mux),
+		Handler:      withLogging(r),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  30 * time.Second,

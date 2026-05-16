@@ -9,8 +9,25 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/argues/argus/agent/internal/k8s"
+	gochi "github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"k8s.io/apimachinery/pkg/labels"
+
+	"github.com/argues/argus/agent/internal/k8s"
+)
+
+// Agent HTTP routes. Constants per the pim-agl style so the desktop
+// app and the agent share a single source of truth.
+const (
+	agentPathHealth         = "/health"
+	agentPathPods           = "/api/v1/pods"
+	agentPathNodes          = "/api/v1/nodes"
+	agentPathAnomalies      = "/api/v1/anomalies"
+	agentPathEvents         = "/api/v1/events"
+	agentPathDeployments    = "/api/v1/deployments"
+	agentPathServices       = "/api/v1/services"
+	agentPathTopology       = "/api/v1/topology"
+	agentPathStreamMetrics  = "/stream/metrics"
 )
 
 type AnomalyScore struct {
@@ -64,33 +81,40 @@ type Server struct {
 }
 
 func New(port string, k8sClient *k8s.Client, logger *slog.Logger) *Server {
-	mux := http.NewServeMux()
-
 	s := &Server{
-		httpServer: &http.Server{
-			Addr:        ":" + port,
-			Handler:     mux,
-			ReadTimeout: 30 * time.Second,
-			// No WriteTimeout — streaming endpoints need long-lived connections.
-		},
 		k8sClient: k8sClient,
 		logger:    logger,
 	}
-
-	s.registerRoutes(mux)
+	s.httpServer = &http.Server{
+		Addr:        ":" + port,
+		Handler:     s.Routes(),
+		ReadTimeout: 30 * time.Second,
+		// No WriteTimeout — streaming endpoints need long-lived connections.
+	}
 	return s
 }
 
-func (s *Server) registerRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/health", s.handleHealth)
-	mux.HandleFunc("/api/v1/pods", s.handleGetPods)
-	mux.HandleFunc("/api/v1/nodes", s.handleGetNodes)
-	mux.HandleFunc("/api/v1/anomalies", s.handleGetAnomalies)
-	mux.HandleFunc("/api/v1/events", s.handleGetEvents)
-	mux.HandleFunc("/api/v1/deployments", s.handleGetDeployments)
-	mux.HandleFunc("/api/v1/services", s.handleGetServices)
-	mux.HandleFunc("/api/v1/topology", s.handleGetTopology)
-	mux.HandleFunc("/stream/metrics", s.handleStreamMetrics)
+// Routes builds the agent's HTTP router and returns it as a
+// http.Handler — matching the pim-agl Routes() http.Handler pattern.
+func (s *Server) Routes() http.Handler {
+	r := gochi.NewRouter()
+
+	r.Use(middleware.CleanPath)
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Recoverer)
+
+	r.Get(agentPathHealth, s.handleHealth)
+	r.Get(agentPathPods, s.handleGetPods)
+	r.Get(agentPathNodes, s.handleGetNodes)
+	r.Get(agentPathAnomalies, s.handleGetAnomalies)
+	r.Get(agentPathEvents, s.handleGetEvents)
+	r.Get(agentPathDeployments, s.handleGetDeployments)
+	r.Get(agentPathServices, s.handleGetServices)
+	r.Get(agentPathTopology, s.handleGetTopology)
+	r.Get(agentPathStreamMetrics, s.handleStreamMetrics)
+
+	return r
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

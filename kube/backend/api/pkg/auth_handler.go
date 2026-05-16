@@ -10,8 +10,35 @@ import (
 	"strings"
 	"time"
 
+	gochi "github.com/go-chi/chi/v5"
+
 	"github.com/argues/argus/internal/auth"
 	"github.com/argues/argus/internal/config"
+)
+
+// Auth route paths. Kept as constants so the canary tests + the
+// frontend's hard-coded URLs can grep for them rather than chasing
+// string literals scattered through the file.
+const (
+	authPathProviders            = "/auth/providers"
+	authPathRegister             = "/auth/register"
+	authPathLogin                = "/auth/login"
+	authPathLogout               = "/auth/logout"
+	authPathMe                   = "/auth/me"
+	authPathOAuthStart           = "/auth/oauth/start"
+	authPathOAuthPoll            = "/auth/oauth/poll"
+	authPathOAuthGoogleCallback  = "/auth/google/callback"
+	authPathOAuthOIDCCallback    = "/auth/oidc/callback"
+	authPathAppleStart           = "/auth/apple/start"
+	authPathAppleCallback        = "/auth/apple/callback"
+	authPathPasskeyRegisterBegin = "/auth/passkey/register/begin"
+	authPathPasskeyRegisterEnd   = "/auth/passkey/register/finish"
+	authPathPasskeyLoginBegin    = "/auth/passkey/login/begin"
+	authPathPasskeyLoginEnd      = "/auth/passkey/login/finish"
+	authPathPasskeyList          = "/auth/passkey/list"
+	authPathPasskeyDeleteByID    = "/auth/passkey/{id}"
+
+	urlParamPasskeyID = "id"
 )
 
 // isLoopbackBind reports whether the configured API bind address keeps
@@ -162,34 +189,45 @@ func (a *App) SetupAuth(store *auth.Store, cfg config.AuthConfig) {
 	})
 }
 
-// AuthRoutes returns a function suitable for http.HandleFunc-style
-// registration. Keeps the routing surface in one place.
-func (a *App) AuthRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/auth/providers", a.handleAuthProviders)
-	mux.HandleFunc("/auth/register", a.handleAuthRegister)
-	mux.HandleFunc("/auth/login", a.handleAuthLogin)
-	mux.HandleFunc("/auth/logout", a.handleAuthLogout)
-	mux.HandleFunc("/auth/me", a.handleAuthMe)
-	mux.HandleFunc("/auth/oauth/start", a.handleOAuthStart)
-	mux.HandleFunc("/auth/oauth/poll", a.handleOAuthPoll)
-	mux.HandleFunc("/auth/google/callback", a.handleOAuthCallback)
-	mux.HandleFunc("/auth/oidc/callback", a.handleOAuthCallback)
+// AuthRoutes builds the /auth/* router and returns it as a chi sub-
+// tree the parent server mounts. The chi-style router (in place of
+// the previous http.ServeMux-based registration) follows the same
+// shape pim-agl-online-data-relay/internal/api uses: a Routes()-style
+// builder that returns http.Handler so the parent owner can compose,
+// wrap, and mount it freely.
+func (a *App) AuthRoutes() http.Handler {
+	r := gochi.NewRouter()
+
+	r.Get(authPathProviders, a.handleAuthProviders)
+	r.Post(authPathRegister, a.handleAuthRegister)
+	r.Post(authPathLogin, a.handleAuthLogin)
+	r.Post(authPathLogout, a.handleAuthLogout)
+	r.Get(authPathMe, a.handleAuthMe)
+
+	r.Get(authPathOAuthStart, a.handleOAuthStart)
+	r.Get(authPathOAuthPoll, a.handleOAuthPoll)
+	r.Get(authPathOAuthGoogleCallback, a.handleOAuthCallback)
+	r.Get(authPathOAuthOIDCCallback, a.handleOAuthCallback)
+
 	// Apple uses a separate start endpoint because its login URL is
 	// hand-built (response_mode=form_post is non-standard) and a
 	// separate POST callback because Apple form-posts instead of
 	// redirecting via GET.
-	mux.HandleFunc("/auth/apple/start", a.handleAppleStart)
-	mux.HandleFunc("/auth/apple/callback", a.handleAppleCallback)
+	r.Get(authPathAppleStart, a.handleAppleStart)
+	r.Post(authPathAppleCallback, a.handleAppleCallback)
+
 	// Passkey (WebAuthn) endpoints. Register-begin/finish are
 	// authenticated (you can only add a passkey to your own account);
 	// login-begin/finish are public so a user without a session can
 	// sign in.
-	mux.HandleFunc("/auth/passkey/register/begin", a.handlePasskeyRegisterBegin)
-	mux.HandleFunc("/auth/passkey/register/finish", a.handlePasskeyRegisterFinish)
-	mux.HandleFunc("/auth/passkey/login/begin", a.handlePasskeyLoginBegin)
-	mux.HandleFunc("/auth/passkey/login/finish", a.handlePasskeyLoginFinish)
-	mux.HandleFunc("/auth/passkey/list", a.handlePasskeyList)
-	mux.HandleFunc("/auth/passkey/", a.handlePasskeyDelete) // DELETE /auth/passkey/{id}
+	r.Post(authPathPasskeyRegisterBegin, a.handlePasskeyRegisterBegin)
+	r.Post(authPathPasskeyRegisterEnd, a.handlePasskeyRegisterFinish)
+	r.Post(authPathPasskeyLoginBegin, a.handlePasskeyLoginBegin)
+	r.Post(authPathPasskeyLoginEnd, a.handlePasskeyLoginFinish)
+	r.Get(authPathPasskeyList, a.handlePasskeyList)
+	r.Delete(authPathPasskeyDeleteByID, a.handlePasskeyDelete)
+
+	return r
 }
 
 // preflight applies the same CORS gate as /api/*. Auth endpoints don't

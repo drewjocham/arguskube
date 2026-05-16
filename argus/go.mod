@@ -3,6 +3,7 @@ module github.com/argues/argus/agent
 go 1.26.2
 
 require (
+	github.com/go-chi/chi/v5 v5.2.5
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	golang.org/x/sync v0.20.0
 	k8s.io/api v0.36.0
