@@ -28,11 +28,16 @@ const (
 	ProviderLocal  Provider = "local"
 	ProviderGoogle Provider = "google"
 	ProviderOIDC   Provider = "oidc"
+	// ProviderApple — Sign in with Apple. Same OIDC family as the others
+	// but with three quirks that make it a separate manager (apple.go):
+	// dynamic ES256-JWT client_secret, POST form_post callback, and
+	// first-auth-only email claim.
+	ProviderApple Provider = "apple"
 )
 
 func (p Provider) Valid() bool {
 	switch p {
-	case ProviderLocal, ProviderGoogle, ProviderOIDC:
+	case ProviderLocal, ProviderGoogle, ProviderOIDC, ProviderApple:
 		return true
 	}
 	return false

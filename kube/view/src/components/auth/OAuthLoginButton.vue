@@ -346,6 +346,7 @@ defineExpose({ open, inFlight, startFlow, cancel })
 .oauth-mark[data-provider="azure"]     { color: #00a4ef; }
 .oauth-mark[data-provider="okta"]      { color: var(--purple); }
 .oauth-mark[data-provider="oidc"]      { color: var(--purple); }
+.oauth-mark[data-provider="apple"]     { color: #f5f5f7; background: #000; }
 
 .oauth-pname { flex: 1; }
 .oauth-pnote { font-size: 10.5px; color: var(--text3); }

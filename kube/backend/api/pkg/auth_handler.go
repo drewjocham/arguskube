@@ -33,6 +33,7 @@ func isLoopbackBind(bind string) bool {
 type authState struct {
 	store       *auth.Store
 	oidc        *auth.OIDCManager
+	apple       *auth.AppleManager // nil unless Sign in with Apple is configured
 	allowSignup bool
 	// devMode disables the entire gate. Only honored when the API
 	// binds to loopback — see SetupAuth for the safety check.
@@ -103,6 +104,27 @@ func (a *App) SetupAuth(store *auth.Store, cfg config.AuthConfig) {
 		allowSignup: cfg.AllowLocalSignup,
 		devMode:     devMode,
 	}
+	// Sign in with Apple is wired separately — its quirks (dynamic
+	// JWT client_secret, form_post callback, first-auth-only email)
+	// don't fit the generic OIDCManager. We attempt registration only
+	// when all four required fields are present; partial config is
+	// logged and skipped so a typo doesn't crash boot.
+	if cfg.AppleServicesID != "" && cfg.AppleTeamID != "" && cfg.AppleKeyID != "" && cfg.ApplePrivateKey != "" {
+		am, err := auth.NewAppleManager(store, a.logger, auth.AppleConfig{
+			ServicesID:    cfg.AppleServicesID,
+			TeamID:        cfg.AppleTeamID,
+			KeyID:         cfg.AppleKeyID,
+			PrivateKeyPEM: cfg.ApplePrivateKey,
+			DisplayName:   cfg.AppleDisplayName,
+			RedirectURL:   strings.TrimRight(cfg.PublicBaseURL, "/") + "/auth/apple/callback",
+		})
+		if err != nil {
+			a.logger.Warn("Sign in with Apple not registered", slog.String("error", err.Error()))
+		} else {
+			a.auth.apple = am
+			a.logger.Info("Sign in with Apple registered", slog.String("servicesID", cfg.AppleServicesID))
+		}
+	}
 	// Best-effort cleanup loop — runs every hour so the session table
 	// doesn't grow without bound on long-running installs.
 	go func() {
@@ -126,6 +148,12 @@ func (a *App) AuthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/auth/oauth/poll", a.handleOAuthPoll)
 	mux.HandleFunc("/auth/google/callback", a.handleOAuthCallback)
 	mux.HandleFunc("/auth/oidc/callback", a.handleOAuthCallback)
+	// Apple uses a separate start endpoint because its login URL is
+	// hand-built (response_mode=form_post is non-standard) and a
+	// separate POST callback because Apple form-posts instead of
+	// redirecting via GET.
+	mux.HandleFunc("/auth/apple/start", a.handleAppleStart)
+	mux.HandleFunc("/auth/apple/callback", a.handleAppleCallback)
 }
 
 // preflight applies the same CORS gate as /api/*. Auth endpoints don't
@@ -165,8 +193,19 @@ func (a *App) handleAuthProviders(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	providers := a.auth.oidc.EnabledProviders()
+	// Surface Apple alongside the OIDC providers so the frontend
+	// renders a single unified provider list. The frontend recognizes
+	// "apple" by name and uses /auth/apple/start instead of the generic
+	// /auth/oauth/start.
+	if a.auth.apple.Configured() {
+		providers = append(providers, auth.ProviderInfo{
+			Name:        string(auth.ProviderApple),
+			DisplayName: a.auth.apple.DisplayName(),
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"providers":    a.auth.oidc.EnabledProviders(),
+		"providers":    providers,
 		"allowSignup":  a.auth.allowSignup,
 		"authDisabled": a.auth.devMode,
 	})
@@ -405,6 +444,70 @@ func writeAuthError(w http.ResponseWriter, err error) {
 	default:
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
+}
+
+// handleAppleStart returns the URL the browser should open to begin a
+// Sign in with Apple flow. The frontend handles the URL-opening + poll
+// dance via the existing /auth/oauth/poll endpoint — Apple writes the
+// session token into oauth_pending under the same state nonce.
+func (a *App) handleAppleStart(w http.ResponseWriter, r *http.Request) {
+	if !a.authPreflight(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !a.auth.apple.Configured() {
+		http.Error(w, "Sign in with Apple not configured", http.StatusBadRequest)
+		return
+	}
+	url, state, err := a.auth.apple.Start()
+	if err != nil {
+		writeAuthError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"authUrl": url, "state": state})
+}
+
+// handleAppleCallback receives Apple's form_post response. Unlike every
+// other OIDC provider the body is form-encoded, not a query string.
+// First-authorization responses include a `user` JSON blob with the
+// display name; subsequent sign-ins do not.
+func (a *App) handleAppleCallback(w http.ResponseWriter, r *http.Request) {
+	if a.auth == nil || !a.auth.apple.Configured() {
+		auth.RenderCallback(w, false, "Sign in with Apple not configured")
+		return
+	}
+	if r.Method != http.MethodPost {
+		// Apple is strict about form_post; a GET here means a
+		// misconfiguration (response_mode missing). Render a hint
+		// rather than a generic 405 so operators can diagnose.
+		auth.RenderCallback(w, false, "Apple callback must be POST (response_mode=form_post)")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		auth.RenderCallback(w, false, "could not parse form body")
+		return
+	}
+	state := r.PostForm.Get("state")
+	if errParam := r.PostForm.Get("error"); errParam != "" {
+		a.auth.oidc.MarkPendingError(state, errParam)
+		auth.RenderCallback(w, false, errParam)
+		return
+	}
+	code := r.PostForm.Get("code")
+	userJSON := r.PostForm.Get("user")
+	if code == "" || state == "" {
+		auth.RenderCallback(w, false, "missing code or state in callback")
+		return
+	}
+	if _, err := a.auth.apple.Complete(r.Context(), state, code, userJSON); err != nil {
+		a.auth.oidc.MarkPendingError(state, err.Error())
+		auth.RenderCallback(w, false, err.Error())
+		return
+	}
+	auth.RenderCallback(w, true, "Sign-in complete.")
 }
 
 // bearerFromRequest extracts the session token from Authorization header.

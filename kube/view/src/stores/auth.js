@@ -192,7 +192,15 @@ export const useAuthStore = defineStore('auth', () => {
   // Kicks off an OAuth login. Returns the upstream auth URL + state
   // token; the caller is responsible for opening the URL in the
   // system browser, then calling pollOAuth(state) until it resolves.
+  //
+  // Apple has its own start endpoint because the auth URL is hand-built
+  // (response_mode=form_post is not in the generic OIDC discovery path).
+  // The state token still resolves through /auth/oauth/poll — the
+  // backend writes the session into the shared oauth_pending row.
   async function startOAuth(provider) {
+    if (provider === 'apple') {
+      return _post('/auth/apple/start', null)
+    }
     return _post('/auth/oauth/start', { provider })
   }
 
