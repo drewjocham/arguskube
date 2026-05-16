@@ -97,6 +97,44 @@ export function useSecretStore() {
     catch { return '' }
   }
 
+  // hasSessionToken — cheap "do we already have a Keychain entry?"
+  // check used by the biometric-unlock boot path before bothering the
+  // user with a Touch ID prompt. A read here is silent (Keychain
+  // doesn't dialog for entries the app has already accessed once).
+  async function hasSessionToken() {
+    const tok = await getSessionToken()
+    return Boolean(tok)
+  }
+
+  // biometricAvailable — proxies the Wails App.IsBiometricAvailable
+  // binding. Returns false (never throws) when the binding is missing,
+  // e.g. SaaS/web mode or non-mac dev. The auth boot flow uses this
+  // to decide whether to even attempt the Touch ID prompt.
+  async function biometricAvailable() {
+    if (typeof window?.go?.api?.pkg?.App?.IsBiometricAvailable !== 'function') {
+      return false
+    }
+    const p = callGoBinding('IsBiometricAvailable')
+    if (!p || typeof p.then !== 'function') return false
+    try { return Boolean(await p) }
+    catch { return false }
+  }
+
+  // authenticateWithBiometrics — triggers the system Touch ID prompt
+  // via the Wails App.AuthenticateWithBiometrics binding. Resolves on
+  // success, rejects with the Go-side error message on failure
+  // (cancellation, no enrolled fingerprint, retry limit, …).
+  async function authenticateWithBiometrics(reason) {
+    if (typeof window?.go?.api?.pkg?.App?.AuthenticateWithBiometrics !== 'function') {
+      throw new Error('biometric: bridge unavailable')
+    }
+    const p = callGoBinding('AuthenticateWithBiometrics', reason || 'Unlock Argus')
+    if (!p || typeof p.then !== 'function') {
+      throw new Error('biometric: bridge call did not return a promise')
+    }
+    await p
+  }
+
   async function clearSessionToken() {
     const tasks = []
     if (isKeychainAvailable()) {
@@ -127,8 +165,11 @@ export function useSecretStore() {
     refreshInfo,
     setSessionToken,
     getSessionToken,
+    hasSessionToken,
     clearSessionToken,
     migrateLegacyToken,
+    biometricAvailable,
+    authenticateWithBiometrics,
   }
 }
 

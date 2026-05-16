@@ -1,10 +1,16 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, inject } from 'vue'
 import { useAuthStore } from '../../stores/auth'
 import OAuthLoginButton from './OAuthLoginButton.vue'
 import RevealableInput from '../common/RevealableInput.vue'
 
 const auth = useAuthStore()
+
+// App.vue provides the live biometric-unlock state. When the Touch ID
+// dialog is in flight we hide the form and show a small hint so the
+// user knows where the focus is. Falls back to a stub if mounted
+// standalone (e.g. in tests) so the component still renders.
+const bio = inject('argus:biometric', ref({ available: false, prompting: false, err: '' }))
 
 const mode = ref('login') // 'login' | 'signup'
 const email = ref('')
@@ -68,7 +74,16 @@ function onOAuthError(msg) {
         <p class="subtitle">SRE Console for Kubernetes</p>
       </header>
 
-      <template>
+      <!-- Touch ID in flight: render a hint instead of the form so the
+           user knows the system dialog is the active surface. App.vue
+           takes the user to the dashboard automatically on success. -->
+      <div v-if="bio.prompting" class="bio-hint" data-testid="bio-prompting">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Touch ID requested…</p>
+        <p class="hint">Use your fingerprint to unlock Argus.</p>
+      </div>
+
+      <template v-else>
         <div class="tab-row">
           <button
             type="button"
@@ -314,6 +329,17 @@ function onOAuthError(msg) {
   animation: spin 1s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.bio-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .6rem;
+  padding: 1.5rem 0;
+  text-align: center;
+}
+.bio-hint p { color: var(--text2); font-size: .9rem; margin: 0; }
+.bio-hint .hint { color: var(--text3); font-size: .8rem; }
 
 .link {
   background: transparent; border: 0; color: var(--text3);

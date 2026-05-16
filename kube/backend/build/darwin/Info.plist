@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>{{.Info.ProductName}}</string>
+    <key>CFBundleExecutable</key>
+    <string>{{.Name}}</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.djocham.argus</string>
+    <key>CFBundleVersion</key>
+    <string>{{.Info.ProductVersion}}</string>
+    <key>CFBundleGetInfoString</key>
+    <string>{{.Info.Comments}}</string>
+    <key>CFBundleShortVersionString</key>
+    <string>{{.Info.ProductVersion}}</string>
+    <key>CFBundleIconFile</key>
+    <string>iconfile</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.15</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>{{.Info.Copyright}}</string>
+    <!-- Required for any LocalAuthentication framework prompt to render.
+         macOS shows this string in the Touch ID / Face ID dialog. -->
+    <key>NSFaceIDUsageDescription</key>
+    <string>Argus uses biometrics to unlock your session without retyping your password.</string>
+</dict>
+</plist>
