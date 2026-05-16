@@ -19,7 +19,7 @@ const {
 } = useTerminalSession()
 
 const tabs = reactive([
-  { sessionId: 'default', domain: 'default', label: 'Shell', initError: null, started: false, term: null, fitAddon: null },
+  { sessionId: 'default', domain: 'default', label: 'Shell', initError: null, unavailable: false, started: false, term: null, fitAddon: null },
 ])
 
 let busOff = null
@@ -32,7 +32,7 @@ async function addTab(domain) {
   const existing = tabs.find(t => t.domain === domain)
   if (existing) { activeSessionId.value = existing.sessionId; return }
   const sessionId = domain
-  tabs.push({ sessionId, domain, label: domainLabel(domain), initError: null, started: false, term: null, fitAddon: null })
+  tabs.push({ sessionId, domain, label: domainLabel(domain), initError: null, unavailable: false, started: false, term: null, fitAddon: null })
   activeSessionId.value = sessionId
   await nextTick()
   await initSessionTab(sessionId)
@@ -53,6 +53,7 @@ async function initSessionTab(sessionId) {
   const tab = getTab(sessionId)
   if (!tab || tab.started) return
   tab.initError = null
+  tab.unavailable = false
 
   const el = termRefs.value[sessionId]
   if (!el) return
@@ -89,6 +90,9 @@ async function initSessionTab(sessionId) {
     tab.fitAddon = fitAddon
   } catch (e) {
     tab.initError = e?.message || String(e)
+    // TerminalUnavailableError ⇒ render the "web mode" variant
+    // (no retry button — retrying solves nothing).
+    tab.unavailable = e?.code === 'TERMINAL_UNAVAILABLE'
     tab.started = false
     term.dispose()
     tab.term = null; tab.fitAddon = null
@@ -300,7 +304,20 @@ onUnmounted(() => {
 
     <!-- Sessions -->
     <div v-for="tab in tabs" :key="tab.sessionId" v-show="tab.sessionId === activeSessionId" class="terminal-session">
-      <div v-if="tab.initError" class="terminal-error">
+      <!-- Web/SaaS mode: terminal can't run here at all. Friendly
+           explanation + no retry (retrying solves nothing — the env
+           is structurally wrong). -->
+      <div v-if="tab.initError && tab.unavailable" class="terminal-error terminal-error-unavailable">
+        <div class="terminal-error-icon terminal-error-icon-info">i</div>
+        <div class="terminal-error-body">
+          <div class="terminal-error-title">Terminal not available in web mode</div>
+          <div class="terminal-error-msg">{{ tab.initError }}</div>
+        </div>
+      </div>
+
+      <!-- Real failure: shell exited, exec errored, etc. Surface the
+           message + retry button. -->
+      <div v-else-if="tab.initError" class="terminal-error">
         <div class="terminal-error-icon">!</div>
         <div class="terminal-error-body">
           <div class="terminal-error-title">Terminal session failed to start</div>
@@ -357,6 +374,9 @@ onUnmounted(() => {
 .terminal-error-msg { font-size: 12px; color: var(--text2); font-family: var(--mono); word-break: break-word; }
 .terminal-error-retry { align-self: flex-start; margin-top: 6px; background: rgba(79,142,247,0.15); border: 1px solid rgba(79,142,247,0.3); color: var(--accent2); padding: 5px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; }
 .terminal-error-retry:hover { background: rgba(79,142,247,0.25); color: #fff; }
+/* Unavailable variant: blue / informational, not red / alarming. */
+.terminal-error-unavailable { background: rgba(79,142,247,0.06); }
+.terminal-error-icon-info { background: rgba(79,142,247,0.18); color: var(--accent2); font-style: italic; }
 .terminal-element { width: 100%; height: 100%; padding: 4px 8px; }
 
 .overlay-panel { position: absolute; bottom: 100%; left: 8px; right: 8px; max-height: 220px; overflow-y: auto; background: #1c1f22; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; z-index: 10; }
