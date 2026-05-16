@@ -1,10 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"log/slog"
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -331,6 +331,9 @@ func run() error {
 		OnShutdown:       app.Shutdown,
 		Bind: []interface{}{
 			app,
+			pkg.NewK8sHandler(app),
+			pkg.NewSettingsHandler(app),
+			pkg.NewTerminalHandler(app),
 		},
 		Mac: &mac.Options{
 			TitleBar: &mac.TitleBar{

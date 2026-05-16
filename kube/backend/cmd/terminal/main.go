@@ -94,6 +94,9 @@ func run() error {
 		OnShutdown:       app.Shutdown,
 		Bind: []interface{}{
 			app,
+			pkg.NewK8sHandler(app),
+			pkg.NewSettingsHandler(app),
+			pkg.NewTerminalHandler(app),
 		},
 		Mac: &mac.Options{
 			TitleBar: &mac.TitleBar{

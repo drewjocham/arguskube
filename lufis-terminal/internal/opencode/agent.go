@@ -12,6 +12,19 @@ import (
 	"time"
 )
 
+const safePATH = "/usr/bin:/usr/local/bin:/opt/homebrew/bin:/bin:/usr/libexec"
+
+func secureBin(name string) (string, []string) {
+	paths := filepath.SplitList(safePATH)
+	for _, dir := range paths {
+		p := filepath.Join(dir, name)
+		if info, err := os.Stat(p); err == nil && !info.IsDir() && info.Mode().Perm()&0111 != 0 {
+			return p, append(os.Environ(), "PATH="+safePATH)
+		}
+	}
+	return name, append(os.Environ(), "PATH="+safePATH)
+}
+
 type Agent struct {
 	client  *Client
 	session *Session
@@ -124,7 +137,9 @@ func (ts *ToolSet) Edit(path, old, new string) error {
 }
 
 func (ts *ToolSet) Exec(command string) (string, error) {
-	cmd := exec.Command("sh", "-c", command)
+	shPath, env := secureBin("sh")
+	cmd := exec.Command(shPath, "-c", command)
+	cmd.Env = env
 	cmd.Dir = ts.Workdir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -142,7 +157,9 @@ func (ts *ToolSet) Search(pattern string) ([]string, error) {
 }
 
 func (ts *ToolSet) Grep(pattern string) ([]string, error) {
-	cmd := exec.Command("grep", "-rn", pattern, ts.Workdir)
+	grepPath, env := secureBin("grep")
+	cmd := exec.Command(grepPath, "-rn", pattern, ts.Workdir)
+	cmd.Env = env
 	cmd.Dir = ts.Workdir
 	output, err := cmd.Output()
 	if err != nil {
@@ -157,7 +174,9 @@ func (ts *ToolSet) Grep(pattern string) ([]string, error) {
 }
 
 func (ts *ToolSet) Git(args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	gitPath, env := secureBin("git")
+	cmd := exec.Command(gitPath, args...)
+	cmd.Env = env
 	cmd.Dir = ts.Workdir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
