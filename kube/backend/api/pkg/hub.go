@@ -53,6 +53,18 @@ type AgentConnection struct {
 	Namespace string
 	Conn      *websocket.Conn
 	Send      chan []byte
+
+	// done is closed by whichever pump exits first so its sibling can
+	// unblock immediately. closeOnce makes the close idempotent — both
+	// pumps may race to close it, e.g. when the agent drops mid-flight.
+	done      chan struct{}
+	closeOnce sync.Once
+}
+
+// signalDone closes the done channel exactly once. Safe to call from
+// either pump's defer regardless of who's first to exit.
+func (c *AgentConnection) signalDone() {
+	c.closeOnce.Do(func() { close(c.done) })
 }
 
 // Hub manages active agent connections and routes messages.
@@ -169,6 +181,7 @@ func (h *Hub) HandleTunnel(w http.ResponseWriter, r *http.Request) {
 		Namespace: namespace,
 		Conn:      conn,
 		Send:      make(chan []byte, 256),
+		done:      make(chan struct{}),
 	}
 
 	h.register <- client
@@ -191,6 +204,10 @@ func (h *Hub) unregisterClient(client *AgentConnection) {
 
 func (h *Hub) readPump(client *AgentConnection) {
 	defer func() {
+		// Signal first so writePump can drop out of its select on the
+		// same tick — without this it would block up to 54s on its
+		// ping ticker before noticing the conn died.
+		client.signalDone()
 		h.unregisterClient(client)
 		client.Conn.Close()
 	}()
@@ -220,11 +237,22 @@ func (h *Hub) writePump(client *AgentConnection) {
 	ticker := time.NewTicker(54 * time.Second) // Ping ticker
 	defer func() {
 		ticker.Stop()
+		// Wake readPump's in-flight ReadMessage so it exits within
+		// milliseconds instead of waiting on its 60s read deadline.
+		// SetReadDeadline(time.Now()) forces any pending read to fail
+		// with i/o-timeout immediately — the canonical gorilla-
+		// websocket idiom for tearing down a peer goroutine.
+		_ = client.Conn.SetReadDeadline(time.Now())
+		client.signalDone()
 		client.Conn.Close()
 	}()
 
 	for {
 		select {
+		case <-client.done:
+			// readPump (or anyone else) signalled shutdown. Skip any
+			// in-flight ping/message and drop straight into the defer.
+			return
 		case message, ok := <-client.Send:
 			_ = client.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
