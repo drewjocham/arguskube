@@ -3,9 +3,43 @@ package git
 import (
 	"bufio"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
+
+var gitPath string
+
+func init() {
+	gitPath = findGitSafe()
+}
+
+func findGitSafe() string {
+	safePATH := "/usr/bin:/usr/local/bin:/opt/homebrew/bin:/bin:/usr/libexec"
+
+	paths := filepath.SplitList(safePATH + ":" + os.Getenv("PATH"))
+	seen := make(map[string]bool)
+	for _, dir := range paths {
+		dir = strings.TrimSpace(dir)
+		if dir == "" || seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		p := filepath.Join(dir, "git")
+		if info, err := os.Stat(p); err == nil && !info.IsDir() && info.Mode().Perm()&0111 != 0 {
+			return p
+		}
+	}
+	return "git"
+}
+
+func secureCmd(args ...string) *exec.Cmd {
+	cmd := exec.Command(gitPath, args...)
+	safePATH := "/usr/bin:/usr/local/bin:/opt/homebrew/bin:/bin"
+	cmd.Env = append(os.Environ(), "PATH="+safePATH)
+	return cmd
+}
 
 type StatusEntry struct {
 	IndexStatus byte
@@ -34,7 +68,7 @@ type BlameLine struct {
 }
 
 func Status(repo string) ([]StatusEntry, error) {
-	cmd := exec.Command("git", "-C", repo, "status", "--porcelain")
+	cmd := secureCmd("-C", repo, "status", "--porcelain")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git status: %w", err)
@@ -56,7 +90,7 @@ func Status(repo string) ([]StatusEntry, error) {
 }
 
 func Branches(repo string) ([]Branch, error) {
-	cmd := exec.Command("git", "-C", repo, "branch")
+	cmd := secureCmd("-C", repo, "branch")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git branch: %w", err)
@@ -78,7 +112,7 @@ func Branches(repo string) ([]Branch, error) {
 func Log(repo string, count int) ([]LogEntry, error) {
 	args := []string{"-C", repo, "log", fmt.Sprintf("--max-count=%d", count),
 		"--format=%H%n%an%n%ad%n%s%n---"}
-	cmd := exec.Command("git", args...)
+	cmd := secureCmd(args...)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git log: %w", err)
@@ -97,7 +131,7 @@ func Log(repo string, count int) ([]LogEntry, error) {
 }
 
 func Blame(repo, path string) ([]BlameLine, error) {
-	cmd := exec.Command("git", "-C", repo, "blame", "--porcelain", path)
+	cmd := secureCmd("-C", repo, "blame", "--porcelain", path)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git blame: %w", err)
@@ -107,7 +141,7 @@ func Blame(repo, path string) ([]BlameLine, error) {
 
 func Diff(repo string, args ...string) (string, error) {
 	gitArgs := append([]string{"-C", repo, "diff"}, args...)
-	cmd := exec.Command("git", gitArgs...)
+	cmd := secureCmd(gitArgs...)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("git diff: %w", err)
@@ -116,7 +150,7 @@ func Diff(repo string, args ...string) (string, error) {
 }
 
 func Commit(repo, message string) error {
-	cmd := exec.Command("git", "-C", repo, "commit", "-m", message)
+	cmd := secureCmd("-C", repo, "commit", "-m", message)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git commit: %s: %w", strings.TrimSpace(string(out)), err)
