@@ -22,6 +22,7 @@ import {config} from '../models';
 import {workflows} from '../models';
 import {broker} from '../models';
 import {notebooks} from '../models';
+import {terminal} from '../models';
 import {vulnscan} from '../models';
 import {popeye} from '../models';
 import {envprobe} from '../models';
@@ -44,6 +45,8 @@ export function AppendGoogleDoc(arg1:string,arg2:string,arg3:string,arg4:string)
 export function ApplyYaml(arg1:string):Promise<string>;
 
 export function AuthRoutes(arg1:http.ServeMux):Promise<void>;
+
+export function AuthenticateWithBiometrics(arg1:string):Promise<void>;
 
 export function AutoResolveContext():Promise<k8s.ContextResolution>;
 
@@ -68,6 +71,8 @@ export function ClearUsageHistory():Promise<void>;
 export function ClearUserActivity():Promise<void>;
 
 export function CloseExecSession():Promise<void>;
+
+export function CloseTerminalSession(arg1:string):Promise<void>;
 
 export function CompleteOAuthFlow(arg1:string,arg2:string):Promise<oauthproviders.UserInfo>;
 
@@ -137,7 +142,11 @@ export function EstimateDistLoadCost(arg1:saasapi.DistLoadSpec):Promise<number>;
 
 export function ExecPodShell(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<void>;
 
+export function ExplainTerminalOutput(arg1:string,arg2:string):Promise<string>;
+
 export function FindOrphanedEndpoints(arg1:string):Promise<Array<k8s.OrphanedEndpoint>>;
+
+export function GenerateCommand(arg1:string,arg2:string):Promise<string>;
 
 export function GenerateLoadTestPayload(arg1:string,arg2:number):Promise<string>;
 
@@ -275,6 +284,8 @@ export function InjectDebugContainer(arg1:string,arg2:string,arg3:string):Promis
 
 export function InstallArgusScan():Promise<setup.SetupResult>;
 
+export function IsBiometricAvailable():Promise<boolean>;
+
 export function LaunchPopOutTerminal():Promise<void>;
 
 export function ListAllNamespaces():Promise<Array<string>>;
@@ -339,6 +350,8 @@ export function ListSlackChannels(arg1:string,arg2:string):Promise<Array<pkg.Sla
 
 export function ListSpotChecks():Promise<Array<string>>;
 
+export function ListTerminalSessions():Promise<Array<terminal.SessionInfo>>;
+
 export function ListVaultSecrets():Promise<Array<pkg.VaultSecret>>;
 
 export function ListVulnerabilities():Promise<Array<vulnscan.ScannedImage>>;
@@ -380,6 +393,8 @@ export function RefreshArgusCDApp(arg1:string,arg2:boolean):Promise<void>;
 export function ResizeExec(arg1:number,arg2:number):Promise<void>;
 
 export function ResizeTerminal(arg1:number,arg2:number):Promise<void>;
+
+export function ResizeTerminalSession(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function ResolveLocalPayloadPath(arg1:string):Promise<pkg.PayloadPathResolution>;
 
@@ -429,6 +444,8 @@ export function SendSlackMessage(arg1:string,arg2:string,arg3:string,arg4:string
 
 export function SendTerminalInput(arg1:string):Promise<void>;
 
+export function SendTerminalSessionInput(arg1:string,arg2:string):Promise<void>;
+
 export function ServeHTTP(arg1:http.ResponseWriter,arg2:http.Request):Promise<void>;
 
 export function SetAgentProfile(arg1:alertproc.AgentProfile):Promise<void>;
@@ -456,6 +473,8 @@ export function StartOAuthFlow(arg1:string):Promise<string>;
 export function StartRunnerLoadTest(arg1:saasapi.DistLoadSpec):Promise<string>;
 
 export function StartTerminal(arg1:number,arg2:number):Promise<void>;
+
+export function StartTerminalSession(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<void>;
 
 export function StartWorkspaceConnect(arg1:string,arg2:string,arg3:string):Promise<workspace.AuthURL>;
 

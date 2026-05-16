@@ -137,7 +137,7 @@ func (c *Client) connectAndRun(ctx context.Context, u string) error {
 
 	// Create error channels for read/write loops
 	errChan := make(chan error, 2)
-	
+
 	// Create CD applier with the dynamic client and rest mapper
 	applier := cd.NewApplier(cd.ApplierOptions{
 		Logger:        c.logger.With("component", "cd"),
@@ -153,10 +153,10 @@ func (c *Client) connectAndRun(ctx context.Context, u string) error {
 				errChan <- err
 				return
 			}
-			
+
 			// Dispatch incoming RPC commands from SaaS (e.g., ArgusCD apply)
 			c.logger.Debug("Received command from SaaS", slog.Int("bytes", len(message)))
-			
+
 			// Define a temporary struct to match TunnelMessage
 			var msg struct {
 				Type    string          `json:"type"`

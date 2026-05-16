@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
-// Mock xterm and xterm-addon-fit — TerminalView dynamically imports these.
+// Mock xterm and xterm-addon-fit.
 const mockTerminalDispose = vi.fn()
 const mockTerminalWrite = vi.fn()
 const mockTerminalOpen = vi.fn()
@@ -26,193 +26,172 @@ vi.mock('xterm', () => ({
 }))
 
 vi.mock('xterm-addon-fit', () => ({
-  FitAddon: vi.fn(() => ({
-    fit: mockFit,
-  })),
+  FitAddon: vi.fn(() => ({ fit: mockFit })),
 }))
 
-// Mock useTerminal from useShell.
-const mockStartTerminal = vi.fn()
-const mockSendInput = vi.fn()
-const mockResizeTerminal = vi.fn()
+// Mocks for composables.
+const mockCreateSession = vi.fn()
+const mockSendSessionInput = vi.fn()
+const mockResizeSession = vi.fn()
+const mockCloseSession = vi.fn()
+const mockRefreshSessions = vi.fn()
+const mockExplainOutput = vi.fn()
+const mockGenerateCommand = vi.fn()
+const mockCopilotClear = vi.fn()
+const mockFetchPods = vi.fn()
+const mockFetchContexts = vi.fn()
+
+function mockDomainIcon(d) {
+  const icons = { default: '>', k8s: '\u2388', kafka: 'K', cloud: '\u2601' }
+  return icons[d] || '>'
+}
+function mockDomainLabel(d) {
+  const labels = { default: 'Shell', k8s: 'K8s', kafka: 'Kafka', cloud: 'Cloud' }
+  return labels[d] || d
+}
 
 vi.mock('../../composables/useWails', () => ({
   useTerminal: vi.fn(() => ({
-    startTerminal: mockStartTerminal,
-    sendInput: mockSendInput,
-    resizeTerminal: mockResizeTerminal,
+    startTerminal: vi.fn(), sendInput: vi.fn(), resizeTerminal: vi.fn(),
+  })),
+  useTerminalSession: vi.fn(() => ({
+    sessions: [],
+    domains: [
+      { id: 'default', label: 'Shell', icon: '>' },
+      { id: 'k8s', label: 'K8s', icon: '\u2388' },
+      { id: 'kafka', label: 'Kafka', icon: 'K' },
+      { id: 'cloud', label: 'Cloud', icon: '\u2601' },
+    ],
+    createSession: mockCreateSession,
+    sendSessionInput: mockSendSessionInput,
+    resizeSession: mockResizeSession,
+    closeSession: mockCloseSession,
+    refreshSessions: mockRefreshSessions,
+    domainLabel: mockDomainLabel,
+    domainIcon: mockDomainIcon,
+  })),
+  useTerminalCopilot: vi.fn(() => ({
+    loading: { value: false }, result: { value: null }, error: { value: null },
+    explainOutput: mockExplainOutput, generateCommand: mockGenerateCommand, clear: mockCopilotClear,
+  })),
+  usePods: vi.fn(() => ({
+    pods: [], loading: false, fetchPods: mockFetchPods,
+  })),
+  useContexts: vi.fn(() => ({
+    contexts: [], fetchContexts: mockFetchContexts,
   })),
 }))
 
-// Mock bus.useWailsEvent — need to capture callback for terminal:output.
+// Mock bus.
 let terminalOutputCallback = null
 vi.mock('../../lib/bus', () => ({
   bus: {
     useWailsEvent: vi.fn((eventName, callback) => {
-      if (eventName === 'terminal:output') {
-        terminalOutputCallback = callback
-      }
+      if (eventName === 'terminal:output') terminalOutputCallback = callback
     }),
-    on: vi.fn(),
-    off: vi.fn(),
-    emit: vi.fn(),
-    onWails: vi.fn(),
-    useEvent: vi.fn(),
+    on: vi.fn(), off: vi.fn(), emit: vi.fn(), onWails: vi.fn(), useEvent: vi.fn(),
   },
 }))
 
 let TerminalView
 
 async function createWrapper(props = {}) {
-  if (!TerminalView) {
-    TerminalView = (await import('../../components/terminal/TerminalView.vue')).default
-  }
-  return mount(TerminalView, {
-    props: {
-      visible: false,
-      ...props,
-    },
-    attachTo: document.body,
-  })
+  if (!TerminalView) TerminalView = (await import('../../components/terminal/TerminalView.vue')).default
+  return mount(TerminalView, { props: { visible: false, ...props }, attachTo: document.body })
 }
 
 describe('TerminalView.vue — Integration', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
-    mockOnDataCallback = null
-    terminalOutputCallback = null
-    mockTerminalColumns = 80
-    mockTerminalRows = 24
+    mockOnDataCallback = null; terminalOutputCallback = null
+    mockTerminalColumns = 80; mockTerminalRows = 24
   })
 
   it('is hidden when visible prop is false', async () => {
     const wrapper = await createWrapper({ visible: false })
-    const container = wrapper.find('.terminal-container')
-    expect(container.exists()).toBe(true)
-    // v-show toggles display: none.
-    expect(container.attributes('style')).toContain('display: none')
+    expect(wrapper.find('.terminal-container').attributes('style')).toContain('display: none')
   })
 
   it('is visible when visible prop is true', async () => {
     const wrapper = await createWrapper({ visible: true })
-    const container = wrapper.find('.terminal-container')
-    // v-show removes inline style when visible (no inline display:none)
-    const style = container.attributes('style')
+    const style = wrapper.find('.terminal-container').attributes('style')
     expect(style === undefined || !style.includes('display: none')).toBe(true)
   })
 
-  it('renders the terminal element ref', async () => {
+  it('renders the terminal element', async () => {
     const wrapper = await createWrapper({ visible: true })
-    const termEl = wrapper.find('.terminal-element')
-    expect(termEl.exists()).toBe(true)
+    expect(wrapper.find('.terminal-element').exists()).toBe(true)
   })
 
-  it('initializes terminal when becoming visible', async () => {
+  it('calls createSession on first init', async () => {
+    mockTerminalRows = 24; mockTerminalColumns = 80
     const wrapper = await createWrapper({ visible: false })
-    // No terminal yet.
-    expect(mockStartTerminal).not.toHaveBeenCalled()
-
-    // Now show it.
     await wrapper.setProps({ visible: true })
-    await nextTick()
-    // Dynamic imports take a tick via flushPromises.
-    await flushPromises()
-    await nextTick()
+    await nextTick(); await flushPromises(); await nextTick()
 
-    // Terminal should have been created.
     expect(mockTerminalOpen).toHaveBeenCalled()
-    // FitAddon.fit should have been called.
     expect(mockFit).toHaveBeenCalled()
+    expect(mockCreateSession).toHaveBeenCalledWith('default', 'default', 'Shell', 24, 80)
   })
 
-  it('calls startTerminal with correct rows and cols on first init', async () => {
-    mockTerminalRows = 24
-    mockTerminalColumns = 80
+  it('writes data to terminal on terminal:output event', async () => {
     const wrapper = await createWrapper({ visible: false })
     await wrapper.setProps({ visible: true })
-    await nextTick()
-    await flushPromises()
-    await nextTick()
+    await nextTick(); await flushPromises(); await nextTick()
 
-    expect(mockStartTerminal).toHaveBeenCalledWith(24, 80)
-  })
-
-  it('writes data to terminal when terminal:output event fires', async () => {
-    const wrapper = await createWrapper({ visible: false })
-    // Become visible to trigger initialization (component caches term, so run this first)
-    await wrapper.setProps({ visible: true })
-    await nextTick()
-    await flushPromises()
-    await nextTick()
-
-    // Verify terminal was initialized
     expect(mockTerminalOpen).toHaveBeenCalled()
-
-    // Simulate an output event.
-    if (terminalOutputCallback) {
-      terminalOutputCallback('hello from backend')
-    }
-
+    if (terminalOutputCallback) terminalOutputCallback({ sessionId: 'default', data: 'hello' })
     await flushPromises()
-    expect(mockTerminalWrite).toHaveBeenCalledWith('hello from backend')
+    expect(mockTerminalWrite).toHaveBeenCalledWith('hello')
+  })
+
+  it('handles bare string terminal:output backward compat', async () => {
+    const wrapper = await createWrapper({ visible: true })
+    await nextTick(); await flushPromises(); await nextTick()
+    if (terminalOutputCallback) terminalOutputCallback('raw output')
+    await flushPromises()
+    expect(mockTerminalWrite).toHaveBeenCalledWith('raw output')
   })
 
   it('calls fitAddon.fit on resize', async () => {
     const wrapper = await createWrapper({ visible: true })
-    await nextTick()
-    await flushPromises()
-    await nextTick()
-
-    // Simulate resize.
+    await nextTick(); await flushPromises(); await nextTick()
     window.dispatchEvent(new Event('resize'))
-
     expect(mockFit).toHaveBeenCalled()
   })
 
   it('disposes terminal on unmount', async () => {
     const wrapper = await createWrapper({ visible: false })
     await wrapper.setProps({ visible: true })
-    await nextTick()
-    await flushPromises()
-    await nextTick()
-
+    await nextTick(); await flushPromises(); await nextTick()
     expect(mockTerminalOpen).toHaveBeenCalled()
-
     wrapper.unmount()
     expect(mockTerminalDispose).toHaveBeenCalled()
   })
 
-  // Regression: TerminalView mounts inside a parent's v-if, so it's normal
-  // for the component to mount with visible=true on first render. Vue's
-  // watch on props.visible doesn't fire for the initial value, so onMounted
-  // must kick off init itself. Without this fix, the xterm UI appears but
-  // no PTY ever starts and the terminal stays blank.
-  it('initializes the terminal when mounted with visible=true (no transition)', async () => {
+  it('initializes terminal when mounted with visible=true', async () => {
     const wrapper = await createWrapper({ visible: true })
-    await nextTick()
-    await flushPromises()
-    await nextTick()
-
+    await nextTick(); await flushPromises(); await nextTick()
     expect(mockTerminalOpen).toHaveBeenCalled()
-    expect(mockStartTerminal).toHaveBeenCalled()
+    expect(mockCreateSession).toHaveBeenCalled()
   })
 
   it('flushes a queued command after mount-with-visible init', async () => {
-    // Queue a command BEFORE the terminal panel exists — this simulates the
-    // user clicking "Run in terminal" while the panel was closed.
     const { useTerminalDispatchStore } = await import('../../stores/terminalDispatch')
     const dispatch = useTerminalDispatchStore()
     dispatch.sendToTerminal('kubectl get pods')
 
-    // Now the parent flips terminalOpen=true and TerminalView mounts.
+    const wrapper = await createWrapper({ visible: true })
+    await nextTick(); await flushPromises(); await nextTick(); await flushPromises()
+
+    expect(mockSendSessionInput).toHaveBeenCalledWith('default', 'kubectl get pods')
+    expect(dispatch.pendingCommand).toBeNull()
+  })
+
+  it('renders tab bar', async () => {
     const wrapper = await createWrapper({ visible: true })
     await nextTick()
-    await flushPromises()
-    await nextTick()
-    await flushPromises()
-
-    expect(mockSendInput).toHaveBeenCalledWith('kubectl get pods')
-    expect(dispatch.pendingCommand).toBeNull()
+    expect(wrapper.find('.terminal-tabs').exists()).toBe(true)
   })
 })

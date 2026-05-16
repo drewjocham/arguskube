@@ -49,7 +49,7 @@ resource "aws_security_group" "cluster" {
   tags = var.tags
 }
 
-# ── EKS ────────────────────────────────────────────────────────────
+# ── EKS
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"

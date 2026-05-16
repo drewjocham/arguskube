@@ -75,6 +75,52 @@ func (t *Terminal) Start(shell string, rows, cols uint16) error {
 	return nil
 }
 
+// StartWithEnv starts a PTY session with extra environment variables.
+func (t *Terminal) StartWithEnv(shell string, rows, cols uint16, extraEnv []string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.ptmx != nil {
+		_ = t.closeLocked()
+	}
+
+	if shell == "" {
+		shell = os.Getenv("SHELL")
+		if shell == "" {
+			shell = "zsh"
+		}
+	}
+
+	cmd := exec.Command(shell, "-l")
+	cmd.Env = append(os.Environ(),
+		"TERM=xterm-256color",
+		"COLORTERM=truecolor",
+	)
+	cmd.Env = append(cmd.Env, extraEnv...)
+
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{
+		Rows: rows,
+		Cols: cols,
+	})
+	if err != nil {
+		return err
+	}
+
+	t.cmd = cmd
+	t.ptmx = ptmx
+	t.closed = false
+
+	t.logger.Info("terminal started",
+		slog.String("shell", shell),
+		slog.Int("rows", int(rows)),
+		slog.Int("cols", int(cols)),
+	)
+
+	go t.readLoop(ptmx)
+
+	return nil
+}
+
 // Write sends raw input data to the terminal (keystrokes from xterm.js).
 func (t *Terminal) Write(data string) error {
 	t.mu.Lock()
@@ -130,7 +176,7 @@ func (t *Terminal) closeLocked() error {
 // passed in (rather than read off t.ptmx) so a later Start() that swaps
 // t.ptmx cannot race with this goroutine.
 func (t *Terminal) readLoop(ptmx *os.File) {
-	buf := make([]byte, 8192)
+	buf := make([]byte, 65536) // 64KB
 	for {
 		n, err := ptmx.Read(buf)
 		if n > 0 && t.OnOutput != nil {

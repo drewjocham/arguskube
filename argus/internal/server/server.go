@@ -39,9 +39,9 @@ type TopologyGraph struct {
 }
 
 type MetricsFrame struct {
-	Timestamp string            `json:"timestamp"`
-	Nodes     []NodeMetrics     `json:"nodes"`
-	Pods      []PodMetrics      `json:"pods"`
+	Timestamp string        `json:"timestamp"`
+	Nodes     []NodeMetrics `json:"nodes"`
+	Pods      []PodMetrics  `json:"pods"`
 }
 
 type NodeMetrics struct {

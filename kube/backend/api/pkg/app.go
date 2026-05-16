@@ -23,8 +23,8 @@ import (
 	"github.com/argues/argus/internal/incidents"
 	"github.com/argues/argus/internal/k8s"
 	"github.com/argues/argus/internal/notebooks"
-	"github.com/argues/argus/internal/popeye"
 	"github.com/argues/argus/internal/oauthproviders"
+	"github.com/argues/argus/internal/popeye"
 	"github.com/argues/argus/internal/runbooks"
 	"github.com/argues/argus/internal/saasapi"
 	"github.com/argues/argus/internal/secretref"
@@ -83,7 +83,7 @@ type App struct {
 	notebooks       *notebooks.Store
 	runbooks        *runbooks.Store
 	agentConn       *agentconn.Connector
-	term            *terminal.Terminal
+	sessions        *terminal.SessionManager
 	setup           *setup.Manager
 	incidents       *incidents.Store
 	hub             *Hub
@@ -176,7 +176,7 @@ func NewApp(ac AppConfig) *App {
 		argoCD:          ac.ArgoCD,
 		notebooks:       ac.Notebooks,
 		runbooks:        ac.Runbooks,
-		term:            terminal.New(ac.Logger),
+		sessions:        terminal.NewSessionManager(ac.Logger),
 		setup:           ac.Setup,
 		incidents:       ac.Incidents,
 		workflows:       ac.Workflows,
@@ -253,13 +253,7 @@ func (a *App) Startup(ctx context.Context) {
 // Shutdown is called by Wails when the app closes.
 func (a *App) Shutdown(ctx context.Context) {
 	a.closeExecSession()
-	a.term.Close()
-	// Cancel any in-flight async S3 uploads so they don't outlive the
-	// process. The store's upload goroutine listens on its uploadCtx,
-	// and Close() is the only way to signal it from the outside.
-	if a.notebooks != nil {
-		a.notebooks.Close()
-	}
+	a.sessions.CloseAll()
 	a.logger.InfoContext(ctx, "argus shutting down")
 }
 

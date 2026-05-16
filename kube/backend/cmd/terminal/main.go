@@ -2,6 +2,9 @@ package main
 
 import (
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -36,8 +39,6 @@ func run() error {
 
 	logger := applogger.New(cfg)
 
-	// For the standalone terminal, we only strictly need the PTY/terminal integrations
-	// and potentially the AI Agent for the "Magic Wand" features.
 	usageStore, _ := usage.New()
 
 	var agent *ai.Agent
@@ -69,11 +70,15 @@ func run() error {
 		AppMode: "terminal",
 	})
 
-	// Standalone terminal — a normal resizable Wails window with traffic
-	// lights. We dropped the Frameless/translucent treatment because it
-	// removed the macOS chrome the user expects from a "real app" (resize
-	// handles, drag, traffic lights). Looks consistent with the dashboard
-	// and is a lot less surprising.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		logger.Info("signal received — cleaning up terminal sessions")
+		app.Shutdown(nil)
+		os.Exit(0)
+	}()
+
 	return wails.Run(&options.App{
 		Title:         appTitle,
 		Width:         appWidth,

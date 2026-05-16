@@ -93,3 +93,115 @@ export function usePodExec() {
 
   return { connected, error, startExec, sendInput, resizeExec, closeExec }
 }
+
+/**
+ * Composable for multi-session terminal with domain support.
+ */
+export function useTerminalSession() {
+  const sessions = ref([])
+
+  async function createSession(sessionId, domain, label, rows, cols) {
+    await callGo('StartTerminalSession', sessionId, domain, label, rows, cols)
+    await refreshSessions()
+  }
+
+  async function sendSessionInput(sessionId, data) {
+    try {
+      await callGo('SendTerminalSessionInput', sessionId, data)
+    } catch (e) {
+      console.error('[terminal-session-input]', e)
+    }
+  }
+
+  async function resizeSession(sessionId, rows, cols) {
+    try {
+      await callGo('ResizeTerminalSession', sessionId, rows, cols)
+    } catch (e) {
+      console.error('[terminal-session-resize]', e)
+    }
+  }
+
+  async function closeSession(sessionId) {
+    await callGo('CloseTerminalSession', sessionId)
+    await refreshSessions()
+  }
+
+  async function refreshSessions() {
+    try {
+      sessions.value = await callGo('ListTerminalSessions') || []
+    } catch (e) {
+      console.error('[terminal-sessions]', e)
+    }
+  }
+
+  const domains = [
+    { id: 'default', label: 'Shell', icon: '>' },
+    { id: 'k8s', label: 'K8s', icon: '\u2388' },
+    { id: 'kafka', label: 'Kafka', icon: 'K' },
+    { id: 'cloud', label: 'Cloud', icon: '\u2601' },
+  ]
+
+  function domainLabel(domain) {
+    const d = domains.find(d => d.id === domain)
+    return d ? d.label : domain
+  }
+
+  function domainIcon(domain) {
+    const d = domains.find(d => d.id === domain)
+    return d ? d.icon : '>'
+  }
+
+  return {
+    sessions, domains, createSession, sendSessionInput,
+    resizeSession, closeSession, refreshSessions,
+    domainLabel, domainIcon,
+  }
+}
+
+/**
+ * Composable for the terminal AI copilot.
+ */
+export function useTerminalCopilot() {
+  const loading = ref(false)
+  const result = ref(null)
+  const error = ref(null)
+
+  async function explainOutput(output, domain) {
+    loading.value = true
+    error.value = null
+    result.value = null
+    try {
+      const resp = await callGo('ExplainTerminalOutput', output, domain)
+      result.value = resp
+      return resp
+    } catch (e) {
+      error.value = e?.message || String(e)
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function generateCommand(prompt, domain) {
+    loading.value = true
+    error.value = null
+    result.value = null
+    try {
+      const resp = await callGo('GenerateCommand', prompt, domain)
+      result.value = resp
+      return resp
+    } catch (e) {
+      error.value = e?.message || String(e)
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  function clear() {
+    result.value = null
+    error.value = null
+  }
+
+  return { loading, result, error, explainOutput, generateCommand, clear }
+}

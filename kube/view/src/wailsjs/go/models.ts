@@ -997,8 +997,18 @@ export namespace config {
 	    OIDCClientID: string;
 	    OIDCClientSecret: string;
 	    OIDCDisplayName: string;
+	    AppleServicesID: string;
+	    AppleTeamID: string;
+	    AppleKeyID: string;
+	    ApplePrivateKey: string;
+	    ApplePrivateKeyFile: string;
+	    AppleDisplayName: string;
 	    AllowLocalSignup: boolean;
 	    DevMode: boolean;
+	    PasskeyEnabled: boolean;
+	    PasskeyRPID: string;
+	    PasskeyRPName: string;
+	    PasskeyRPOrigin: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AuthConfig(source);
@@ -1013,8 +1023,18 @@ export namespace config {
 	        this.OIDCClientID = source["OIDCClientID"];
 	        this.OIDCClientSecret = source["OIDCClientSecret"];
 	        this.OIDCDisplayName = source["OIDCDisplayName"];
+	        this.AppleServicesID = source["AppleServicesID"];
+	        this.AppleTeamID = source["AppleTeamID"];
+	        this.AppleKeyID = source["AppleKeyID"];
+	        this.ApplePrivateKey = source["ApplePrivateKey"];
+	        this.ApplePrivateKeyFile = source["ApplePrivateKeyFile"];
+	        this.AppleDisplayName = source["AppleDisplayName"];
 	        this.AllowLocalSignup = source["AllowLocalSignup"];
 	        this.DevMode = source["DevMode"];
+	        this.PasskeyEnabled = source["PasskeyEnabled"];
+	        this.PasskeyRPID = source["PasskeyRPID"];
+	        this.PasskeyRPName = source["PasskeyRPName"];
+	        this.PasskeyRPOrigin = source["PasskeyRPOrigin"];
 	    }
 	}
 
@@ -5207,6 +5227,29 @@ export namespace setup {
 	        this.version = source["version"];
 	        this.via = source["via"];
 	        this.message = source["message"];
+	    }
+	}
+
+}
+
+export namespace terminal {
+	
+	export class SessionInfo {
+	    id: string;
+	    domain: string;
+	    label: string;
+	    alive: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.domain = source["domain"];
+	        this.label = source["label"];
+	        this.alive = source["alive"];
 	    }
 	}
 

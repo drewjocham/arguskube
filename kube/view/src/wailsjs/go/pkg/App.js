@@ -38,6 +38,10 @@ export function AuthRoutes(arg1) {
   return window['go']['pkg']['App']['AuthRoutes'](arg1);
 }
 
+export function AuthenticateWithBiometrics(arg1) {
+  return window['go']['pkg']['App']['AuthenticateWithBiometrics'](arg1);
+}
+
 export function AutoResolveContext() {
   return window['go']['pkg']['App']['AutoResolveContext']();
 }
@@ -84,6 +88,10 @@ export function ClearUserActivity() {
 
 export function CloseExecSession() {
   return window['go']['pkg']['App']['CloseExecSession']();
+}
+
+export function CloseTerminalSession(arg1) {
+  return window['go']['pkg']['App']['CloseTerminalSession'](arg1);
 }
 
 export function CompleteOAuthFlow(arg1, arg2) {
@@ -222,8 +230,16 @@ export function ExecPodShell(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['pkg']['App']['ExecPodShell'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function ExplainTerminalOutput(arg1, arg2) {
+  return window['go']['pkg']['App']['ExplainTerminalOutput'](arg1, arg2);
+}
+
 export function FindOrphanedEndpoints(arg1) {
   return window['go']['pkg']['App']['FindOrphanedEndpoints'](arg1);
+}
+
+export function GenerateCommand(arg1, arg2) {
+  return window['go']['pkg']['App']['GenerateCommand'](arg1, arg2);
 }
 
 export function GenerateLoadTestPayload(arg1, arg2) {
@@ -498,6 +514,10 @@ export function InstallArgusScan() {
   return window['go']['pkg']['App']['InstallArgusScan']();
 }
 
+export function IsBiometricAvailable() {
+  return window['go']['pkg']['App']['IsBiometricAvailable']();
+}
+
 export function LaunchPopOutTerminal() {
   return window['go']['pkg']['App']['LaunchPopOutTerminal']();
 }
@@ -626,6 +646,10 @@ export function ListSpotChecks() {
   return window['go']['pkg']['App']['ListSpotChecks']();
 }
 
+export function ListTerminalSessions() {
+  return window['go']['pkg']['App']['ListTerminalSessions']();
+}
+
 export function ListVaultSecrets() {
   return window['go']['pkg']['App']['ListVaultSecrets']();
 }
@@ -708,6 +732,10 @@ export function ResizeExec(arg1, arg2) {
 
 export function ResizeTerminal(arg1, arg2) {
   return window['go']['pkg']['App']['ResizeTerminal'](arg1, arg2);
+}
+
+export function ResizeTerminalSession(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['ResizeTerminalSession'](arg1, arg2, arg3);
 }
 
 export function ResolveLocalPayloadPath(arg1) {
@@ -806,6 +834,10 @@ export function SendTerminalInput(arg1) {
   return window['go']['pkg']['App']['SendTerminalInput'](arg1);
 }
 
+export function SendTerminalSessionInput(arg1, arg2) {
+  return window['go']['pkg']['App']['SendTerminalSessionInput'](arg1, arg2);
+}
+
 export function ServeHTTP(arg1, arg2) {
   return window['go']['pkg']['App']['ServeHTTP'](arg1, arg2);
 }
@@ -860,6 +892,10 @@ export function StartRunnerLoadTest(arg1) {
 
 export function StartTerminal(arg1, arg2) {
   return window['go']['pkg']['App']['StartTerminal'](arg1, arg2);
+}
+
+export function StartTerminalSession(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['pkg']['App']['StartTerminalSession'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function StartWorkspaceConnect(arg1, arg2, arg3) {

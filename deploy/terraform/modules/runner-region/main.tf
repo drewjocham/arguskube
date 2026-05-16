@@ -22,7 +22,7 @@ resource "google_compute_subnetwork" "runner" {
   }
 }
 
-# ── Cloud NAT (outbound for private nodes) ────────────────────────
+# ── Cloud NAT (outbound for private nodes)
 resource "google_compute_router" "runner" {
   name    = "argus-runner-${var.run_id}-router"
   network = google_compute_network.runner.id
@@ -37,7 +37,7 @@ resource "google_compute_router_nat" "runner" {
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 }
 
-# ── GKE Cluster — spot nodes, ephemeral ───────────────────────────
+# ── GKE Cluster — spot nodes, ephemeral
 resource "google_container_cluster" "runner" {
   name       = "argus-runner-${var.run_id}"
   location   = var.region

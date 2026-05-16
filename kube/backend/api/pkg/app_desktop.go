@@ -17,6 +17,7 @@ import (
 	"github.com/argues/argus/internal/config"
 	"github.com/argues/argus/internal/features"
 	"github.com/argues/argus/internal/k8s"
+	"github.com/argues/argus/internal/terminal"
 )
 
 // GetClusterInfo returns cluster metadata.
@@ -936,20 +937,115 @@ func (a *App) closeExecSession() {
 
 const EventTerminalOutput = "terminal:output"
 
-// StartTerminal opens a PTY shell session.
+// StartTerminal opens a default PTY shell session (backward-compat).
 func (a *App) StartTerminal(rows, cols int) error {
-	a.term.OnOutput = func(data string) {
-		runtime.EventsEmit(a.ctx, EventTerminalOutput, data)
+	return a.StartTerminalSession("default", "default", "Shell", rows, cols)
+}
+
+// StartTerminalSession opens a named PTY shell session with domain context.
+func (a *App) StartTerminalSession(sessionId, domain, label string, rows, cols int) error {
+	var d terminal.Domain
+	switch domain {
+	case "k8s":
+		d = terminal.DomainK8s
+	case "kafka":
+		d = terminal.DomainKafka
+	case "cloud":
+		d = terminal.DomainCloud
+	default:
+		d = terminal.DomainDefault
 	}
-	return a.term.Start("", uint16(rows), uint16(cols))
+
+	extraEnv := buildDomainEnv(a, d)
+
+	sess, err := a.sessions.NewSession(sessionId, d, label, uint16(rows), uint16(cols), extraEnv)
+	if err != nil {
+		return err
+	}
+
+	sess.Terminal.OnOutput = func(data string) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, EventTerminalOutput, map[string]string{
+				"sessionId": sessionId,
+				"data":      data,
+			})
+		}
+	}
+
+	terminal.WriteWelcome(sess.Terminal, d, extraEnv)
+
+	return nil
 }
 
-// SendTerminalInput writes raw input to the terminal.
+// SendTerminalInput writes raw input to the default session (backward-compat).
 func (a *App) SendTerminalInput(data string) error {
-	return a.term.Write(data)
+	return a.SendTerminalSessionInput("default", data)
 }
 
-// ResizeTerminal updates the terminal dimensions.
+// SendTerminalSessionInput writes raw input to a named terminal session.
+func (a *App) SendTerminalSessionInput(sessionId, data string) error {
+	sess := a.sessions.GetSession(sessionId)
+	if sess == nil {
+		return nil
+	}
+	return sess.Terminal.Write(data)
+}
+
+// ResizeTerminal updates dimensions for the default session (backward-compat).
 func (a *App) ResizeTerminal(rows, cols int) error {
-	return a.term.Resize(uint16(rows), uint16(cols))
+	return a.ResizeTerminalSession("default", rows, cols)
+}
+
+// ResizeTerminalSession updates terminal dimensions for a named session.
+func (a *App) ResizeTerminalSession(sessionId string, rows, cols int) error {
+	sess := a.sessions.GetSession(sessionId)
+	if sess == nil {
+		return nil
+	}
+	return sess.Terminal.Resize(uint16(rows), uint16(cols))
+}
+
+// CloseTerminalSession closes a named terminal session.
+func (a *App) CloseTerminalSession(sessionId string) error {
+	return a.sessions.CloseSession(sessionId)
+}
+
+// ListTerminalSessions returns all active terminal sessions.
+func (a *App) ListTerminalSessions() []terminal.SessionInfo {
+	return a.sessions.ListSessions()
+}
+
+// buildDomainEnv returns extra environment variables for a terminal domain.
+func buildDomainEnv(a *App, d terminal.Domain) []string {
+	var env []string
+	switch d {
+	case terminal.DomainK8s:
+		if a.cfg != nil {
+			if ctx := a.cfg.Kubernetes.Context; ctx != "" {
+				env = append(env, "ARGUS_K8S_CONTEXT="+ctx)
+			}
+			if ns := a.cfg.Kubernetes.Namespace; ns != "" {
+				env = append(env, "ARGUS_NAMESPACE="+ns)
+			}
+			if kc := a.cfg.Kubernetes.Config; kc != "" {
+				env = append(env, "KUBECONFIG="+kc)
+			}
+		}
+	case terminal.DomainCloud:
+		if a.cfg != nil {
+			if p := a.cfg.Pipelines.GCPProject; p != "" {
+				env = append(env, "CLOUDSDK_CORE_PROJECT="+p)
+			}
+			if r := a.cfg.Pipelines.GCPRegion; r != "" {
+				env = append(env, "CLOUDSDK_COMPUTE_REGION="+r)
+			}
+			if p := a.cfg.Pipelines.AWSProject; p != "" {
+				env = append(env, "AWS_PROFILE="+p)
+			}
+			if r := a.cfg.Pipelines.AWSRegion; r != "" {
+				env = append(env, "AWS_REGION="+r)
+			}
+		}
+	}
+	return env
 }
