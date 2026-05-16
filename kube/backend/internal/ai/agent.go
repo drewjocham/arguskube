@@ -48,6 +48,14 @@ type AutoSummary struct {
 	Confidence float64   `json:"confidence"`
 }
 
+// defaultMaxConcurrentInvestigations bounds the number of auto-
+// investigations that can be in flight at once. When an alert storm
+// hits, AutoInvestigate drops requests above this cap rather than
+// spawning a goroutine per alert (which used to be unbounded — see
+// Argus Code Review P0.4). Sized to ~the per-second rate the LLM
+// provider will tolerate before rate-limiting kicks in.
+const defaultMaxConcurrentInvestigations = 5
+
 // Agent manages conversations, auto-investigation, and pattern tracking.
 type Agent struct {
 	client *DeepSeekClient
@@ -57,16 +65,53 @@ type Agent struct {
 	conversations map[string][]ChatEntry  // keyed by alertID or "global"
 	autoSummaries map[string]*AutoSummary // keyed by alertID
 	eventLog      []AgentEvent            // rolling event log for pattern tracking
+
+	// investigateSem is a bounded-semaphore for AutoInvestigate. A
+	// buffered channel of struct{} where the capacity is the maximum
+	// in-flight investigations. Acquire by sending; release by receiving.
+	// Replaced by SetInvestigationConcurrency under mu.
+	investigateSem chan struct{}
+
+	// dropCount tracks investigations skipped because the pool was
+	// saturated. Visible for tests via DroppedInvestigations.
+	dropCount uint64
 }
 
 // NewAgent creates a new AI agent.
 func NewAgent(client *DeepSeekClient, logger *slog.Logger) *Agent {
 	return &Agent{
-		client:        client,
-		logger:        logger,
-		conversations: make(map[string][]ChatEntry),
-		autoSummaries: make(map[string]*AutoSummary),
+		client:         client,
+		logger:         logger,
+		conversations:  make(map[string][]ChatEntry),
+		autoSummaries:  make(map[string]*AutoSummary),
+		investigateSem: make(chan struct{}, defaultMaxConcurrentInvestigations),
 	}
+}
+
+// SetInvestigationConcurrency replaces the auto-investigation worker pool
+// with one sized to n. Call once during setup before any AutoInvestigate
+// fires; in-flight investigations using the old semaphore continue to
+// release back to it (their refcount lives on the goroutine stack), so
+// the swap itself is safe, but mixing pools during the swap means the
+// limit is only enforced once the cutover finishes.
+//
+// Passing n <= 0 falls back to the package default.
+func (a *Agent) SetInvestigationConcurrency(n int) {
+	if n <= 0 {
+		n = defaultMaxConcurrentInvestigations
+	}
+	a.mu.Lock()
+	a.investigateSem = make(chan struct{}, n)
+	a.mu.Unlock()
+}
+
+// DroppedInvestigations returns the number of AutoInvestigate calls that
+// were skipped because the worker pool was saturated. Cumulative for
+// the lifetime of the Agent; primarily useful in tests.
+func (a *Agent) DroppedInvestigations() uint64 {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.dropCount
 }
 
 // SetClient swaps the DeepSeek client backing this agent. Used when the user
@@ -105,11 +150,39 @@ func (a *Agent) Client() *DeepSeekClient {
 	return a.currentClient()
 }
 
-// AutoInvestigate is called when a new alert arrives. It builds context and
-// sends the alert to DeepSeek for automatic analysis. Non-blocking — runs
-// in a goroutine and stores the result.
+// AutoInvestigate is called when a new alert arrives. It builds context
+// and sends the alert to DeepSeek for automatic analysis. Non-blocking
+// — runs in a goroutine and stores the result.
+//
+// Concurrent investigations are capped by a bounded worker pool (see
+// defaultMaxConcurrentInvestigations / SetInvestigationConcurrency).
+// When the pool is saturated the call is dropped with a warning rather
+// than queued — under an alert storm we'd rather skip a few AI deep-
+// dives than spawn a thousand goroutines all racing for the LLM rate
+// limiter.
 func (a *Agent) AutoInvestigate(ctx context.Context, alert alerts.Alert, metrics *alerts.ClusterMetrics, relatedAlerts []alerts.Alert) {
+	a.mu.RLock()
+	sem := a.investigateSem
+	a.mu.RUnlock()
+
+	select {
+	case sem <- struct{}{}:
+		// Acquired a slot; proceed.
+	default:
+		a.mu.Lock()
+		a.dropCount++
+		a.mu.Unlock()
+		a.logger.WarnContext(ctx, "auto-investigation skipped: pool saturated",
+			slog.String("alertId", alert.ID),
+			slog.Int("inFlight", len(sem)),
+			slog.Int("capacity", cap(sem)),
+		)
+		return
+	}
+
 	go func() {
+		defer func() { <-sem }()
+
 		summary, err := a.investigate(ctx, alert, metrics, relatedAlerts)
 		if err != nil {
 			a.logger.WarnContext(ctx, "auto-investigation failed",

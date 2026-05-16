@@ -3,6 +3,8 @@ package ai_test
 import (
 	"context"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -154,6 +156,65 @@ func TestAutoInvestigateConcurrent(t *testing.T) {
 			Name: "TestAlert",
 		}
 		agent.AutoInvestigate(context.Background(), alert, nil, nil)
+	}
+}
+
+// TestAutoInvestigateBoundedByWorkerPool is a regression test for the
+// pre-fix "1000 alerts → 1000 goroutines" behavior. After the fix
+// concurrent investigations are bounded by SetInvestigationConcurrency
+// and overflow calls are dropped (not queued).
+func TestAutoInvestigateBoundedByWorkerPool(t *testing.T) {
+	// Slow handler that blocks until the test releases it. While blocked,
+	// the goroutines occupy worker slots and any further AutoInvestigate
+	// calls must drop.
+	release := make(chan struct{})
+	handlerReached := make(chan struct{}, 16)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerReached <- struct{}{}
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
+			"usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+		}`))
+	}))
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(release) })
+
+	client := ai.NewOpenAICompatibleClient("k", server.URL, "", slog.New(slog.DiscardHandler))
+	agent := ai.NewAgent(client, slog.New(slog.DiscardHandler))
+	agent.SetInvestigationConcurrency(2)
+
+	// Fire 5 investigations. The first two should acquire slots and reach
+	// the slow handler; the remaining three should be dropped.
+	for i := 0; i < 5; i++ {
+		alert := alerts.Alert{ID: "alert-bound-" + string(rune('a'+i)), Name: "X"}
+		agent.AutoInvestigate(context.Background(), alert, nil, nil)
+	}
+
+	// Wait for the two acquiring goroutines to actually reach the handler
+	// so we know the slots are held. Don't poll the counter blindly —
+	// AutoInvestigate is synchronous in its acquire step, so by the time
+	// the loop above returned every drop had already incremented the
+	// counter, but the in-flight goroutines may not yet have hit the
+	// server.
+	deadline := time.After(2 * time.Second)
+	got := 0
+	for got < 2 {
+		select {
+		case <-handlerReached:
+			got++
+		case <-deadline:
+			t.Fatalf("only %d/2 in-flight investigations reached the slow handler", got)
+		}
+	}
+
+	if dropped := agent.DroppedInvestigations(); dropped != 3 {
+		t.Errorf("expected 3 dropped investigations under saturation; got %d", dropped)
 	}
 }
 
