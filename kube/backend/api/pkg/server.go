@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,67 @@ const (
 	httpPathWebhookAnomstack = "/webhooks/anomstack"
 	httpPathTunnel           = "/tunnel"
 )
+
+// ── Payload binding (pim-agl WithPubSubEnvelope shape) ────────────────
+
+type ctxKey string
+
+const webhookPayloadKey ctxKey = "webhookPayload"
+
+// WithWebhookPayload decodes the inbound JSON into a WebhookPayload
+// and attaches it to the request context. On decode failure: 400 Bad
+// Request and the wrapped handler doesn't run. Follows the same
+// shape as pim-agl-online-data-relay's WithPubSubEnvelope so the
+// handler stays a thin "read typed payload → act" function.
+func WithWebhookPayload(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload WebhookPayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		ctx := context.WithValue(r.Context(), webhookPayloadKey, payload)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// GetWebhookPayload returns the typed payload the WithWebhookPayload
+// middleware attached. ok is false when the middleware was not in
+// the chain.
+func GetWebhookPayload(ctx context.Context) (WebhookPayload, bool) {
+	v, ok := ctx.Value(webhookPayloadKey).(WebhookPayload)
+	return v, ok
+}
+
+// WithCORS is the chi-style CORS gate. Origins not in the configured
+// allowlist get 403; OPTIONS preflights short-circuit with 200 here
+// before the handler chain runs.
+func WithCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !applyCORS(w, r, allowedOrigins()) {
+			http.Error(w, "origin not allowed", http.StatusForbidden)
+			return
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// WithWebhookAuth gates webhook routes on ARGUS_WEBHOOK_TOKEN. When
+// the env var is unset, only loopback POSTs are accepted (the open-
+// CORS path used to make injecting fake alerts trivial).
+func WithWebhookAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !authenticateWebhook(r) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 // apiRequestMaxBytes caps inbound RPC bodies. The Wails-style RPC over
 // HTTP only carries typed JSON args; no legitimate caller approaches
@@ -149,35 +211,25 @@ type WebhookPayload struct {
 	Labels     map[string]string `json:"labels"`
 }
 
-// HandleWebhook receives anomaly alerts from external systems (Anomstack, Grafana, etc.)
-// and merges them into the alert stream visible in the frontend.
+// HandleWebhook receives anomaly alerts from external systems
+// (Anomstack, Grafana, etc.) and merges them into the alert stream
+// visible in the frontend.
 //
-// Webhook auth: when ARGUS_WEBHOOK_TOKEN is set, the inbound request
-// must carry a matching `Authorization: Bearer <token>` OR a
-// `X-Webhook-Token: <token>` header. When unset, only loopback POSTs are
-// accepted — the previous open-CORS path made it trivial to inject fake
-// alerts from any origin.
+// The chi route stack handles the request envelope:
+//   - applyCORS  → drops unknown origins (returns 403 + OPTIONS bypass)
+//   - chi routes  → only POST reaches us (no method check needed)
+//   - authenticateWebhook → 401 when ARGUS_WEBHOOK_TOKEN is set and
+//     the bearer / X-Webhook-Token header doesn't match
+//   - WithWebhookPayload → 400 when the body isn't valid
+//     WebhookPayload JSON
+//
+// By the time we enter this handler the payload is decoded and
+// available via GetWebhookPayload(ctx) — same shape as pim-agl's
+// GetPubSubEnvelope.
 func (a *App) HandleWebhook(w http.ResponseWriter, r *http.Request) {
-	if !applyCORS(w, r, allowedOrigins()) {
-		http.Error(w, "origin not allowed", http.StatusForbidden)
-		return
-	}
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if !authenticateWebhook(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	var payload WebhookPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
+	payload, ok := GetWebhookPayload(r.Context())
+	if !ok {
+		http.Error(w, "missing payload context (server misconfigured)", http.StatusInternalServerError)
 		return
 	}
 
@@ -263,7 +315,12 @@ func (a *App) StartHTTPServer(port int) {
 	// chi-style route registration. http.HandlerFunc-wraps ServeHTTP
 	// so chi can mount it like any other handler.
 	r.Handle(httpPathAPIPrefix, http.HandlerFunc(a.ServeHTTP))
-	r.Post(httpPathWebhookAnomstack, a.HandleWebhook)
+
+	// Webhook chain: CORS → token auth → payload decode → handler.
+	// Each link is a chi middleware so HandleWebhook itself is a
+	// thin "take typed payload, build alert, emit" function.
+	r.With(WithCORS, WithWebhookAuth, WithWebhookPayload).
+		Post(httpPathWebhookAnomstack, a.HandleWebhook)
 
 	if a.auth != nil {
 		r.Mount("/", a.AuthRoutes())

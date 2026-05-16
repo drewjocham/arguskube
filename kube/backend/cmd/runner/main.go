@@ -36,6 +36,42 @@ const (
 	urlParamRunID = "runID"
 )
 
+// ── Payload binding (pim-agl WithPubSubEnvelope shape) ────────────────
+//
+// runnerSpecKey is the private context key the WithRunnerSpec
+// middleware uses to stash the decoded RunnerSpec. The same key
+// guards GetRunnerSpec so an unrelated caller can't smuggle a
+// crafted value into the context.
+
+type ctxKey string
+
+const runnerSpecKey ctxKey = "runnerSpec"
+
+// WithRunnerSpec decodes the request body into a saasapi.RunnerSpec
+// and attaches it to the context. On decode failure it writes
+// 400 Bad Request and short-circuits — the wrapped handler never
+// runs without a valid spec.
+func WithRunnerSpec(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var spec saasapi.RunnerSpec
+		if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		ctx := context.WithValue(r.Context(), runnerSpecKey, spec)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// GetRunnerSpec returns the typed payload the WithRunnerSpec
+// middleware attached. ok is false when the middleware was not in
+// the chain (a programming error this lets handlers detect rather
+// than silently work on a zero spec).
+func GetRunnerSpec(ctx context.Context) (saasapi.RunnerSpec, bool) {
+	v, ok := ctx.Value(runnerSpecKey).(saasapi.RunnerSpec)
+	return v, ok
+}
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatalf("argus-runner: %v", err)
@@ -104,7 +140,7 @@ func run() error {
 	r.Get(runnerPathHealth, srv.handleHealth)
 	r.Group(func(r gochi.Router) {
 		r.Use(srv.authMiddleware)
-		r.Post(runnerPathStart, srv.handleStart)
+		r.With(WithRunnerSpec).Post(runnerPathStart, srv.handleStart)
 		r.Get(runnerPathStatus, srv.handleStatus)
 		r.Get(runnerPathStream, srv.handleStream)
 		r.Delete(runnerPathCancel, srv.handleCancel)
@@ -235,11 +271,15 @@ func (s *RunnerServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/v1/runner/start — accepts a RunnerSpec and begins
 // execution. The method-not-allowed guard previously here is gone:
-// chi only routes POST to this handler.
+// chi only routes POST to this handler. The JSON body has already
+// been decoded into the context by WithRunnerSpec; the handler just
+// reads the typed payload via GetRunnerSpec.
 func (s *RunnerServer) handleStart(w http.ResponseWriter, r *http.Request) {
-	var spec saasapi.RunnerSpec
-	if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+	spec, ok := GetRunnerSpec(r.Context())
+	if !ok {
+		// Programming error — WithRunnerSpec wasn't wired. Surface it
+		// instead of running on a zero-valued spec.
+		http.Error(w, "missing payload context (server misconfigured)", http.StatusInternalServerError)
 		return
 	}
 	if spec.RunID == "" {

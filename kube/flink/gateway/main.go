@@ -22,6 +22,35 @@ const (
 	gatewayPathHealth   = "/healthz"
 )
 
+// ── Payload binding (pim-agl WithPubSubEnvelope shape) ────────────────
+
+type ctxKey string
+
+const detectRequestKey ctxKey = "detectRequest"
+
+// WithDetectRequest decodes the request body into a detectRequest and
+// stashes it in context. On decode failure: 400 Bad Request and the
+// wrapped handler does not run.
+func WithDetectRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req detectRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+			return
+		}
+		ctx := context.WithValue(r.Context(), detectRequestKey, req)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// GetDetectRequest pulls the typed payload the WithDetectRequest
+// middleware attached. ok is false when the middleware was not in
+// the chain (programming error).
+func GetDetectRequest(ctx context.Context) (detectRequest, bool) {
+	v, ok := ctx.Value(detectRequestKey).(detectRequest)
+	return v, ok
+}
+
 var (
 	flinkURL    = env("FLINK_URL", "http://localhost:8081")
 	gatewayPort = env("GATEWAY_PORT", "8087")
@@ -93,7 +122,7 @@ func main() {
 	r.Get(gatewayPathHealth, handleHealth)
 	r.Group(func(r gochi.Router) {
 		r.Use(authMiddleware)
-		r.Post(gatewayPathDetect, handleDetect)
+		r.With(WithDetectRequest).Post(gatewayPathDetect, handleDetect)
 		r.Get(gatewayPathListJobs, handleListJobs)
 	})
 
@@ -148,9 +177,9 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDetect(w http.ResponseWriter, r *http.Request) {
-	var req detectRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+	req, ok := GetDetectRequest(r.Context())
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "missing payload context (server misconfigured)")
 		return
 	}
 

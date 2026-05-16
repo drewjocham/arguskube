@@ -11,8 +11,23 @@ import (
 	"sync"
 	"testing"
 
+	gochi "github.com/go-chi/chi/v5"
+
 	"github.com/argues/argus/internal/config"
 )
+
+// webhookRoute returns the full HandleWebhook chain (CORS → token
+// auth → JSON-body decode → handler) wrapped as a chi router so
+// tests exercise the same code path StartHTTPServer wires in
+// production. Earlier the handler did all of that work inline and
+// tests called it directly; after splitting transport concerns into
+// chi middleware, tests must hit the route through a router.
+func webhookRoute(a *App) http.Handler {
+	r := gochi.NewRouter()
+	r.With(WithCORS, WithWebhookAuth, WithWebhookPayload).
+		Post(httpPathWebhookAnomstack, a.HandleWebhook)
+	return r
+}
 
 // minimalServerApp returns an *App wired only with the bits ServeHTTP needs.
 // auth is nil so authorizeAPIRequest falls through to the service-token path,
@@ -146,7 +161,7 @@ func TestHandleWebhook_RejectsNonPOST(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/webhooks/anomstack", nil)
 	req.Header.Set("Origin", "http://localhost")
 	rr := httptest.NewRecorder()
-	a.HandleWebhook(rr, req)
+	webhookRoute(a).ServeHTTP(rr, req)
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", rr.Code)
 	}
@@ -159,7 +174,7 @@ func TestHandleWebhook_RejectsBadJSON(t *testing.T) {
 	req.Header.Set("Origin", "http://localhost")
 	req.RemoteAddr = "127.0.0.1:0"
 	rr := httptest.NewRecorder()
-	a.HandleWebhook(rr, req)
+	webhookRoute(a).ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rr.Code)
 	}
@@ -173,7 +188,7 @@ func TestHandleWebhook_RemoteUnauthorizedWithoutToken(t *testing.T) {
 	req.Header.Set("Origin", "http://localhost")
 	req.RemoteAddr = "203.0.113.5:1234" // not loopback
 	rr := httptest.NewRecorder()
-	a.HandleWebhook(rr, req)
+	webhookRoute(a).ServeHTTP(rr, req)
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", rr.Code)
 	}
@@ -196,7 +211,7 @@ func TestHandleWebhook_AcceptsBearerAndAppendsAlert(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer expected")
 	req.RemoteAddr = "203.0.113.5:1234"
 	rr := httptest.NewRecorder()
-	a.HandleWebhook(rr, req)
+	webhookRoute(a).ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
@@ -236,7 +251,7 @@ func TestHandleWebhook_DefaultsTitleFromMetricName(t *testing.T) {
 	req.Header.Set("Origin", "http://localhost")
 	req.RemoteAddr = "127.0.0.1:0"
 	rr := httptest.NewRecorder()
-	a.HandleWebhook(rr, req)
+	webhookRoute(a).ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d", rr.Code)
 	}
@@ -259,7 +274,7 @@ func TestHandleWebhook_TrimsTo100AlertsRingBuffer(t *testing.T) {
 		req.Header.Set("Origin", "http://localhost")
 		req.RemoteAddr = "127.0.0.1:0"
 		rr := httptest.NewRecorder()
-		a.HandleWebhook(rr, req)
+		webhookRoute(a).ServeHTTP(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("[%d] status = %d", i, rr.Code)
 		}
