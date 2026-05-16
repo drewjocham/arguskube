@@ -112,6 +112,41 @@ func TestProcessDedupesRepeatedFirings(t *testing.T) {
 	}
 }
 
+func TestStaleSignatureRefiresAfterQuietWindow(t *testing.T) {
+	// Regression for the dead-code stale path: before the fix, LastSeen
+	// was updated BEFORE the stale check, so now.Sub(st.LastSeen) was
+	// always ~0 and a long-quiet signature could never re-fire.
+	p, _, _ := newTestProcessor(t)
+	a := mkAlert("OOMKilled", "prod", "api-deadbeef-xyz12")
+	ctx := context.Background()
+
+	// First fire: passes through.
+	if out := p.Process(ctx, []alerts.Alert{a}); len(out) != 1 {
+		t.Fatalf("first fire should pass through; got %d", len(out))
+	}
+	// Same signature again right away: deduped.
+	if out := p.Process(ctx, []alerts.Alert{a}); len(out) != 0 {
+		t.Fatalf("second fire should be deduped; got %d", len(out))
+	}
+
+	// Rewind LastSeen by 6 minutes to simulate a long quiet window
+	// without sleeping the test out.
+	sig := SignatureOf(a)
+	p.mu.Lock()
+	st := p.state[sig]
+	if st == nil {
+		p.mu.Unlock()
+		t.Fatalf("expected state for signature %q", sig)
+	}
+	st.LastSeen = time.Now().Add(-6 * time.Minute)
+	p.mu.Unlock()
+
+	// Third fire: should re-fire because the signature has been quiet.
+	if out := p.Process(ctx, []alerts.Alert{a}); len(out) != 1 {
+		t.Errorf("stale signature should re-fire after the quiet window; got %d", len(out))
+	}
+}
+
 func TestSilenceSuppressesFutureFires(t *testing.T) {
 	p, _, _ := newTestProcessor(t)
 	a := mkAlert("DiskPressure", "prod", "")
