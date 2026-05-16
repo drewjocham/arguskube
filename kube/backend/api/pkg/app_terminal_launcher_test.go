@@ -195,8 +195,30 @@ func TestResolveLufisBinaryHonorsARGUS_LUFIS_PATH(t *testing.T) {
 
 func TestResolveLufisBinaryRejectsMissingOverride(t *testing.T) {
 	t.Setenv("ARGUS_LUFIS_PATH", "/does/not/exist/lufis")
-	if _, err := resolveLufisBinary(); err == nil {
+	_, err := resolveLufisBinary()
+	if err == nil {
 		t.Fatal("expected error for nonexistent ARGUS_LUFIS_PATH")
+	}
+	// The wrap should preserve the underlying os.PathError so a
+	// caller (or operator reading the log) sees "no such file"
+	// rather than a flat "does not exist".
+	if !strings.Contains(err.Error(), "stat:") {
+		t.Errorf("expected error to include the wrapped stat context; got %v", err)
+	}
+}
+
+func TestResolveLufisBinaryRejectsDirectoryOverride(t *testing.T) {
+	// Pointing the override at a directory used to silently fall
+	// into "does not exist" with no detail. The new branch tells
+	// the operator exactly what's wrong.
+	dir := t.TempDir()
+	t.Setenv("ARGUS_LUFIS_PATH", dir)
+	_, err := resolveLufisBinary()
+	if err == nil {
+		t.Fatal("expected error for directory ARGUS_LUFIS_PATH")
+	}
+	if !strings.Contains(err.Error(), "directory") {
+		t.Errorf("error should mention 'directory'; got %v", err)
 	}
 }
 
