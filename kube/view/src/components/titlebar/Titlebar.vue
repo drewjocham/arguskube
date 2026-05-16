@@ -11,6 +11,7 @@ import { useAppNavStore } from '../../stores/appNav'
 import { ALL_NAV_ITEMS } from '../../lib/sectionTabs'
 import NotificationsPanel from '../notifications/NotificationsPanel.vue'
 import EnvironmentSelector from './EnvironmentSelector.vue'
+import PasskeyManager from '../auth/PasskeyManager.vue'
 
 const { active: spotCheckActive, runAll: runSpotChecks } = useSpotCheck()
 
@@ -53,6 +54,16 @@ function toggleUserMenu() {
 async function signOut() {
   userMenuOpen.value = false
   await auth.logout()
+}
+
+// Passkey management is a modal we lift in from the user menu. We
+// don't conditionally mount the component on the menu — keep it out of
+// the DOM until needed so it doesn't run its onMounted /auth/passkey
+// fetch unnecessarily.
+const passkeyManagerOpen = ref(false)
+function openPasskeyManager() {
+  userMenuOpen.value = false
+  passkeyManagerOpen.value = true
 }
 
 // --- §D1 Palette: Cmd/Ctrl+K focuses the search; results live in a
@@ -263,11 +274,18 @@ onUnmounted(() => document.removeEventListener('keydown', onPaletteShortcut))
             <div class="u-email">{{ auth.user.email }}</div>
             <div class="u-prov">via {{ auth.user.provider }}</div>
           </div>
+          <button
+            v-if="auth.passkeyEnabled"
+            class="u-action"
+            data-test="open-passkey-manager"
+            @click="openPasskeyManager"
+          >Manage passkeys</button>
           <button class="u-action" @click="signOut">Sign out</button>
         </div>
       </div>
     </div>
     <NotificationsPanel />
+    <PasskeyManager v-if="passkeyManagerOpen" @close="passkeyManagerOpen = false" />
   </div>
 </template>
 

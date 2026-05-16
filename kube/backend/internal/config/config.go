@@ -63,6 +63,18 @@ type AuthConfig struct {
 	// flag when the API binds to anything other than loopback, so a
 	// misconfigured public deploy can't accidentally leave auth off.
 	DevMode bool `env:"ARGUS_AUTH_DISABLED"`
+
+	// Passkey (WebAuthn) configuration. PasskeyEnabled toggles the
+	// entire feature; the three RP_* knobs configure the Relying
+	// Party. RPID is the eTLD+1 of the origin (e.g. "argus.example.com"
+	// or "localhost" for dev); RPOrigin is the fully-qualified origin
+	// including scheme + port the browser actually serves Argus from.
+	// Mismatched RPID/RPOrigin pairs are the #1 source of WebAuthn
+	// confusion — see kube/docs/auth-passkeys.md.
+	PasskeyEnabled  bool   `env:"ARGUS_PASSKEY_ENABLED"`
+	PasskeyRPID     string `env:"ARGUS_PASSKEY_RP_ID"`
+	PasskeyRPName   string `env:"ARGUS_PASSKEY_RP_NAME"`
+	PasskeyRPOrigin string `env:"ARGUS_PASSKEY_RP_ORIGIN"`
 }
 
 // KubernetesConfig holds cluster connection settings.
@@ -371,6 +383,10 @@ func New() (*OnlineDataConfig, error) {
 			OIDCDisplayName:    env("ARGUS_OIDC_DISPLAY_NAME", "Corporate SSO"),
 			AllowLocalSignup:   env("ARGUS_AUTH_ALLOW_SIGNUP", "true") != "false",
 			DevMode:            envBool("ARGUS_AUTH_DISABLED", false),
+			PasskeyEnabled:     envBool("ARGUS_PASSKEY_ENABLED", false),
+			PasskeyRPID:        env("ARGUS_PASSKEY_RP_ID", "localhost"),
+			PasskeyRPName:      env("ARGUS_PASSKEY_RP_NAME", "Argus"),
+			PasskeyRPOrigin:    env("ARGUS_PASSKEY_RP_ORIGIN", "http://localhost:8080"),
 		},
 	}
 

@@ -13,6 +13,37 @@ import { apiBase } from '../composables/useBridge'
 import { useSecretStore } from '../composables/useSecretStore'
 
 const STORAGE_KEY = 'argus.auth.session'
+const LAST_METHOD_KEY = 'argus.auth.lastMethod'
+
+// readLastMethod / writeLastMethod surface the "Continue with X" CTA
+// on the LoginView. The shape is { kind, email?, provider? } where
+// kind ∈ {'local','oauth','passkey'}. We treat any malformed read as
+// "no preference" so a corrupted localStorage just falls back to the
+// full picker rather than crashing the boot path.
+function readLastMethod() {
+  try {
+    const raw = localStorage.getItem(LAST_METHOD_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || !parsed.kind) return null
+    if (!['local', 'oauth', 'passkey'].includes(parsed.kind)) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function writeLastMethod(payload) {
+  try {
+    if (payload && payload.kind) {
+      localStorage.setItem(LAST_METHOD_KEY, JSON.stringify(payload))
+    } else {
+      localStorage.removeItem(LAST_METHOD_KEY)
+    }
+  } catch {
+    // localStorage private-mode failure: not worth surfacing.
+  }
+}
 
 function readPersisted() {
   try {
@@ -51,6 +82,14 @@ export const useAuthStore = defineStore('auth', () => {
   // form renders even if no OAuth is configured.
   const providers = ref([])
   const allowSignup = ref(true)
+  // passkeyEnabled mirrors /auth/providers.passkeyEnabled. When false
+  // the LoginView hides the passkey CTA and PasskeyManager.vue
+  // refuses to register. We default to false so a /auth/providers
+  // failure doesn't accidentally surface UI that will error on use.
+  const passkeyEnabled = ref(false)
+  // lastUsedMethod drives the one-tap "Continue with X" CTA on the
+  // LoginView. See readLastMethod for the shape.
+  const lastUsedMethod = ref(readLastMethod())
   // authDisabled is set by /auth/providers when the backend is running
   // with ARGUS_AUTH_DISABLED=true. App.vue uses it to skip the
   // LoginView gate entirely. We default to false so a network failure
@@ -124,6 +163,7 @@ export const useAuthStore = defineStore('auth', () => {
       providers.value = r.providers || []
       allowSignup.value = r.allowSignup !== false
       authDisabled.value = r.authDisabled === true
+      passkeyEnabled.value = r.passkeyEnabled === true
       // Visible breadcrumb so the operator can confirm in dev tools
       // exactly what landed when `make no-auth-run` mysteriously
       // doesn't bypass the gate. Mirror the backend's startup banner.
@@ -138,21 +178,87 @@ export const useAuthStore = defineStore('auth', () => {
       providers.value = []
       allowSignup.value = true
       authDisabled.value = false
+      passkeyEnabled.value = false
       console.error('[auth] /auth/providers failed — falling back to login screen. Check that the backend is up at',
         apiBase, 'and that ARGUS_AUTH_DISABLED reached it:', err)
     }
   }
 
+  function _recordLastMethod(payload) {
+    lastUsedMethod.value = payload
+    writeLastMethod(payload)
+  }
+
   async function login(email, password) {
     const r = await _post('/auth/login', { email, password })
     _adopt(r)
+    _recordLastMethod({ kind: 'local', email })
     return user.value
   }
 
   async function register(email, name, password) {
     const r = await _post('/auth/register', { email, name, password })
     _adopt(r)
+    _recordLastMethod({ kind: 'local', email })
     return user.value
+  }
+
+  // ---- Passkeys (WebAuthn) ---------------------------------------------
+  //
+  // We import @simplewebauthn/browser lazily so the bundle stays slim
+  // for deployments that disable the feature. The helper handles the
+  // base64url ↔ ArrayBuffer ceremony that browsers insist on; rolling
+  // our own is the #1 source of "InvalidStateError" bugs in WebAuthn
+  // code.
+
+  async function _swaBrowser() {
+    return import('@simplewebauthn/browser')
+  }
+
+  // loginWithPasskey runs a discoverable (usernameless) login. When
+  // mediation === 'conditional' the browser surfaces the passkey in the
+  // email field's autocomplete pop-up instead of a modal; the LoginView
+  // kicks one of these off on mount so users with a passkey don't even
+  // see the form.
+  async function loginWithPasskey({ mediation } = {}) {
+    if (!passkeyEnabled.value) throw new Error('Passkeys are not enabled on this server')
+    const swa = await _swaBrowser()
+    const begin = await _post('/auth/passkey/login/begin', null)
+    const credential = await swa.startAuthentication({
+      optionsJSON: begin.publicKey,
+      useBrowserAutofill: mediation === 'conditional',
+    })
+    const r = await _post('/auth/passkey/login/finish', { state: begin.state, credential })
+    _adopt(r)
+    _recordLastMethod({ kind: 'passkey' })
+    return user.value
+  }
+
+  // registerPasskey requires an authenticated session — you can only
+  // add a passkey to your own account. The optional `name` is the
+  // human-facing label (e.g. "MacBook Touch ID") shown in the
+  // management UI; blank gets a fallback on the server.
+  async function registerPasskey(name = '') {
+    if (!passkeyEnabled.value) throw new Error('Passkeys are not enabled on this server')
+    const swa = await _swaBrowser()
+    const begin = await _post('/auth/passkey/register/begin', null)
+    const credential = await swa.startRegistration({ optionsJSON: begin.publicKey })
+    return _post('/auth/passkey/register/finish', { state: begin.state, name, credential })
+  }
+
+  async function listPasskeys() {
+    const r = await _get('/auth/passkey/list')
+    return r.credentials || []
+  }
+
+  async function revokePasskey(id) {
+    const res = await fetch(`${apiBase}/auth/passkey/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    })
+    if (!res.ok) {
+      throw new Error((await res.text()) || `HTTP ${res.status}`)
+    }
   }
 
   async function logout() {
@@ -209,6 +315,7 @@ export const useAuthStore = defineStore('auth', () => {
     const r = await res.json()
     if (r.status === 'ok') {
       _adopt({ token: r.token, user: r.user, expiresAt: 0 })
+      _recordLastMethod({ kind: 'oauth', provider: r.user?.provider || '' })
       return { done: true, user: user.value }
     }
     if (r.status === 'error') {
@@ -224,6 +331,8 @@ export const useAuthStore = defineStore('auth', () => {
     providers,
     allowSignup,
     authDisabled,
+    passkeyEnabled,
+    lastUsedMethod,
     isAuthenticated,
     authHeaders,
     loadProviders,
@@ -233,5 +342,9 @@ export const useAuthStore = defineStore('auth', () => {
     restoreSession,
     startOAuth,
     pollOAuth,
+    loginWithPasskey,
+    registerPasskey,
+    listPasskeys,
+    revokePasskey,
   }
 })

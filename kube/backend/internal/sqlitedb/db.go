@@ -340,4 +340,44 @@ var migrations = []migration{
 			updated_at        INTEGER NOT NULL
 		)`,
 	},
+	{
+		// WebAuthn (passkey) credentials. credential_id is the raw
+		// CredentialID returned by the authenticator and is the lookup
+		// key during the discoverable login flow. transports is a
+		// comma-joined list (e.g. "internal,hybrid"); name is a
+		// user-facing label shown in the management UI.
+		name: "create_passkey_credentials",
+		sql: `CREATE TABLE IF NOT EXISTS passkey_credentials (
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id       TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			credential_id BLOB    NOT NULL UNIQUE,
+			public_key    BLOB    NOT NULL,
+			sign_count    INTEGER NOT NULL DEFAULT 0,
+			transports    TEXT    NOT NULL DEFAULT '',
+			aaguid        BLOB,
+			name          TEXT    NOT NULL DEFAULT '',
+			created_at    INTEGER NOT NULL,
+			last_used_at  INTEGER NOT NULL DEFAULT 0
+		)`,
+	},
+	{
+		name: "create_passkey_credentials_user_index",
+		sql:  `CREATE INDEX IF NOT EXISTS idx_passkey_credentials_user ON passkey_credentials(user_id)`,
+	},
+	{
+		// Short-lived WebAuthn ceremony state. Each row is a single
+		// register-or-login attempt and is deleted on completion or
+		// when the janitor sweeps expired rows (5-minute TTL).
+		name: "create_passkey_sessions",
+		sql: `CREATE TABLE IF NOT EXISTS passkey_sessions (
+			state        TEXT    PRIMARY KEY,
+			user_id      TEXT    NOT NULL DEFAULT '',
+			session_data BLOB    NOT NULL,
+			expires_at   INTEGER NOT NULL
+		)`,
+	},
+	{
+		name: "create_passkey_sessions_exp_index",
+		sql:  `CREATE INDEX IF NOT EXISTS idx_passkey_sessions_exp ON passkey_sessions(expires_at)`,
+	},
 }

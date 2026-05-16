@@ -22,7 +22,40 @@ onMounted(async () => {
   if (auth.token) {
     await auth.restoreSession()
   }
+  // Kick off the conditional-mediation passkey ceremony. The browser
+  // will surface the passkey in the email field's autocomplete pop-up
+  // when one is available; if none is, the call resolves with no
+  // assertion and we just fall back to the form. We swallow errors
+  // here because conditional UI is best-effort — any failure should
+  // not block the login screen rendering.
+  if (auth.passkeyEnabled && typeof window !== 'undefined' && window.PublicKeyCredential) {
+    try {
+      const supported = await window.PublicKeyCredential
+        .isConditionalMediationAvailable?.()
+      if (supported) {
+        auth.loginWithPasskey({ mediation: 'conditional' }).catch(() => {})
+      }
+    } catch {
+      // ignore — feature detection only
+    }
+  }
 })
+
+async function signInWithPasskey() {
+  errorMsg.value = ''
+  busy.value = true
+  try {
+    await auth.loginWithPasskey()
+  } catch (err) {
+    errorMsg.value = err?.message || 'Passkey sign-in failed'
+  } finally {
+    busy.value = false
+  }
+}
+
+const showPasskeyOneTap = computed(
+  () => auth.passkeyEnabled && auth.lastUsedMethod?.kind === 'passkey',
+)
 
 const canSubmit = computed(() => {
   if (busy.value) return false
@@ -89,7 +122,7 @@ function onOAuthError(msg) {
             <input
               type="email"
               v-model="email"
-              autocomplete="email"
+              :autocomplete="auth.passkeyEnabled ? 'username webauthn' : 'email'"
               required
               :placeholder="mode === 'login' ? 'you@company.com' : 'work email'"
             />
@@ -133,6 +166,37 @@ function onOAuthError(msg) {
             <span v-else>Working…</span>
           </button>
         </form>
+
+        <!-- One-tap "Continue with passkey" CTA. When the user's last
+             successful sign-in was a passkey we promote it above the OAuth
+             button — the form below is still available via the "use a
+             different method" link. -->
+        <button
+          v-if="showPasskeyOneTap"
+          type="button"
+          class="primary passkey-cta"
+          data-test="passkey-one-tap"
+          :disabled="busy"
+          @click="signInWithPasskey"
+        >
+          <span class="passkey-icon" aria-hidden="true">🔑</span>
+          Continue with passkey
+        </button>
+
+        <!-- Standard "Sign in with a passkey" button (only shown when the
+             feature is enabled). Lives above the OAuth divider so it's
+             visually the first non-password option. -->
+        <button
+          v-if="auth.passkeyEnabled && !showPasskeyOneTap"
+          type="button"
+          class="oauth-btn passkey-btn"
+          data-test="passkey-button"
+          :disabled="busy"
+          @click="signInWithPasskey"
+        >
+          <span class="provider-mark" aria-hidden="true">🔑</span>
+          Sign in with a passkey
+        </button>
 
         <!-- Single unified OAuth button. Picks one provider directly when
              only one is configured, otherwise opens a menu. We forward the
@@ -233,6 +297,9 @@ function onOAuthError(msg) {
 .primary:hover:not(:disabled) { filter: brightness(1.1); }
 .primary:disabled { opacity: .55; cursor: not-allowed; }
 
+.passkey-cta { margin-top: 1rem; display: flex; align-items: center; justify-content: center; gap: .5rem; }
+.passkey-icon { font-size: 1.1rem; }
+.passkey-btn { margin-top: 1rem; width: 100%; justify-content: center; }
 .oauth-section { margin-top: 1.5rem; }
 .divider {
   position: relative;
