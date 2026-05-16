@@ -196,7 +196,7 @@ func TestUpdateSettings_AppliesAuthAndWorkspace(t *testing.T) {
 	cfg := &config.OnlineDataConfig{}
 	app := newDesktopAppForTest(cfg)
 
-	if err := app.UpdateSettings(SettingsPayload{
+	if _, err := app.UpdateSettings(SettingsPayload{
 		GoogleClientID:              "g-id",
 		GoogleClientSecret:          "g-secret",
 		OIDCIssuer:                  "https://acme.okta.com",
@@ -257,7 +257,7 @@ func TestUpdateSettings_IgnoresMaskedAuthSecrets(t *testing.T) {
 	cfg.Workspace.SlackClientSecret = "real-slack-secret"
 	app := newDesktopAppForTest(cfg)
 
-	if err := app.UpdateSettings(SettingsPayload{
+	if _, err := app.UpdateSettings(SettingsPayload{
 		GoogleClientSecret: "real…cret",
 		SlackClientSecret:  "real…cret",
 	}); err != nil {

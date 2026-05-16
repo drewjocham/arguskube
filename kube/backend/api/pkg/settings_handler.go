@@ -2,9 +2,15 @@ package pkg
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/argues/argus/internal/config"
 )
+
+// isMasked returns true when the string looks like a masked secret.
+func isMasked(v string) bool {
+	return strings.Contains(v, "•") || strings.Contains(v, "…")
+}
 
 type SettingsHandler struct {
 	app *App
@@ -112,7 +118,7 @@ func (h *SettingsHandler) updateAISettings(s SettingsPayload) bool {
 	if s.MCPServersConfig != "" && s.MCPServersConfig != h.app.cfg.AI.MCPServersConfig {
 		h.app.cfg.AI.MCPServersConfig = s.MCPServersConfig
 	}
-	if s.DeepSeekAPIKey != "" && s.DeepSeekAPIKey != SentinelUnchanged {
+	if s.DeepSeekAPIKey != "" && !isMasked(s.DeepSeekAPIKey) {
 		h.app.cfg.AI.DeepSeekAPIKey = s.DeepSeekAPIKey
 		reconnect = true
 		h.app.logger.Info("AI API key updated, will rebuild agent")
@@ -126,7 +132,7 @@ func (h *SettingsHandler) updateArgoCDSettings(s SettingsPayload) bool {
 		h.app.cfg.ArgoCD.URL = s.ArgoCDURL
 		reconnect = true
 	}
-	if s.ArgoCDToken != "" && s.ArgoCDToken != SentinelUnchanged {
+	if s.ArgoCDToken != "" && !isMasked(s.ArgoCDToken) {
 		h.app.cfg.ArgoCD.Token = s.ArgoCDToken
 		reconnect = true
 	}
@@ -135,28 +141,28 @@ func (h *SettingsHandler) updateArgoCDSettings(s SettingsPayload) bool {
 }
 
 func (h *SettingsHandler) pipelineSecrets(s SettingsPayload) {
-	if s.GitHubToken != "" && s.GitHubToken != SentinelUnchanged {
+	if s.GitHubToken != "" && !isMasked(s.GitHubToken) {
 		h.app.cfg.Pipelines.GitHubToken = s.GitHubToken
 	}
-	if s.GitLabToken != "" && s.GitLabToken != SentinelUnchanged {
+	if s.GitLabToken != "" && !isMasked(s.GitLabToken) {
 		h.app.cfg.Pipelines.GitLabToken = s.GitLabToken
 	}
-	if s.CircleCIToken != "" && s.CircleCIToken != SentinelUnchanged {
+	if s.CircleCIToken != "" && !isMasked(s.CircleCIToken) {
 		h.app.cfg.Pipelines.CircleCIToken = s.CircleCIToken
 	}
-	if s.AWSSecretKey != "" && s.AWSSecretKey != SentinelUnchanged {
+	if s.AWSSecretKey != "" && !isMasked(s.AWSSecretKey) {
 		h.app.cfg.Pipelines.AWSSecretKey = s.AWSSecretKey
 	}
-	if s.AzureToken != "" && s.AzureToken != SentinelUnchanged {
+	if s.AzureToken != "" && !isMasked(s.AzureToken) {
 		h.app.cfg.Pipelines.AzureToken = s.AzureToken
 	}
-	if s.GCPCredentials != "" && s.GCPCredentials != SentinelUnchanged {
+	if s.GCPCredentials != "" && !isMasked(s.GCPCredentials) {
 		h.app.cfg.Pipelines.GCPCredentials = s.GCPCredentials
 	}
-	if s.ConfluenceToken != "" && s.ConfluenceToken != SentinelUnchanged {
+	if s.ConfluenceToken != "" && !isMasked(s.ConfluenceToken) {
 		h.app.cfg.Pipelines.ConfluenceToken = s.ConfluenceToken
 	}
-	if s.NotionToken != "" && s.NotionToken != SentinelUnchanged {
+	if s.NotionToken != "" && !isMasked(s.NotionToken) {
 		h.app.cfg.Pipelines.NotionToken = s.NotionToken
 	}
 }
@@ -179,7 +185,7 @@ func (h *SettingsHandler) updateAuthSettings(s SettingsPayload) bool {
 		h.app.cfg.Auth.GoogleClientID = s.GoogleClientID
 		changed = true
 	}
-	if s.GoogleClientSecret != "" && s.GoogleClientSecret != SentinelUnchanged {
+	if s.GoogleClientSecret != "" && !isMasked(s.GoogleClientSecret) {
 		h.app.cfg.Auth.GoogleClientSecret = s.GoogleClientSecret
 		changed = true
 	}
@@ -191,7 +197,7 @@ func (h *SettingsHandler) updateAuthSettings(s SettingsPayload) bool {
 		h.app.cfg.Auth.OIDCClientID = s.OIDCClientID
 		changed = true
 	}
-	if s.OIDCClientSecret != "" && s.OIDCClientSecret != SentinelUnchanged {
+	if s.OIDCClientSecret != "" && !isMasked(s.OIDCClientSecret) {
 		h.app.cfg.Auth.OIDCClientSecret = s.OIDCClientSecret
 		changed = true
 	}
@@ -211,7 +217,7 @@ func (h *SettingsHandler) updateAuthSettings(s SettingsPayload) bool {
 		h.app.cfg.Auth.AppleKeyID = s.AppleKeyID
 		changed = true
 	}
-	if s.ApplePrivateKey != "" && s.ApplePrivateKey != SentinelUnchanged {
+	if s.ApplePrivateKey != "" && !isMasked(s.ApplePrivateKey) {
 		h.app.cfg.Auth.ApplePrivateKey = s.ApplePrivateKey
 		changed = true
 	}
@@ -249,7 +255,7 @@ func (h *SettingsHandler) updateWorkspaceSettings(s SettingsPayload) bool {
 		h.app.cfg.Workspace.GoogleClientID = s.WorkspaceGoogleClientID
 		changed = true
 	}
-	if s.WorkspaceGoogleClientSecret != "" && s.WorkspaceGoogleClientSecret != SentinelUnchanged {
+	if s.WorkspaceGoogleClientSecret != "" && !isMasked(s.WorkspaceGoogleClientSecret) {
 		h.app.cfg.Workspace.GoogleClientSecret = s.WorkspaceGoogleClientSecret
 		changed = true
 	}
@@ -257,11 +263,11 @@ func (h *SettingsHandler) updateWorkspaceSettings(s SettingsPayload) bool {
 		h.app.cfg.Workspace.SlackClientID = s.SlackClientID
 		changed = true
 	}
-	if s.SlackClientSecret != "" && s.SlackClientSecret != SentinelUnchanged {
+	if s.SlackClientSecret != "" && !isMasked(s.SlackClientSecret) {
 		h.app.cfg.Workspace.SlackClientSecret = s.SlackClientSecret
 		changed = true
 	}
-	if s.SlackSigningSecret != "" && s.SlackSigningSecret != SentinelUnchanged {
+	if s.SlackSigningSecret != "" && !isMasked(s.SlackSigningSecret) {
 		h.app.cfg.Workspace.SlackSigningSecret = s.SlackSigningSecret
 		changed = true
 	}

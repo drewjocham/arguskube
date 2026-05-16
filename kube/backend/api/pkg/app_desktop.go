@@ -131,6 +131,12 @@ func (a *App) saveSettings() error {
 	return nil
 }
 
+// UpdateSettings is a thin wrapper so tests and Wails bindings can call
+// it directly on *App. Delegates to SettingsHandler.
+func (a *App) UpdateSettings(s SettingsPayload) (SettingsResult, error) {
+	return NewSettingsHandler(a).UpdateSettings(s)
+}
+
 func (a *App) rebuildAgent() {
 	if a.cfg.AI.DeepSeekAPIKey == "" {
 		a.agent = nil
