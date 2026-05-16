@@ -11,6 +11,15 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	gochi "github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+)
+
+const (
+	gatewayPathDetect   = "/api/v1/detect"
+	gatewayPathListJobs = "/api/v1/jobs"
+	gatewayPathHealth   = "/healthz"
 )
 
 var (
@@ -75,14 +84,22 @@ type flinkTaskCounts struct {
 func main() {
 	logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/v1/detect", withAuth(handleDetect))
-	mux.HandleFunc("GET /api/v1/jobs", withAuth(handleListJobs))
-	mux.HandleFunc("GET /healthz", handleHealth)
+	r := gochi.NewRouter()
+	r.Use(middleware.CleanPath)
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Recoverer)
+
+	r.Get(gatewayPathHealth, handleHealth)
+	r.Group(func(r gochi.Router) {
+		r.Use(authMiddleware)
+		r.Post(gatewayPathDetect, handleDetect)
+		r.Get(gatewayPathListJobs, handleListJobs)
+	})
 
 	server := &http.Server{
 		Addr:         ":" + gatewayPort,
-		Handler:      withLogging(mux),
+		Handler:      withLogging(r),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
@@ -111,14 +128,18 @@ func withLogging(next http.Handler) http.Handler {
 	})
 }
 
-func withAuth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+// authMiddleware gates protected routes with a static bearer-token
+// check. Empty GATEWAY_API_KEY disables the check (dev-mode only).
+// chi-style middleware signature so it can be passed to r.Use inside
+// the protected route group.
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if apiKey != "" && r.Header.Get("Authorization") != "Bearer "+apiKey {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
-		next(w, r)
-	}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {

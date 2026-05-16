@@ -14,15 +14,26 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	gochi "github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 
 	"github.com/argues/argus/internal/runner"
 	"github.com/argues/argus/internal/saasapi"
+)
+
+const (
+	runnerPathHealth = "/healthz"
+	runnerPathStart  = "/api/v1/runner/start"
+	runnerPathStatus = "/api/v1/runner/{runID}"
+	runnerPathStream = "/api/v1/runner/{runID}/stream"
+	runnerPathCancel = "/api/v1/runner/{runID}"
+
+	urlParamRunID = "runID"
 )
 
 func main() {
@@ -84,14 +95,24 @@ func run() error {
 		abandonedGrace: 60 * time.Second,
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", srv.handleHealth)
-	mux.HandleFunc("/api/v1/runner/start", srv.withAuth(srv.handleStart))
-	mux.HandleFunc("/api/v1/runner/", srv.withAuth(srv.handleRunner))
+	r := gochi.NewRouter()
+	r.Use(middleware.CleanPath)
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Recoverer)
+
+	r.Get(runnerPathHealth, srv.handleHealth)
+	r.Group(func(r gochi.Router) {
+		r.Use(srv.authMiddleware)
+		r.Post(runnerPathStart, srv.handleStart)
+		r.Get(runnerPathStatus, srv.handleStatus)
+		r.Get(runnerPathStream, srv.handleStream)
+		r.Delete(runnerPathCancel, srv.handleCancel)
+	})
 
 	httpServer := &http.Server{
 		Addr:         ":" + strconv.Itoa(port),
-		Handler:      withLogging(mux, logger),
+		Handler:      withLogging(r, logger),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 0, // SSE needs no write timeout
 		IdleTimeout:  60 * time.Second,
@@ -188,17 +209,21 @@ func minCreditsForRun(spec saasapi.RunnerSpec) float64 {
 	return total
 }
 
-func (s *RunnerServer) withAuth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+// authMiddleware gates the protected runner endpoints with a static
+// bearer-token check. Empty API key disables auth for local dev. The
+// chi-style middleware signature lets us attach it inside r.Group.
+func (s *RunnerServer) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.apiKey != "" {
+			const prefix = "Bearer "
 			auth := r.Header.Get("Authorization")
-			if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != s.apiKey {
+			if len(auth) <= len(prefix) || auth[:len(prefix)] != prefix || auth[len(prefix):] != s.apiKey {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 		}
-		next(w, r)
-	}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────
@@ -208,13 +233,10 @@ func (s *RunnerServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"status":"ok"}`))
 }
 
-// POST /api/v1/runner/start — accepts a RunnerSpec and begins execution.
+// POST /api/v1/runner/start — accepts a RunnerSpec and begins
+// execution. The method-not-allowed guard previously here is gone:
+// chi only routes POST to this handler.
 func (s *RunnerServer) handleStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	var spec saasapi.RunnerSpec
 	if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
@@ -279,56 +301,60 @@ func (s *RunnerServer) handleStart(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"runId": spec.RunID})
 }
 
-// GET /api/v1/runner/{runId}/stream — SSE stream
-// GET /api/v1/runner/{runId} — status
-// DELETE /api/v1/runner/{runId} — cancel
-func (s *RunnerServer) handleRunner(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/runner/")
-	parts := strings.SplitN(path, "/", 2)
-	if len(parts) == 0 || parts[0] == "" {
+// lookupRun resolves {runID} to a live Runner, writing 400/404 and
+// returning nil when the run is unknown. Shared by every per-run
+// handler below so the routing layer pulls the same param key
+// consistently.
+func (s *RunnerServer) lookupRun(w http.ResponseWriter, r *http.Request) (string, *runner.Runner, bool) {
+	runID := gochi.URLParam(r, urlParamRunID)
+	if runID == "" {
 		http.Error(w, "runId required", http.StatusBadRequest)
-		return
+		return "", nil, false
 	}
-	runID := parts[0]
-
 	s.mu.RLock()
 	run, exists := s.runners[runID]
 	s.mu.RUnlock()
-
 	if !exists {
-		// Check if this is a historical run (result still available).
 		http.Error(w, "run not found", http.StatusNotFound)
+		return runID, nil, false
+	}
+	return runID, run, true
+}
+
+// GET /api/v1/runner/{runID} — status.
+func (s *RunnerServer) handleStatus(w http.ResponseWriter, r *http.Request) {
+	runID, run, ok := s.lookupRun(w, r)
+	if !ok {
 		return
 	}
-
-	// GET /api/v1/runner/{runId} — status
-	if r.Method == http.MethodGet && len(parts) == 1 {
-		result := run.Result()
-		if result == nil {
-			result = &saasapi.RunnerResult{
-				RunID: runID,
-				State: run.State(),
-			}
+	result := run.Result()
+	if result == nil {
+		result = &saasapi.RunnerResult{
+			RunID: runID,
+			State: run.State(),
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// GET /api/v1/runner/{runID}/stream — SSE stream of runner events.
+func (s *RunnerServer) handleStream(w http.ResponseWriter, r *http.Request) {
+	_, run, ok := s.lookupRun(w, r)
+	if !ok {
 		return
 	}
+	s.serveSSE(w, r, run)
+}
 
-	// GET /api/v1/runner/{runId}/stream — SSE
-	if r.Method == http.MethodGet && len(parts) == 2 && parts[1] == "stream" {
-		s.serveSSE(w, r, run)
+// DELETE /api/v1/runner/{runID} — cancel an in-flight run.
+func (s *RunnerServer) handleCancel(w http.ResponseWriter, r *http.Request) {
+	_, run, ok := s.lookupRun(w, r)
+	if !ok {
 		return
 	}
-
-	// DELETE /api/v1/runner/{runId} — cancel
-	if r.Method == http.MethodDelete {
-		run.Cancel()
-		w.WriteHeader(http.StatusAccepted)
-		return
-	}
-
-	http.Error(w, "not found", http.StatusNotFound)
+	run.Cancel()
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // serveSSE streams runner events to the desktop via Server-Sent Events.
