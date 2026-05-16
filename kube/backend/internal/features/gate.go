@@ -31,6 +31,11 @@ const (
 	FeatureCustomRunbooks      Feature = "custom_runbooks"
 	FeatureArgusCD             Feature = "arguscd"
 	FeatureDistributedLoadTest Feature = "distributed_load_test"
+
+	// Mobile companion — available on both tiers (read-only on Free,
+	// full actions + AI + contacts on Pro). Gated per-endpoint in the
+	// mobile API methods.
+	FeatureMobileCompanion Feature = "mobile_companion"
 )
 
 // proOnly lists features that require Pro tier.
@@ -75,7 +80,7 @@ func (g *Gate) AllFeatures() map[Feature]bool {
 		FeatureCascadeCorr, FeatureAnomstack, FeatureFlinkAnomaly,
 		FeatureAIDiagnostics, FeatureRunbookAuto,
 		FeatureDecisionLog, FeatureMultiCluster, FeatureExtendedHistory, FeatureCustomRunbooks,
-		FeatureArgusCD, FeatureDistributedLoadTest,
+		FeatureArgusCD, FeatureDistributedLoadTest, FeatureMobileCompanion,
 	}
 	result := make(map[Feature]bool, len(all))
 	for _, f := range all {
