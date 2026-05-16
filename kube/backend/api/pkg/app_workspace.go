@@ -52,12 +52,27 @@ func (a *App) workspaceAvailable() bool {
 	return a.workspace != nil
 }
 
+// devModeUserID is the stable synthetic user id workspace methods see
+// when ARGUS_AUTH_DISABLED bypass is on. Stable across runs so the
+// dev's connections persist in workspace_connections under one row
+// per (service, externalWorkspaceID) instead of accumulating duplicates
+// every restart. Format mirrors auth.Store's id shape (string opaque).
+const devModeUserID = "local-dev-user"
+
 // workspaceUserID resolves the caller's user id from the session
 // token. Wails methods can't read HTTP headers so the frontend must
 // pass the token explicitly — same pattern other gated methods use.
+//
+// When ARGUS_AUTH_DISABLED is on we short-circuit to a stable synthetic
+// user. Without this, the frontend has no session token to send (the
+// LoginView was bypassed) and every workspace call fails with
+// "invalid session" — defeating the point of dev-mode.
 func (a *App) workspaceUserID(token string) (string, error) {
 	if a.auth == nil || a.auth.store == nil {
 		return "", errors.New("workspace: auth not configured")
+	}
+	if a.auth.devMode {
+		return devModeUserID, nil
 	}
 	user, err := a.auth.store.ValidateSession(token)
 	if err != nil || user == nil {
