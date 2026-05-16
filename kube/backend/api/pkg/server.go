@@ -322,11 +322,21 @@ func (a *App) StartHTTPServer(port int) {
 	r.With(WithCORS, WithWebhookAuth, WithWebhookPayload).
 		Post(httpPathWebhookAnomstack, a.HandleWebhook)
 
+	// Auth + Workspace routes register directly onto the parent
+	// router rather than each being a sub-tree mounted at "/" —
+	// chi's Mount panics on a second Mount at the same path, and
+	// AuthRoutes/WorkspaceRoutes both used absolute paths under "/"
+	// (paths are "/auth/*" and "/workspace/oauth/callback"
+	// respectively). Inline registration is the minimum-diff fix
+	// that keeps the existing absolute paths working; a future
+	// cleanup can move them to per-prefix Mount calls with relative
+	// paths (Mount("/auth", …) requires rewriting every route inside
+	// AuthRoutes to be relative — a bigger change to land separately).
 	if a.auth != nil {
-		r.Mount("/", a.AuthRoutes())
+		a.AuthRoutes(r)
 	}
 	if a.workspaceAvailable() {
-		r.Mount("/", a.WorkspaceRoutes())
+		a.WorkspaceRoutes(r)
 	}
 
 	go a.hub.Run(a.ctx)

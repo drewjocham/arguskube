@@ -189,15 +189,16 @@ func (a *App) SetupAuth(store *auth.Store, cfg config.AuthConfig) {
 	})
 }
 
-// AuthRoutes builds the /auth/* router and returns it as a chi sub-
-// tree the parent server mounts. The chi-style router (in place of
-// the previous http.ServeMux-based registration) follows the same
-// shape pim-agl-online-data-relay/internal/api uses: a Routes()-style
-// builder that returns http.Handler so the parent owner can compose,
-// wrap, and mount it freely.
-func (a *App) AuthRoutes() http.Handler {
-	r := gochi.NewRouter()
-
+// AuthRoutes registers the /auth/* handlers onto the supplied chi
+// router. Direct registration (rather than building a sub-router and
+// returning http.Handler) is the minimum-diff way to live with chi's
+// "one Mount per path" rule — both AuthRoutes and WorkspaceRoutes
+// expose absolute paths under "/", and chi panics if you Mount("/")
+// more than once on the same parent. The cleaner long-term shape is
+// Mount("/auth", subrouter-with-relative-paths) but that change has
+// to rewrite every route constant + every test that hits an absolute
+// /auth/* URL, so it lands separately.
+func (a *App) AuthRoutes(r gochi.Router) {
 	r.Get(authPathProviders, a.handleAuthProviders)
 	r.Post(authPathRegister, a.handleAuthRegister)
 	r.Post(authPathLogin, a.handleAuthLogin)
@@ -226,8 +227,6 @@ func (a *App) AuthRoutes() http.Handler {
 	r.Post(authPathPasskeyLoginEnd, a.handlePasskeyLoginFinish)
 	r.Get(authPathPasskeyList, a.handlePasskeyList)
 	r.Delete(authPathPasskeyDeleteByID, a.handlePasskeyDelete)
-
-	return r
 }
 
 // preflight applies the same CORS gate as /api/*. Auth endpoints don't
