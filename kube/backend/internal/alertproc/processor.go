@@ -157,6 +157,14 @@ func (p *Processor) Process(ctx context.Context, in []alerts.Alert) []alerts.Ale
 			st = &signatureState{FirstSeen: now}
 			p.state[sig] = st
 		}
+
+		// Snapshot pre-update state so the dedup/stale decision sees the
+		// previous LastSeen, not the value we're about to write. Without
+		// this, now.Sub(st.LastSeen) is always ~0 and the re-fire-after-
+		// 5-minutes path is dead code.
+		prevFireCount := st.FireCount
+		prevLastSeen := st.LastSeen
+
 		st.LastSeen = now
 		st.FireCount++
 		st.LastAlertID = a.ID
@@ -172,9 +180,9 @@ func (p *Processor) Process(ctx context.Context, in []alerts.Alert) []alerts.Ale
 		// First occurrence of a new signature → kick off investigation.
 		// Subsequent fires within a window are deduped from the
 		// frontend perspective: we only let the FIRST one through, and
-		// log subsequent ones to FireCount.
-		isFirst := st.FireCount == 1
-		isStale := !st.LastSeen.IsZero() && st.FireCount > 1 && now.Sub(st.LastSeen) > 5*time.Minute
+		// re-fire when the signature went quiet for more than 5 minutes.
+		isFirst := prevFireCount == 0
+		isStale := prevFireCount > 0 && now.Sub(prevLastSeen) > 5*time.Minute
 
 		if isFirst || isStale {
 			out = append(out, a)
