@@ -46,11 +46,13 @@ type ChatResponse struct {
 	} `json:"usage"`
 }
 
-// Retry configuration for transient API failures.
+// Defaults for retry configuration. The same values are installed on
+// every client via the constructor; SetRetryConfig can override them
+// (used in tests to avoid 5s waits, or to disable retries entirely).
 const (
-	maxRetries     = 3
-	initialBackoff = 500 * time.Millisecond
-	maxBackoff     = 10 * time.Second
+	defaultMaxRetries     = 3
+	defaultInitialBackoff = 500 * time.Millisecond
+	defaultMaxBackoff     = 10 * time.Second
 )
 
 // UsageRecorder is the hook the client calls after every successful chat
@@ -68,6 +70,34 @@ type DeepSeekClient struct {
 
 	// recorder is set via SetUsageRecorder; nil-safe.
 	recorder UsageRecorder
+
+	// Retry parameters — defaulted in the constructor, overridable via
+	// SetRetryConfig (notably from tests, to avoid 5s sleeps).
+	maxRetries     int
+	initialBackoff time.Duration
+	maxBackoff     time.Duration
+}
+
+// SetBaseURL repoints the client at a new server URL. Useful when the
+// configured endpoint changes at runtime (e.g. fail-over to a backup
+// vLLM host) and required in tests that point at an httptest.Server.
+func (c *DeepSeekClient) SetBaseURL(url string) {
+	c.baseURL = url
+}
+
+// SetRetryConfig overrides the retry/backoff schedule installed by the
+// constructor. Pass max=0 to disable retries entirely. Intended for
+// tests; production code should not call this.
+func (c *DeepSeekClient) SetRetryConfig(max int, initial, ceiling time.Duration) {
+	c.maxRetries = max
+	c.initialBackoff = initial
+	c.maxBackoff = ceiling
+}
+
+// SetHTTPTimeout overrides the per-request timeout on the underlying
+// http.Client. Tests use this to force a deadline-exceeded path.
+func (c *DeepSeekClient) SetHTTPTimeout(d time.Duration) {
+	c.httpClient.Timeout = d
 }
 
 // SetUsageRecorder installs (or clears, with nil) the usage callback. It is
@@ -102,7 +132,10 @@ func NewOpenAICompatibleClient(apiKey, baseURL, model string, logger *slog.Logge
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
-		logger: logger,
+		logger:         logger,
+		maxRetries:     defaultMaxRetries,
+		initialBackoff: defaultInitialBackoff,
+		maxBackoff:     defaultMaxBackoff,
 	}
 }
 
@@ -142,9 +175,9 @@ func (c *DeepSeekClient) Chat(ctx context.Context, messages []Message) (string, 
 	)
 
 	var chatResp ChatResponse
-	backoff := initialBackoff
+	backoff := c.initialBackoff
 
-	for attempt := 0; attempt <= maxRetries; attempt++ {
+	for attempt := 0; attempt <= c.maxRetries; attempt++ {
 		if attempt > 0 {
 			c.logger.WarnContext(ctx, "deepseek retrying",
 				slog.Int("attempt", attempt),
@@ -156,8 +189,8 @@ func (c *DeepSeekClient) Chat(ctx context.Context, messages []Message) (string, 
 			case <-time.After(backoff):
 			}
 			backoff *= 2
-			if backoff > maxBackoff {
-				backoff = maxBackoff
+			if backoff > c.maxBackoff {
+				backoff = c.maxBackoff
 			}
 
 			// Rebuild the request body (reader is consumed after first attempt).
@@ -171,7 +204,7 @@ func (c *DeepSeekClient) Chat(ctx context.Context, messages []Message) (string, 
 
 		resp, doErr := c.httpClient.Do(httpReq)
 		if doErr != nil {
-			if attempt < maxRetries {
+			if attempt < c.maxRetries {
 				continue
 			}
 			return "", fmt.Errorf("deepseek request: %w", doErr)
@@ -181,7 +214,7 @@ func (c *DeepSeekClient) Chat(ctx context.Context, messages []Message) (string, 
 			respBody, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 
-			if attempt < maxRetries && isRetryable(resp.StatusCode) {
+			if attempt < c.maxRetries && isRetryable(resp.StatusCode) {
 				// Check for Retry-After header from rate limiter.
 				if ra := resp.Header.Get("Retry-After"); ra != "" {
 					if d, parseErr := time.ParseDuration(ra + "s"); parseErr == nil {
