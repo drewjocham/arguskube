@@ -17,8 +17,6 @@ import {ai} from '../models';
 import {anomaly} from '../models';
 import {argocd} from '../models';
 import {loadtest} from '../models';
-import {features} from '../models';
-import {config} from '../models';
 import {workflows} from '../models';
 import {broker} from '../models';
 import {notebooks} from '../models';
@@ -26,6 +24,7 @@ import {vulnscan} from '../models';
 import {popeye} from '../models';
 import {envprobe} from '../models';
 import {auth} from '../models';
+import {config} from '../models';
 
 export function AcceptSuggestion(arg1:string,arg2:string):Promise<void>;
 
@@ -45,7 +44,7 @@ export function ApplyYaml(arg1:string):Promise<string>;
 
 export function AuthRoutes(arg1:http.ServeMux):Promise<void>;
 
-export function AutoResolveContext():Promise<k8s.ContextResolution>;
+export function AuthenticateWithBiometrics(arg1:string):Promise<void>;
 
 export function BatchCheckCanI(arg1:string,arg2:Array<k8s.CanIResult>):Promise<Array<k8s.CanIResult>>;
 
@@ -66,8 +65,6 @@ export function ClearSessionToken():Promise<void>;
 export function ClearUsageHistory():Promise<void>;
 
 export function ClearUserActivity():Promise<void>;
-
-export function CloseExecSession():Promise<void>;
 
 export function CompleteOAuthFlow(arg1:string,arg2:string):Promise<oauthproviders.UserInfo>;
 
@@ -135,9 +132,11 @@ export function EstimateCosts(arg1:string):Promise<k8s.ClusterCostReport>;
 
 export function EstimateDistLoadCost(arg1:saasapi.DistLoadSpec):Promise<number>;
 
-export function ExecPodShell(arg1:string,arg2:string,arg3:string,arg4:number,arg5:number):Promise<void>;
+export function ExplainTerminalOutput(arg1:string,arg2:string):Promise<string>;
 
 export function FindOrphanedEndpoints(arg1:string):Promise<Array<k8s.OrphanedEndpoint>>;
+
+export function GenerateCommand(arg1:string,arg2:string):Promise<string>;
 
 export function GenerateLoadTestPayload(arg1:string,arg2:number):Promise<string>;
 
@@ -150,8 +149,6 @@ export function GetAgentEventLog():Promise<Array<ai.AgentEvent>>;
 export function GetAgentProfile():Promise<alertproc.AgentProfile>;
 
 export function GetAgentTopology(arg1:string):Promise<agentconn.TopologyGraph>;
-
-export function GetAlerts():Promise<Array<alerts.Alert>>;
 
 export function GetAnomalyJobs():Promise<Array<anomaly.Job>>;
 
@@ -175,8 +172,6 @@ export function GetBlastRadiusInfo():Promise<k8s.BlastRadiusInfo>;
 
 export function GetChatHistory(arg1:string):Promise<Array<ai.ChatEntry>>;
 
-export function GetClusterInfo():Promise<k8s.ClusterInfo>;
-
 export function GetCodeReviewReport(arg1:string,arg2:string):Promise<string>;
 
 export function GetCodeSuggestion(arg1:string,arg2:string):Promise<string>;
@@ -190,8 +185,6 @@ export function GetDBConnection(arg1:context.Context,arg2:string):Promise<pkg.DB
 export function GetDeployArtifact(arg1:string,arg2:string):Promise<pkg.DeployArtifact>;
 
 export function GetDeployArtifacts():Promise<Array<pkg.DeployArtifact>>;
-
-export function GetDeploymentRevisions(arg1:string,arg2:string,arg3:number):Promise<Array<k8s.DeploymentRevision>>;
 
 export function GetDistLoadCreditBalance():Promise<number>;
 
@@ -207,27 +200,19 @@ export function GetDistributedLoadTestResult(arg1:string):Promise<saasapi.DistLo
 
 export function GetDistributedLoadTestStatus(arg1:string):Promise<saasapi.DistLoadStatus>;
 
-export function GetFeatures():Promise<Record<features.Feature, boolean>>;
-
 export function GetGatewayStatusByRole(arg1:string):Promise<any>;
 
 export function GetGoogleSheet(arg1:string,arg2:string,arg3:string):Promise<workspace.Sheet>;
 
 export function GetLocalDistLoadQuota():Promise<pkg.LocalQuotaStatus>;
 
-export function GetMetrics():Promise<alerts.ClusterMetrics>;
-
 export function GetNextSuggestion(arg1:string):Promise<pkg.NextSuggestionResult>;
 
 export function GetNodeCapacities():Promise<Array<k8s.NodeCapacity>>;
 
-export function GetNodeLogs(arg1:string,arg2:number):Promise<Array<k8s.NodeLogEntry>>;
-
 export function GetNotebook(arg1:string):Promise<string>;
 
 export function GetPRGuidelines(arg1:string):Promise<string>;
-
-export function GetPodLogs(arg1:string,arg2:string,arg3:number):Promise<Array<alerts.LogLine>>;
 
 export function GetResourceDetail(arg1:string,arg2:string,arg3:string):Promise<k8s.ResourceDetailResult>;
 
@@ -243,21 +228,15 @@ export function GetRunnerStreamURL(arg1:string):Promise<string>;
 
 export function GetSecretStoreInfo():Promise<pkg.SecretStoreInfo>;
 
-export function GetServicePods(arg1:string,arg2:string):Promise<Array<k8s.ServicePod>>;
-
 export function GetSessionToken():Promise<string>;
 
 export function GetSettings():Promise<pkg.SettingsPayload>;
 
 export function GetTShirtSizes():Promise<Record<string, k8s.ResourceProfile>>;
 
-export function GetTier():Promise<config.Tier>;
-
 export function GetTopology(arg1:string):Promise<k8s.TopologyResult>;
 
 export function GetUsageSummary():Promise<pkg.UsagePayload>;
-
-export function GetVPARecommendations(arg1:string):Promise<Array<k8s.VPARecommendation>>;
 
 export function GetVaultStatus():Promise<Array<pkg.VaultEntry>>;
 
@@ -275,7 +254,7 @@ export function InjectDebugContainer(arg1:string,arg2:string,arg3:string):Promis
 
 export function InstallArgusScan():Promise<setup.SetupResult>;
 
-export function LaunchPopOutTerminal():Promise<void>;
+export function IsBiometricAvailable():Promise<boolean>;
 
 export function ListAllNamespaces():Promise<Array<string>>;
 
@@ -286,8 +265,6 @@ export function ListArgusCDApps(arg1:string):Promise<Array<argocd.App>>;
 export function ListArgusCDProjects():Promise<Array<string>>;
 
 export function ListCodeReviewReports(arg1:string):Promise<Array<pkg.CodeReviewReport>>;
-
-export function ListContexts():Promise<Array<k8s.ContextInfo>>;
 
 export function ListDBConnections(arg1:context.Context):Promise<Array<pkg.DBConnectionView>>;
 
@@ -377,10 +354,6 @@ export function RecordView(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function RefreshArgusCDApp(arg1:string,arg2:boolean):Promise<void>;
 
-export function ResizeExec(arg1:number,arg2:number):Promise<void>;
-
-export function ResizeTerminal(arg1:number,arg2:number):Promise<void>;
-
 export function ResolveLocalPayloadPath(arg1:string):Promise<pkg.PayloadPathResolution>;
 
 export function ResolveSecretRef(arg1:string):Promise<string|string>;
@@ -421,13 +394,9 @@ export function ScanImage(arg1:string,arg2:string):Promise<string>;
 
 export function SendChatMessage(arg1:string,arg2:string):Promise<string>;
 
-export function SendExecInput(arg1:string):Promise<void>;
-
 export function SendGoogleChatMessage(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function SendSlackMessage(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
-
-export function SendTerminalInput(arg1:string):Promise<void>;
 
 export function ServeHTTP(arg1:http.ResponseWriter,arg2:http.Request):Promise<void>;
 
@@ -455,11 +424,7 @@ export function StartOAuthFlow(arg1:string):Promise<string>;
 
 export function StartRunnerLoadTest(arg1:saasapi.DistLoadSpec):Promise<string>;
 
-export function StartTerminal(arg1:number,arg2:number):Promise<void>;
-
 export function StartWorkspaceConnect(arg1:string,arg2:string,arg3:string):Promise<workspace.AuthURL>;
-
-export function StreamPodLogsFollow(arg1:string,arg2:string,arg3:string,arg4:number):Promise<Array<string>>;
 
 export function SwitchContext(arg1:string):Promise<void>;
 
@@ -489,7 +454,7 @@ export function UpdateGoogleTask(arg1:string,arg2:string,arg3:string,arg4:string
 
 export function UpdateIncident(arg1:string,arg2:string,arg3:string):Promise<incidents.Incident>;
 
-export function UpdateSettings(arg1:pkg.SettingsPayload):Promise<void>;
+export function UpdateSettings(arg1:pkg.SettingsPayload):Promise<pkg.SettingsResult>;
 
 export function UpsertDBConnection(arg1:context.Context,arg2:pkg.DBConnectionInput):Promise<pkg.DBConnectionView>;
 

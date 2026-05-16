@@ -230,10 +230,10 @@ async function initTerminal() {
   }
 }
 
-bus.useWailsEvent('terminal:output', (data) => {
-  if (term && data) {
-    term.write(data)
-  }
+bus.useWailsEvent('terminal:output', (payload) => {
+  if (!payload || !term) return
+  const data = typeof payload === 'string' ? payload : payload?.data
+  if (data) term.write(data)
 })
 
 function handleClose() {

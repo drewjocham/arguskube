@@ -38,8 +38,8 @@ export function AuthRoutes(arg1) {
   return window['go']['pkg']['App']['AuthRoutes'](arg1);
 }
 
-export function AutoResolveContext() {
-  return window['go']['pkg']['App']['AutoResolveContext']();
+export function AuthenticateWithBiometrics(arg1) {
+  return window['go']['pkg']['App']['AuthenticateWithBiometrics'](arg1);
 }
 
 export function BatchCheckCanI(arg1, arg2) {
@@ -80,10 +80,6 @@ export function ClearUsageHistory() {
 
 export function ClearUserActivity() {
   return window['go']['pkg']['App']['ClearUserActivity']();
-}
-
-export function CloseExecSession() {
-  return window['go']['pkg']['App']['CloseExecSession']();
 }
 
 export function CompleteOAuthFlow(arg1, arg2) {
@@ -218,12 +214,16 @@ export function EstimateDistLoadCost(arg1) {
   return window['go']['pkg']['App']['EstimateDistLoadCost'](arg1);
 }
 
-export function ExecPodShell(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['pkg']['App']['ExecPodShell'](arg1, arg2, arg3, arg4, arg5);
+export function ExplainTerminalOutput(arg1, arg2) {
+  return window['go']['pkg']['App']['ExplainTerminalOutput'](arg1, arg2);
 }
 
 export function FindOrphanedEndpoints(arg1) {
   return window['go']['pkg']['App']['FindOrphanedEndpoints'](arg1);
+}
+
+export function GenerateCommand(arg1, arg2) {
+  return window['go']['pkg']['App']['GenerateCommand'](arg1, arg2);
 }
 
 export function GenerateLoadTestPayload(arg1, arg2) {
@@ -248,10 +248,6 @@ export function GetAgentProfile() {
 
 export function GetAgentTopology(arg1) {
   return window['go']['pkg']['App']['GetAgentTopology'](arg1);
-}
-
-export function GetAlerts() {
-  return window['go']['pkg']['App']['GetAlerts']();
 }
 
 export function GetAnomalyJobs() {
@@ -298,10 +294,6 @@ export function GetChatHistory(arg1) {
   return window['go']['pkg']['App']['GetChatHistory'](arg1);
 }
 
-export function GetClusterInfo() {
-  return window['go']['pkg']['App']['GetClusterInfo']();
-}
-
 export function GetCodeReviewReport(arg1, arg2) {
   return window['go']['pkg']['App']['GetCodeReviewReport'](arg1, arg2);
 }
@@ -328,10 +320,6 @@ export function GetDeployArtifact(arg1, arg2) {
 
 export function GetDeployArtifacts() {
   return window['go']['pkg']['App']['GetDeployArtifacts']();
-}
-
-export function GetDeploymentRevisions(arg1, arg2, arg3) {
-  return window['go']['pkg']['App']['GetDeploymentRevisions'](arg1, arg2, arg3);
 }
 
 export function GetDistLoadCreditBalance() {
@@ -362,10 +350,6 @@ export function GetDistributedLoadTestStatus(arg1) {
   return window['go']['pkg']['App']['GetDistributedLoadTestStatus'](arg1);
 }
 
-export function GetFeatures() {
-  return window['go']['pkg']['App']['GetFeatures']();
-}
-
 export function GetGatewayStatusByRole(arg1) {
   return window['go']['pkg']['App']['GetGatewayStatusByRole'](arg1);
 }
@@ -378,10 +362,6 @@ export function GetLocalDistLoadQuota() {
   return window['go']['pkg']['App']['GetLocalDistLoadQuota']();
 }
 
-export function GetMetrics() {
-  return window['go']['pkg']['App']['GetMetrics']();
-}
-
 export function GetNextSuggestion(arg1) {
   return window['go']['pkg']['App']['GetNextSuggestion'](arg1);
 }
@@ -390,20 +370,12 @@ export function GetNodeCapacities() {
   return window['go']['pkg']['App']['GetNodeCapacities']();
 }
 
-export function GetNodeLogs(arg1, arg2) {
-  return window['go']['pkg']['App']['GetNodeLogs'](arg1, arg2);
-}
-
 export function GetNotebook(arg1) {
   return window['go']['pkg']['App']['GetNotebook'](arg1);
 }
 
 export function GetPRGuidelines(arg1) {
   return window['go']['pkg']['App']['GetPRGuidelines'](arg1);
-}
-
-export function GetPodLogs(arg1, arg2, arg3) {
-  return window['go']['pkg']['App']['GetPodLogs'](arg1, arg2, arg3);
 }
 
 export function GetResourceDetail(arg1, arg2, arg3) {
@@ -434,10 +406,6 @@ export function GetSecretStoreInfo() {
   return window['go']['pkg']['App']['GetSecretStoreInfo']();
 }
 
-export function GetServicePods(arg1, arg2) {
-  return window['go']['pkg']['App']['GetServicePods'](arg1, arg2);
-}
-
 export function GetSessionToken() {
   return window['go']['pkg']['App']['GetSessionToken']();
 }
@@ -450,20 +418,12 @@ export function GetTShirtSizes() {
   return window['go']['pkg']['App']['GetTShirtSizes']();
 }
 
-export function GetTier() {
-  return window['go']['pkg']['App']['GetTier']();
-}
-
 export function GetTopology(arg1) {
   return window['go']['pkg']['App']['GetTopology'](arg1);
 }
 
 export function GetUsageSummary() {
   return window['go']['pkg']['App']['GetUsageSummary']();
-}
-
-export function GetVPARecommendations(arg1) {
-  return window['go']['pkg']['App']['GetVPARecommendations'](arg1);
 }
 
 export function GetVaultStatus() {
@@ -498,8 +458,8 @@ export function InstallArgusScan() {
   return window['go']['pkg']['App']['InstallArgusScan']();
 }
 
-export function LaunchPopOutTerminal() {
-  return window['go']['pkg']['App']['LaunchPopOutTerminal']();
+export function IsBiometricAvailable() {
+  return window['go']['pkg']['App']['IsBiometricAvailable']();
 }
 
 export function ListAllNamespaces() {
@@ -520,10 +480,6 @@ export function ListArgusCDProjects() {
 
 export function ListCodeReviewReports(arg1) {
   return window['go']['pkg']['App']['ListCodeReviewReports'](arg1);
-}
-
-export function ListContexts() {
-  return window['go']['pkg']['App']['ListContexts']();
 }
 
 export function ListDBConnections(arg1) {
@@ -702,14 +658,6 @@ export function RefreshArgusCDApp(arg1, arg2) {
   return window['go']['pkg']['App']['RefreshArgusCDApp'](arg1, arg2);
 }
 
-export function ResizeExec(arg1, arg2) {
-  return window['go']['pkg']['App']['ResizeExec'](arg1, arg2);
-}
-
-export function ResizeTerminal(arg1, arg2) {
-  return window['go']['pkg']['App']['ResizeTerminal'](arg1, arg2);
-}
-
 export function ResolveLocalPayloadPath(arg1) {
   return window['go']['pkg']['App']['ResolveLocalPayloadPath'](arg1);
 }
@@ -790,20 +738,12 @@ export function SendChatMessage(arg1, arg2) {
   return window['go']['pkg']['App']['SendChatMessage'](arg1, arg2);
 }
 
-export function SendExecInput(arg1) {
-  return window['go']['pkg']['App']['SendExecInput'](arg1);
-}
-
 export function SendGoogleChatMessage(arg1, arg2, arg3, arg4) {
   return window['go']['pkg']['App']['SendGoogleChatMessage'](arg1, arg2, arg3, arg4);
 }
 
 export function SendSlackMessage(arg1, arg2, arg3, arg4) {
   return window['go']['pkg']['App']['SendSlackMessage'](arg1, arg2, arg3, arg4);
-}
-
-export function SendTerminalInput(arg1) {
-  return window['go']['pkg']['App']['SendTerminalInput'](arg1);
 }
 
 export function ServeHTTP(arg1, arg2) {
@@ -858,16 +798,8 @@ export function StartRunnerLoadTest(arg1) {
   return window['go']['pkg']['App']['StartRunnerLoadTest'](arg1);
 }
 
-export function StartTerminal(arg1, arg2) {
-  return window['go']['pkg']['App']['StartTerminal'](arg1, arg2);
-}
-
 export function StartWorkspaceConnect(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['StartWorkspaceConnect'](arg1, arg2, arg3);
-}
-
-export function StreamPodLogsFollow(arg1, arg2, arg3, arg4) {
-  return window['go']['pkg']['App']['StreamPodLogsFollow'](arg1, arg2, arg3, arg4);
 }
 
 export function SwitchContext(arg1) {

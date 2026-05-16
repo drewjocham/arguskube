@@ -997,8 +997,18 @@ export namespace config {
 	    OIDCClientID: string;
 	    OIDCClientSecret: string;
 	    OIDCDisplayName: string;
+	    AppleServicesID: string;
+	    AppleTeamID: string;
+	    AppleKeyID: string;
+	    ApplePrivateKey: string;
+	    ApplePrivateKeyFile: string;
+	    AppleDisplayName: string;
 	    AllowLocalSignup: boolean;
 	    DevMode: boolean;
+	    PasskeyEnabled: boolean;
+	    PasskeyRPID: string;
+	    PasskeyRPName: string;
+	    PasskeyRPOrigin: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new AuthConfig(source);
@@ -1013,8 +1023,18 @@ export namespace config {
 	        this.OIDCClientID = source["OIDCClientID"];
 	        this.OIDCClientSecret = source["OIDCClientSecret"];
 	        this.OIDCDisplayName = source["OIDCDisplayName"];
+	        this.AppleServicesID = source["AppleServicesID"];
+	        this.AppleTeamID = source["AppleTeamID"];
+	        this.AppleKeyID = source["AppleKeyID"];
+	        this.ApplePrivateKey = source["ApplePrivateKey"];
+	        this.ApplePrivateKeyFile = source["ApplePrivateKeyFile"];
+	        this.AppleDisplayName = source["AppleDisplayName"];
 	        this.AllowLocalSignup = source["AllowLocalSignup"];
 	        this.DevMode = source["DevMode"];
+	        this.PasskeyEnabled = source["PasskeyEnabled"];
+	        this.PasskeyRPID = source["PasskeyRPID"];
+	        this.PasskeyRPName = source["PasskeyRPName"];
+	        this.PasskeyRPOrigin = source["PasskeyRPOrigin"];
 	    }
 	}
 
@@ -2495,24 +2515,6 @@ export namespace k8s {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.cpu = source["cpu"];
 	        this.memory = source["memory"];
-	    }
-	}
-	export class NodeLogEntry {
-	    time: string;
-	    level: string;
-	    service: string;
-	    message: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new NodeLogEntry(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.time = source["time"];
-	        this.level = source["level"];
-	        this.service = source["service"];
-	        this.message = source["message"];
 	    }
 	}
 	export class OrphanedEndpoint {
@@ -4163,28 +4165,22 @@ export namespace pkg {
 	    llmModel: string;
 	    mcpServersConfig: string;
 	    agentInstructions: string;
-	    anomstackUrl: string;
-	    prometheusUrl: string;
 	    argocdUrl: string;
 	    argocdToken: string;
 	    argocdInsecure: boolean;
-	    snykToken: string;
-	    trivyBinary: string;
-	    falcoUrl: string;
 	    pipelinesEnabled: boolean;
 	    pipelinesProvider: string;
-	    githubToken: string;
 	    githubOwner: string;
 	    githubRepo: string;
 	    githubWorkflow: string;
+	    githubToken: string;
 	    gitlabUrl: string;
-	    gitlabToken: string;
 	    gitlabProjectId: string;
 	    gitlabRef: string;
+	    gitlabToken: string;
 	    awsRegion: string;
 	    awsAccessKey: string;
 	    awsSecretKey: string;
-	    awsProject: string;
 	    gcpProject: string;
 	    gcpRegion: string;
 	    gcpCredentials: string;
@@ -4199,32 +4195,32 @@ export namespace pkg {
 	    notifyOnPrUpdated: boolean;
 	    notifyOnPrCommented: boolean;
 	    notifyOnPrMerged: boolean;
-	    autoCodeReview: boolean;
-	    codeReviewDestination: string;
-	    gdriveFolderId: string;
-	    codeReviewS3Prefix: string;
-	    codeReviewEmailTo: string;
 	    confluenceUrl: string;
-	    confluenceEmail: string;
 	    confluenceToken: string;
-	    confluenceSpaceKey: string;
-	    confluenceParentPageId: string;
 	    notionToken: string;
-	    notionDatabaseId: string;
-	    evernoteToken: string;
-	    evernoteNotebookGuid: string;
-	    onenoteToken: string;
-	    onenoteSectionId: string;
-	    amplenoteApiKey: string;
-	    standardNotesUrl: string;
-	    standardNotesToken: string;
-	    obsidianVaultPath: string;
-	    joplinUrl: string;
-	    joplinToken: string;
-	    logseqGraphPath: string;
-	    bearToken: string;
 	    tier: string;
 	    logLevel: string;
+	    googleClientId: string;
+	    googleClientSecret: string;
+	    oidcIssuer: string;
+	    oidcClientId: string;
+	    oidcClientSecret: string;
+	    oidcDisplayName: string;
+	    appleServicesId: string;
+	    appleTeamId: string;
+	    appleKeyId: string;
+	    applePrivateKey: string;
+	    appleDisplayName: string;
+	    allowLocalSignup: boolean;
+	    passkeyEnabled: boolean;
+	    passkeyRpId: string;
+	    passkeyRpName: string;
+	    passkeyRpOrigin: string;
+	    workspaceGoogleClientId: string;
+	    workspaceGoogleClientSecret: string;
+	    slackClientId: string;
+	    slackClientSecret: string;
+	    slackSigningSecret: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SettingsPayload(source);
@@ -4240,28 +4236,22 @@ export namespace pkg {
 	        this.llmModel = source["llmModel"];
 	        this.mcpServersConfig = source["mcpServersConfig"];
 	        this.agentInstructions = source["agentInstructions"];
-	        this.anomstackUrl = source["anomstackUrl"];
-	        this.prometheusUrl = source["prometheusUrl"];
 	        this.argocdUrl = source["argocdUrl"];
 	        this.argocdToken = source["argocdToken"];
 	        this.argocdInsecure = source["argocdInsecure"];
-	        this.snykToken = source["snykToken"];
-	        this.trivyBinary = source["trivyBinary"];
-	        this.falcoUrl = source["falcoUrl"];
 	        this.pipelinesEnabled = source["pipelinesEnabled"];
 	        this.pipelinesProvider = source["pipelinesProvider"];
-	        this.githubToken = source["githubToken"];
 	        this.githubOwner = source["githubOwner"];
 	        this.githubRepo = source["githubRepo"];
 	        this.githubWorkflow = source["githubWorkflow"];
+	        this.githubToken = source["githubToken"];
 	        this.gitlabUrl = source["gitlabUrl"];
-	        this.gitlabToken = source["gitlabToken"];
 	        this.gitlabProjectId = source["gitlabProjectId"];
 	        this.gitlabRef = source["gitlabRef"];
+	        this.gitlabToken = source["gitlabToken"];
 	        this.awsRegion = source["awsRegion"];
 	        this.awsAccessKey = source["awsAccessKey"];
 	        this.awsSecretKey = source["awsSecretKey"];
-	        this.awsProject = source["awsProject"];
 	        this.gcpProject = source["gcpProject"];
 	        this.gcpRegion = source["gcpRegion"];
 	        this.gcpCredentials = source["gcpCredentials"];
@@ -4276,32 +4266,44 @@ export namespace pkg {
 	        this.notifyOnPrUpdated = source["notifyOnPrUpdated"];
 	        this.notifyOnPrCommented = source["notifyOnPrCommented"];
 	        this.notifyOnPrMerged = source["notifyOnPrMerged"];
-	        this.autoCodeReview = source["autoCodeReview"];
-	        this.codeReviewDestination = source["codeReviewDestination"];
-	        this.gdriveFolderId = source["gdriveFolderId"];
-	        this.codeReviewS3Prefix = source["codeReviewS3Prefix"];
-	        this.codeReviewEmailTo = source["codeReviewEmailTo"];
 	        this.confluenceUrl = source["confluenceUrl"];
-	        this.confluenceEmail = source["confluenceEmail"];
 	        this.confluenceToken = source["confluenceToken"];
-	        this.confluenceSpaceKey = source["confluenceSpaceKey"];
-	        this.confluenceParentPageId = source["confluenceParentPageId"];
 	        this.notionToken = source["notionToken"];
-	        this.notionDatabaseId = source["notionDatabaseId"];
-	        this.evernoteToken = source["evernoteToken"];
-	        this.evernoteNotebookGuid = source["evernoteNotebookGuid"];
-	        this.onenoteToken = source["onenoteToken"];
-	        this.onenoteSectionId = source["onenoteSectionId"];
-	        this.amplenoteApiKey = source["amplenoteApiKey"];
-	        this.standardNotesUrl = source["standardNotesUrl"];
-	        this.standardNotesToken = source["standardNotesToken"];
-	        this.obsidianVaultPath = source["obsidianVaultPath"];
-	        this.joplinUrl = source["joplinUrl"];
-	        this.joplinToken = source["joplinToken"];
-	        this.logseqGraphPath = source["logseqGraphPath"];
-	        this.bearToken = source["bearToken"];
 	        this.tier = source["tier"];
 	        this.logLevel = source["logLevel"];
+	        this.googleClientId = source["googleClientId"];
+	        this.googleClientSecret = source["googleClientSecret"];
+	        this.oidcIssuer = source["oidcIssuer"];
+	        this.oidcClientId = source["oidcClientId"];
+	        this.oidcClientSecret = source["oidcClientSecret"];
+	        this.oidcDisplayName = source["oidcDisplayName"];
+	        this.appleServicesId = source["appleServicesId"];
+	        this.appleTeamId = source["appleTeamId"];
+	        this.appleKeyId = source["appleKeyId"];
+	        this.applePrivateKey = source["applePrivateKey"];
+	        this.appleDisplayName = source["appleDisplayName"];
+	        this.allowLocalSignup = source["allowLocalSignup"];
+	        this.passkeyEnabled = source["passkeyEnabled"];
+	        this.passkeyRpId = source["passkeyRpId"];
+	        this.passkeyRpName = source["passkeyRpName"];
+	        this.passkeyRpOrigin = source["passkeyRpOrigin"];
+	        this.workspaceGoogleClientId = source["workspaceGoogleClientId"];
+	        this.workspaceGoogleClientSecret = source["workspaceGoogleClientSecret"];
+	        this.slackClientId = source["slackClientId"];
+	        this.slackClientSecret = source["slackClientSecret"];
+	        this.slackSigningSecret = source["slackSigningSecret"];
+	    }
+	}
+	export class SettingsResult {
+	    reconnectK8s: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SettingsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.reconnectK8s = source["reconnectK8s"];
 	    }
 	}
 	export class SlackChannelView {
@@ -5207,6 +5209,29 @@ export namespace setup {
 	        this.version = source["version"];
 	        this.via = source["via"];
 	        this.message = source["message"];
+	    }
+	}
+
+}
+
+export namespace terminal {
+	
+	export class SessionInfo {
+	    id: string;
+	    domain: string;
+	    label: string;
+	    alive: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SessionInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.domain = source["domain"];
+	        this.label = source["label"];
+	        this.alive = source["alive"];
 	    }
 	}
 

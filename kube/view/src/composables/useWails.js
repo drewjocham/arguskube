@@ -30,7 +30,7 @@ export { useResources } from './useResources'
 export { usePodLogs, useLogStream, useLogs, useNodeLogs } from './useLogs'
 
 // Terminal and pod exec
-export { useTerminal, usePodExec } from './useShell'
+export { useTerminal, useTerminalSession, useTerminalCopilot, usePodExec } from './useShell'
 
 // ArgusCD
 export { useArgusCD, useApplications } from './useArgusCD'

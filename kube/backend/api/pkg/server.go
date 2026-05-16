@@ -303,33 +303,34 @@ func authenticateWebhook(r *http.Request) bool {
 //
 // The set is curated and conservative — adding to it should be a deliberate
 // security review. Anything dangerous (DeletePod, ApplyYaml, DeleteResource,
-// LaunchPopOutTerminal, StartTerminal, RestartDeployment-style actions,
+// LaunchPopOutTerminal, StartTerminal, StartTerminalSession,
+// ExplainTerminalOutput, GenerateCommand, RestartDeployment-style actions,
 // SwitchContext that mutates kubeconfig, UpdateSettings) is intentionally
 // excluded.
 var httpExposedMethods = map[string]struct{}{
 	// Cluster read-only data the SaaS frontend needs to render dashboards.
-	"GetClusterInfo":         {},
-	"GetAppMode":             {},
-	"GetTier":                {},
-	"GetSettings":            {}, // returns masked tokens; safe to read
-	"GetClusterMetrics":      {},
-	"DetectAlerts":           {},
-	"ListResources":          {},
-	"GetResourceDetail":      {},
-	"GetResourceYaml":        {},
-	"ListAllNamespaces":      {},
-	"ListContexts":           {},
-	"AutoResolveContext":     {},
-	"RunEnvProbes":           {},
+	"GetClusterInfo":     {},
+	"GetAppMode":         {},
+	"GetTier":            {},
+	"GetSettings":        {}, // returns masked tokens; safe to read
+	"GetClusterMetrics":  {},
+	"DetectAlerts":       {},
+	"ListResources":      {},
+	"GetResourceDetail":  {},
+	"GetResourceYaml":    {},
+	"ListAllNamespaces":  {},
+	"ListContexts":       {},
+	"AutoResolveContext": {},
+	"RunEnvProbes":       {},
 	// User-profile / "Argus suggests" surface. RecordView is high-frequency
 	// (every nav) but harmless; Mute/Accept/Dismiss are user-driven so the
 	// rate is naturally bounded. ClearUserActivity is deliberately omitted
 	// — it's a destructive action restricted to desktop.
-	"RecordView":         {},
-	"GetNextSuggestion":  {},
-	"MuteSuggestion":     {},
-	"AcceptSuggestion":   {},
-	"DismissSuggestion":  {},
+	"RecordView":             {},
+	"GetNextSuggestion":      {},
+	"MuteSuggestion":         {},
+	"AcceptSuggestion":       {},
+	"DismissSuggestion":      {},
 	"GetTopology":            {},
 	"GetWarningEvents":       {},
 	"GetNamespacePodCounts":  {},
@@ -398,11 +399,11 @@ var httpExposedMethods = map[string]struct{}{
 	// Vault: read-only credential status + small key/value secret store.
 	// SetVaultSecret/DeleteVaultSecret only touch the user's own
 	// $HOME/.argus/vault/secrets.json, scoped per-machine.
-	"GetVaultStatus":     {},
-	"TestVaultProvider":  {},
-	"ListVaultSecrets":   {},
-	"SetVaultSecret":     {},
-	"DeleteVaultSecret":  {},
+	"GetVaultStatus":    {},
+	"TestVaultProvider": {},
+	"ListVaultSecrets":  {},
+	"SetVaultSecret":    {},
+	"DeleteVaultSecret": {},
 	// External-secrets: probes the local CLIs (kubeseal/sops/gpg/age) and
 	// enumerates encrypted secret sources in a namespace via the dynamic
 	// client. All read-only — no cluster mutations.
@@ -413,10 +414,10 @@ var httpExposedMethods = map[string]struct{}{
 	// CancelDistributedLoadTest) are INTENTIONALLY NOT exposed —
 	// those scale Deployments / spend SaaS credits, so they remain
 	// Wails-only where the user is the operator on the same machine.
-	"ListDistLoadPresets":              {},
-	"ListDistLoadBrokerKinds":          {},
-	"GetDistributedLoadTestStatus":     {},
-	"GetDistributedLoadTestRecord":     {},
+	"ListDistLoadPresets":          {},
+	"ListDistLoadBrokerKinds":      {},
+	"GetDistributedLoadTestStatus": {},
+	"GetDistributedLoadTestRecord": {},
 	// Payload helpers + quota. Note: GenerateLoadTestPayload is
 	// intentionally NOT here — it spends DeepSeek tokens and exposing
 	// it over the SaaS HTTP shim would let any reachable caller drain
@@ -444,12 +445,12 @@ var httpExposedMethods = map[string]struct{}{
 	// SaaS-mode dashboard can show context to the user. Mutating
 	// methods (Create/Append/Write/Update/Delete) stay Wails-only — same
 	// posture as Slack's Send.
-	"ReadGoogleDoc":          {},
-	"GetGoogleSheet":         {},
-	"ReadGoogleSheetRange":   {},
-	"ListGoogleTaskLists":    {},
-	"ListGoogleTasks":        {},
-	"ListGoogleChatSpaces":   {},
+	"ReadGoogleDoc":        {},
+	"GetGoogleSheet":       {},
+	"ReadGoogleSheetRange": {},
+	"ListGoogleTaskLists":  {},
+	"ListGoogleTasks":      {},
+	"ListGoogleChatSpaces": {},
 }
 
 func methodAllowedOverHTTP(name string) bool {

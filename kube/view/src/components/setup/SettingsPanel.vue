@@ -20,6 +20,68 @@ import SetupChecklist from './SetupChecklist.vue'
 import PrivacyControls from './PrivacyControls.vue'
 import { useNavVisibilityStore } from '../../stores/navVisibility'
 
+const SECTION_GROUPS = [
+  {
+    label: 'System',
+    sections: [
+      { id: 'setup-checklist', label: 'Checklist' },
+      { id: 'privacy-controls', label: 'Privacy' },
+      { id: 'vault', label: 'Vault' },
+      { id: 'kube-connection', label: 'Kubernetes' },
+    ],
+  },
+  {
+    label: 'Access',
+    sections: [
+      { id: 'sign-in-integrations', label: 'Sign-in & OAuth' },
+      { id: 'security-tools', label: 'Security' },
+    ],
+  },
+  {
+    label: 'Appearance',
+    sections: [
+      { id: 'appearance', label: 'Appearance' },
+      { id: 'settings-navigation', label: 'Navigation' },
+    ],
+  },
+  {
+    label: 'Notifications',
+    sections: [
+      { id: 'notifications-general', label: 'General' },
+      { id: 'notification-channels', label: 'Channels' },
+    ],
+  },
+  {
+    label: 'Agent',
+    sections: [
+      { id: 'watchers-notifications', label: 'Watchers' },
+      { id: 'agent-profile', label: 'Profile' },
+    ],
+  },
+  {
+    label: 'Integrations',
+    sections: [
+      { id: 'ai-integrations', label: 'AI & LLM' },
+      { id: 'arguscd-section', label: 'Argo CD' },
+      { id: 'pipelines-section', label: 'Pipelines' },
+    ],
+  },
+  {
+    label: 'Operations',
+    sections: [
+      { id: 'billing-usage', label: 'Billing' },
+      { id: 'addons-jobs', label: 'Add-ons' },
+    ],
+  },
+]
+
+const activeSection = ref('')
+
+function scrollToSection(id) {
+  const el = document.getElementById(id)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 const credentialAlerts = useCredentialAlertsStore()
 const esStore = useExternalSecretsStore()
 const guard = useNotificationGuardStore()
@@ -370,6 +432,9 @@ async function saveAgentProfile() {
 const appearance = useAppearanceStore()
 const { theme: appTheme, brightness, contrast, opacity, blur, saturation, density, fontSize } = storeToRefs(appearance)
 const fontSizeRange = appearance.ranges.fontSize
+
+// Google Auth step-by-step guide toggle
+const googleGuideOpen = ref(false)
 
 // Navigation visibility — which sidebar sections show. Read once and
 // destructure the reactive `sections` getter for the toggle UI.
@@ -846,6 +911,22 @@ onMounted(async () => {
     testSecretsTool(tool)
   }
 
+  // Set up IntersectionObserver for sticky-nav active state
+  nextTick(() => {
+    const sectionIds = SECTION_GROUPS.flatMap(g => g.sections.map(s => s.id))
+    const els = sectionIds.map(id => document.getElementById(id)).filter(Boolean)
+    if (els.length) {
+      const obs = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            activeSection.value = entry.target.id
+          }
+        }
+      }, { rootMargin: '-80px 0px -60% 0px' })
+      for (const el of els) obs.observe(el)
+    }
+  })
+
   const pending = appNav.consumeNav()
   const ret = appNav.peekReturn()
   if (pending && pending.navId === 'settings') {
@@ -906,16 +987,27 @@ onMounted(async () => {
       >← Go back to <span class="mono">{{ returnBanner.label }}</span></button>
     </transition>
 
-    <div class="scroll" v-if="!loading">
-      <!-- "Get Argus ready" checklist — the one surface the user must
-           interact with. Every other section below is the "All settings"
-           escape hatch for power users. -->
-      <SetupChecklist />
+    <nav class="settings-nav">
+      <template v-for="group in SECTION_GROUPS" :key="group.label">
+        <span class="nav-category">{{ group.label }}</span>
+        <button
+          v-for="s in group.sections"
+          :key="s.id"
+          class="nav-item"
+          :class="{ active: activeSection === s.id }"
+          @click="scrollToSection(s.id)"
+        >{{ s.label }}</button>
+      </template>
+    </nav>
 
-      <!-- Privacy controls — the user's escape hatch for the learning
-           agents. Sits right under the checklist so it's discoverable
-           without scrolling. -->
-      <PrivacyControls />
+    <div class="scroll" v-if="!loading">
+      <div id="setup-checklist">
+        <SetupChecklist />
+      </div>
+
+      <div id="privacy-controls">
+        <PrivacyControls />
+      </div>
 
       <!-- Vault: every credential the app uses, in one auditable place. -->
       <div class="section vault-section" id="vault" ref="vaultAnchorRef">
@@ -1267,12 +1359,47 @@ onMounted(async () => {
         <h2 class="section-title">Sign-in &amp; integrations</h2>
         <p class="hint" style="margin: -6px 0 14px; font-size: 12px; color: var(--text3); line-height: 1.45;">
           Paste OAuth client credentials below to enable Sign-In providers and
-          Workspace Connect buttons. Create credentials at
-          <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>
-          and
-          <a href="https://api.slack.com/apps" target="_blank" rel="noopener">Slack apps</a>.
-          Saved values are encrypted on disk; no backend restart needed.
+          Workspace Connect buttons. Saved values are encrypted on disk;
+          no backend restart needed.
         </p>
+
+        <!-- Collapsible Google Auth step-by-step guide -->
+        <div class="guide-card">
+          <div class="guide-header" @click="googleGuideOpen = !googleGuideOpen">
+            <span class="guide-title">How Google Auth Works</span>
+            <span class="guide-toggle">{{ googleGuideOpen ? '−' : '+' }}</span>
+          </div>
+          <div v-if="googleGuideOpen" class="guide-body">
+            <div class="guide-step">
+              <span class="step-num">1</span>
+              <div class="step-content">
+                <strong>Developer: register the app in GCP once</strong>
+                <p class="step-hint">The app administrator creates OAuth credentials once at <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener" class="guide-link">Google Cloud Console</a> and enters them below. Choose <strong>Desktop app</strong> as the application type — the PKCE flow with loopback IP handles auth securely without a client secret on the client side.</p>
+              </div>
+            </div>
+            <div class="guide-step">
+              <span class="step-num">2</span>
+              <div class="step-content">
+                <strong>End-user: clicks "Connect" — no GCP access needed</strong>
+                <p class="step-hint">Users see a single <strong>Connect Google Workspace</strong> button. Clicking it opens a browser popup to Google's login page where they authorize the app. After granting permission, the browser says <em>"Success, close this tab"</em> and the app is connected.</p>
+              </div>
+            </div>
+            <div class="guide-step">
+              <span class="step-num">3</span>
+              <div class="step-content">
+                <strong>Behind the scenes: PKCE + loopback flow</strong>
+                <p class="step-hint">The app starts a temporary local server on <code>http://127.0.0.1:54321</code>, opens the browser to Google's authorization URL, catches the redirect with the auth code, exchanges it for tokens, and stores the refresh token securely (macOS Keychain / Windows Credential Locker / Linux Secret Service).</p>
+              </div>
+            </div>
+            <div class="guide-step">
+              <span class="step-num">4</span>
+              <div class="step-content">
+                <strong>Silent token refresh</strong>
+                <p class="step-hint">Access tokens expire after 1 hour. The app uses the stored refresh token to silently obtain new tokens without bothering the user again. No further GCP interaction is ever needed.</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- Sub-section: Sign-in providers (used by the LoginView). -->
         <div class="sub-section">
@@ -1387,7 +1514,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="section">
+      <div class="section" id="appearance">
         <h2 class="section-title">Appearance</h2>
 
         <div class="field">
@@ -1474,7 +1601,7 @@ onMounted(async () => {
       <!-- Navigation visibility — which sidebar sections show. Core
            sections are always present; optional ones reveal when their
            matching subsystem is detected, or via the toggles here. -->
-      <div class="section" data-testid="settings-navigation">
+      <div class="section" id="settings-navigation" data-testid="settings-navigation">
         <h2 class="section-title">Navigation</h2>
         <p class="hint">
           Choose which sections appear in the sidebar. Core sections stay
@@ -1515,7 +1642,7 @@ onMounted(async () => {
         >Reset to defaults</button>
       </div>
 
-      <div class="section">
+      <div class="section" id="notifications-general">
         <h2 class="section-title">Notifications</h2>
 
         <div class="field">
@@ -1698,7 +1825,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="section">
+      <div class="section" id="agent-profile">
         <h2 class="section-title">Agent Profile</h2>
 
         <label class="toggle">
@@ -1748,7 +1875,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="section">
+      <div class="section" id="kube-connection">
         <h2 class="section-title">Kubernetes Connection</h2>
 
         <div class="field">
@@ -2012,7 +2139,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="section">
+      <div class="section" id="billing-usage">
         <h2 class="section-title">Billing & Usage</h2>
 
         <div v-if="usageLoading" class="hint">Loading usage\u2026</div>
@@ -2081,7 +2208,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="section">
+      <div class="section" id="addons-jobs">
         <div class="section-h">
           <h2 class="section-title" style="margin-bottom: 0;">Add-ons & Jobs</h2>
         </div>
@@ -2130,14 +2257,14 @@ onMounted(async () => {
           </div>
         </div>
       </div>
-
-      <div class="save-row">
-        <button class="btn primary save-btn" @click="saveSettings" :disabled="saving">{{ saving ? 'Saving\u2026' : 'Save settings' }}</button>
-        <span v-if="saveMessage" class="msg" :class="{ fail: saveMessage.startsWith('Error') }">{{ saveMessage }}</span>
-      </div>
     </div>
 
-    <div v-else class="loading-state">Loading\u2026</div>
+    <div class="save-bar" v-if="!loading">
+      <button class="btn primary save-btn" @click="saveSettings" :disabled="saving">{{ saving ? 'Saving\u2026' : 'Save settings' }}</button>
+      <span v-if="saveMessage" class="msg" :class="{ fail: saveMessage.startsWith('Error') }">{{ saveMessage }}</span>
+    </div>
+
+    <div v-if="loading" class="loading-state">Loading\u2026</div>
   </div>
 </template>
 
@@ -2162,10 +2289,69 @@ onMounted(async () => {
   line-height: 1;
 }
 
+/* Sticky section navigation */
+.settings-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: thin;
+}
+
+.settings-nav::-webkit-scrollbar {
+  height: 3px;
+}
+
+.nav-category {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.nav-item {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text2);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  font-family: inherit;
+}
+
+.nav-item:hover {
+  color: var(--text);
+  background: var(--bg3);
+  border-color: var(--border);
+}
+
+.nav-item.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(79, 142, 247, 0.1);
+}
+
+/* Scroll-margin for checklist/privacy wrappers */
+#setup-checklist,
+#privacy-controls {
+  scroll-margin-top: 100px;
+}
+
 .scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 24px 40px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -2176,6 +2362,7 @@ onMounted(async () => {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 20px;
+  scroll-margin-top: 100px;
 }
 
 .section-h {
@@ -2218,12 +2405,12 @@ onMounted(async () => {
   font-size: 12.5px;
   font-weight: 500;
   color: var(--text2);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .input {
   width: 100%;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--bg);
@@ -2912,10 +3099,14 @@ onMounted(async () => {
   color: var(--red2);
 }
 
-.save-row {
+.save-bar {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
 }
 
 .loading-state {
@@ -3283,4 +3474,140 @@ onMounted(async () => {
   font-size: 11px; color: var(--text2); cursor: pointer;
 }
 .watcher-enable input { accent-color: var(--accent); }
+
+/* Google Auth step-by-step guide */
+.guide-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.guide-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+}
+
+.guide-header:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.guide-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.guide-toggle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text3);
+  line-height: 1;
+  width: 20px;
+  text-align: center;
+}
+
+.guide-body {
+  border-top: 1px solid var(--border);
+  padding: 12px 14px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.guide-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.step-num {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.step-content strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.step-hint {
+  font-size: 11.5px;
+  color: var(--text2);
+  margin: 3px 0 0;
+  line-height: 1.5;
+}
+
+.step-hint code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: rgba(255,255,255,0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--text);
+}
+
+.guide-link {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--accent);
+  text-decoration: none;
+  margin: 2px 0;
+  word-break: break-all;
+}
+
+.guide-link:hover {
+  text-decoration: underline;
+}
+
+.guide-app-types {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 5px 0 2px;
+}
+
+.guide-app-option {
+  padding: 6px 10px;
+  border-radius: 5px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.guide-app-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.guide-app-desc {
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.4;
+}
 </style>

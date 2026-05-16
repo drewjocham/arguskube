@@ -37,6 +37,7 @@ export interface AgentAnalysisComplete {
 }
 
 export interface TerminalOutput {
+  sessionId?: string
   data: string
   source?: string
 }

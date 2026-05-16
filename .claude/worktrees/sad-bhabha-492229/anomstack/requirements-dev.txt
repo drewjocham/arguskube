@@ -1,6 +1,0 @@
-pytest
-pytest-cov
-pre-commit
-pip-tools
-jupyter
--e .
