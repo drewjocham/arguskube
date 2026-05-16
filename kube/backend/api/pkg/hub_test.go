@@ -72,3 +72,78 @@ func TestHub_PumpDoesNotDeadlockAfterRunExits(t *testing.T) {
 	// would show up as a leak warning under -race or goleak.
 	time.Sleep(100 * time.Millisecond)
 }
+
+// TestHub_PumpsExitTogether is the regression test for the
+// "writePump exits → readPump blocks for 60s" leak. With the done
+// channel + SetReadDeadline plumbing in place, signalling one pump
+// must drop the other out of its blocking syscall within a few
+// milliseconds, not the read-deadline budget.
+func TestHub_PumpsExitTogether(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := NewHub(logger)
+
+	hubCtx, cancelHub := context.WithCancel(context.Background())
+	t.Cleanup(cancelHub)
+	go h.Run(hubCtx)
+
+	srv := httptest.NewServer(http.HandlerFunc(h.HandleTunnel))
+	t.Cleanup(srv.Close)
+
+	u, _ := url.Parse(srv.URL)
+	wsURL := "ws://" + u.Host + "/?agent_id=pump-exit&namespace=ns1"
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	// Wait until the hub registers the connection so client is non-nil.
+	var client *AgentConnection
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		h.mu.RLock()
+		client = h.clients["pump-exit"]
+		h.mu.RUnlock()
+		if client != nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if client == nil {
+		t.Fatal("hub never registered the test client")
+	}
+
+	// Signal both pumps to exit. After this, writePump should drop out
+	// of its select within microseconds, and the readPump should be
+	// kicked by SetReadDeadline + conn.Close from writePump's defer.
+	start := time.Now()
+	client.signalDone()
+
+	// Both pumps share the same conn — once they exit, the second
+	// Close() is a no-op. Confirm the conn is observably closed within
+	// well under the 60-second read deadline.
+	select {
+	case <-client.done:
+		// signalDone() already closed it; this just confirms the channel
+		// closure is observable, which is what writePump selects on.
+	default:
+		t.Fatal("signalDone() did not actually close client.done")
+	}
+
+	pumpDeadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(pumpDeadline) {
+		h.mu.RLock()
+		_, stillRegistered := h.clients["pump-exit"]
+		h.mu.RUnlock()
+		if !stillRegistered {
+			elapsed := time.Since(start)
+			if elapsed > 1*time.Second {
+				t.Errorf("pumps took %s to unwind — expected < 1s with the new signal", elapsed)
+			}
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("pumps did not unregister within 2s of signalDone — the leak fix is not effective")
+}
