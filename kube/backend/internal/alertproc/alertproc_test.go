@@ -7,11 +7,13 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/argues/argus/internal/alerts"
 	"github.com/argues/argus/internal/sqlitedb"
+	"github.com/argues/argus/internal/testutil"
 )
 
 // fakeNotifier captures every notification the processor emits so
@@ -44,11 +46,13 @@ func (f *fakeNotifier) NotifyFatigue(sig Signature, count int, _ string) {
 }
 
 type fakeInvestigator struct {
-	calls int
+	// atomic because Investigate runs on a goroutine spawned by
+	// Processor.Process while the test reads it from the test goroutine.
+	calls atomic.Int64
 }
 
 func (f *fakeInvestigator) Investigate(ctx context.Context, a alerts.Alert) (*alerts.Diagnosis, error) {
-	f.calls++
+	f.calls.Add(1)
 	return &alerts.Diagnosis{
 		AlertID:    a.ID,
 		Hypothesis: "looked at it, looks fine",
@@ -229,13 +233,13 @@ func TestAutoInvestigateRespectsProfile(t *testing.T) {
 	a := mkAlert("CrashLoop", "prod", "api-x-y-z")
 
 	// AutoInvestigate is on by default → investigator should run on
-	// the first firing.
+	// the first firing. Poll the atomic counter rather than sleeping a
+	// fixed 50ms — under -race or a slow CI host the spawn-then-run
+	// latency can exceed that and turn into a flaky pass.
 	_ = p.Process(context.Background(), []alerts.Alert{a})
-	// Investigator runs in a goroutine; give it a beat.
-	time.Sleep(50 * time.Millisecond)
-	if inv.calls == 0 {
-		t.Error("expected investigator to be called when AutoInvestigate=true")
-	}
+	testutil.WaitFor(t, time.Second, 5*time.Millisecond,
+		func() bool { return inv.calls.Load() > 0 },
+		"investigator was not invoked under AutoInvestigate=true")
 
 	// Turn it off and confirm new signatures don't trigger another call.
 	prof := DefaultProfile()
@@ -243,11 +247,15 @@ func TestAutoInvestigateRespectsProfile(t *testing.T) {
 	if err := p.SetProfile(prof); err != nil {
 		t.Fatal(err)
 	}
-	before := inv.calls
+	before := inv.calls.Load()
 	b := mkAlert("DifferentAlert", "prod", "other-x-y-z")
 	_ = p.Process(context.Background(), []alerts.Alert{b})
+	// A short bounded sleep is the right idiom for a negative
+	// assertion ("the goroutine MUST NOT run"). We can't WaitFor a
+	// non-event; instead give the spawn-then-run path a generous
+	// chance to misbehave, then verify the counter is still unchanged.
 	time.Sleep(50 * time.Millisecond)
-	if inv.calls != before {
-		t.Errorf("investigator should not be called when AutoInvestigate=false; calls = %d (was %d)", inv.calls, before)
+	if got := inv.calls.Load(); got != before {
+		t.Errorf("investigator should not be called when AutoInvestigate=false; calls = %d (was %d)", got, before)
 	}
 }

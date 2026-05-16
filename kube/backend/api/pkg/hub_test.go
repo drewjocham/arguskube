@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/argues/argus/internal/testutil"
 )
 
 // TestHub_PumpDoesNotDeadlockAfterRunExits is the regression test for C1.
@@ -42,16 +44,15 @@ func TestHub_PumpDoesNotDeadlockAfterRunExits(t *testing.T) {
 	}
 
 	// Wait for the hub's register flow.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		h.mu.RLock()
-		_, ok := h.clients["test-agent"]
-		h.mu.RUnlock()
-		if ok {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	testutil.WaitFor(t, 2*time.Second, 10*time.Millisecond,
+		func() bool {
+			h.mu.RLock()
+			defer h.mu.RUnlock()
+			_, ok := h.clients["test-agent"]
+			return ok
+		},
+		"hub did not register the test client",
+	)
 
 	// Cancel the hub. Run() should exit promptly and close h.done.
 	cancelHub()
