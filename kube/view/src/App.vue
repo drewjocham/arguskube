@@ -1,7 +1,7 @@
 <script setup>
 import { ref, provide, onMounted, onUnmounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { callGo, useAppMode, useClusterInfo, useMetrics, useAlerts, useDiagnostics, useFeatures } from './composables/useWails'
+import { callGo, isWails, useAppMode, useClusterInfo, useMetrics, useAlerts, useDiagnostics, useFeatures } from './composables/useWails'
 import { useWailsEvent, Events } from './composables/useEvents'
 import { bus } from './lib/bus'
 import { useTerminalDispatch } from './composables/useTerminalDispatch'
@@ -260,10 +260,19 @@ function toggleTerminal() {
 }
 
 async function openPopOut() {
-  // Spawn a real OS-level second window via a fresh process of this same
-  // binary in terminal mode. Falls back to the in-app overlay if the
-  // backend method isn't available (e.g. SaaS/web mode where exec doesn't
-  // make sense).
+  // In SaaS / web mode there's no local process to spawn — go
+  // straight to the in-app overlay instead of round-tripping for a
+  // 403 (the old path surfaced "HTTP error! status: 403" as a scary
+  // banner; the desktop-only nature of LaunchPopOutTerminal is by
+  // design — see api/pkg/server.go's httpExposedMethods comment).
+  if (!isWails()) {
+    terminalOpen.value = false
+    popOutOpen.value = true
+    return
+  }
+  // Desktop mode: spawn a real OS-level second window via a fresh
+  // process. Falls back to the in-app overlay if the backend method
+  // returns an unexpected error.
   try {
     await callGo('LaunchPopOutTerminal')
     // The dashboard's embedded terminal stays running — the new window has

@@ -1,5 +1,59 @@
 import { ref } from 'vue'
-import { callGo } from './useBridge'
+import { callGo, isWails } from './useBridge'
+
+/**
+ * TerminalUnavailableError signals "we deliberately can't run a
+ * terminal in this environment" — distinct from a real backend bug.
+ * Callers (TerminalView, App.vue:openPopOut) branch on
+ * err.code === 'TERMINAL_UNAVAILABLE' to render an actionable UX
+ * instead of the scary "HTTP error! status: 403" string the user
+ * was seeing before.
+ *
+ * The condition: terminal Wails-bindings (StartTerminal,
+ * StartTerminalSession, SendTerminalInput, ResizeTerminal,
+ * LaunchPopOutTerminal) spawn local OS processes. They're intentionally
+ * NOT in api/pkg/server.go's httpExposedMethods allowlist, so the HTTP
+ * fallback returns 403 in SaaS / browser mode. The fix is not "expose
+ * them over HTTP" (a non-starter security-wise) but "detect the
+ * environment up front and surface the right message."
+ */
+export class TerminalUnavailableError extends Error {
+  constructor(message) {
+    super(message)
+    this.name = 'TerminalUnavailableError'
+    this.code = 'TERMINAL_UNAVAILABLE'
+  }
+}
+
+// Default human-facing message reused by every terminal entry point.
+const TERMINAL_UNAVAILABLE_MSG =
+  'The terminal needs the Argus desktop app — it spawns a local shell ' +
+  'process, which the web build cannot do. Open Argus on your desktop ' +
+  'to use this feature.'
+
+// classifyTerminalError converts a known-bad backend response into a
+// TerminalUnavailableError so the UI can render the friendly variant.
+// Anything else is passed through unchanged.
+export function classifyTerminalError(err) {
+  if (err instanceof TerminalUnavailableError) return err
+  const msg = err?.message || String(err || '')
+  // Both shapes that indicate the method isn't HTTP-exposed:
+  //   "HTTP error! status: 403"  (callGo wrapper)
+  //   "method not exposed via HTTP API" (raw server body)
+  if (/status: 403\b/.test(msg) || /not exposed via HTTP/i.test(msg)) {
+    return new TerminalUnavailableError(TERMINAL_UNAVAILABLE_MSG)
+  }
+  return err
+}
+
+// guardTerminalAvailable short-circuits before the network attempt
+// when we already know the environment can't host a terminal. Saves
+// a 403 round-trip and a console error.
+function guardTerminalAvailable() {
+  if (!isWails()) {
+    throw new TerminalUnavailableError(TERMINAL_UNAVAILABLE_MSG)
+  }
+}
 
 /**
  * Composable for the embedded terminal.
@@ -9,11 +63,17 @@ export function useTerminal() {
   // failure in the UI. Previously this silently logged and returned, which
   // left the user staring at an empty black box with no clue what failed.
   async function startTerminal(rows, cols) {
+    guardTerminalAvailable()
     try {
       await callGo('StartTerminal', rows, cols)
     } catch (e) {
-      console.error('[terminal]', e)
-      throw e
+      const classified = classifyTerminalError(e)
+      if (classified.code !== 'TERMINAL_UNAVAILABLE') {
+        // Real failure — log + rethrow so TerminalView shows the
+        // error banner with retry.
+        console.error('[terminal]', e)
+      }
+      throw classified
     }
   }
 
@@ -101,7 +161,12 @@ export function useTerminalSession() {
   const sessions = ref([])
 
   async function createSession(sessionId, domain, label, rows, cols) {
-    await callGo('StartTerminalSession', sessionId, domain, label, rows, cols)
+    guardTerminalAvailable()
+    try {
+      await callGo('StartTerminalSession', sessionId, domain, label, rows, cols)
+    } catch (e) {
+      throw classifyTerminalError(e)
+    }
     await refreshSessions()
   }
 
