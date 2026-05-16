@@ -3214,6 +3214,7 @@ export namespace loadtest {
 	    minReplicas?: number;
 	    preScaleTimeoutNs?: number;
 	    postScaleTimeoutNs?: number;
+	    drainObserveDurationNs?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ScalePlan(source);
@@ -3227,6 +3228,7 @@ export namespace loadtest {
 	        this.minReplicas = source["minReplicas"];
 	        this.preScaleTimeoutNs = source["preScaleTimeoutNs"];
 	        this.postScaleTimeoutNs = source["postScaleTimeoutNs"];
+	        this.drainObserveDurationNs = source["drainObserveDurationNs"];
 	    }
 	}
 	export class Ramp {
@@ -3880,6 +3882,20 @@ export namespace pkg {
 	    }
 	}
 	
+	export class GChatSpaceView {
+	    id: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GChatSpaceView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	    }
+	}
 	export class GitHubBranch {
 	    name: string;
 	    sha: string;
@@ -4286,6 +4302,20 @@ export namespace pkg {
 	        this.bearToken = source["bearToken"];
 	        this.tier = source["tier"];
 	        this.logLevel = source["logLevel"];
+	    }
+	}
+	export class SlackChannelView {
+	    id: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SlackChannelView(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
 	    }
 	}
 	export class UsagePayload {
@@ -6198,6 +6228,94 @@ export namespace workspace {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.url = source["url"];
 	        this.state = source["state"];
+	    }
+	}
+	export class Doc {
+	    id: string;
+	    title: string;
+	    url: string;
+	    modified: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Doc(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.url = source["url"];
+	        this.modified = source["modified"];
+	    }
+	}
+	export class DocBody {
+	    id: string;
+	    title: string;
+	    body: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DocBody(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.body = source["body"];
+	    }
+	}
+	export class Sheet {
+	    id: string;
+	    title: string;
+	    url: string;
+	    tabs: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new Sheet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.url = source["url"];
+	        this.tabs = source["tabs"];
+	    }
+	}
+	export class Task {
+	    id: string;
+	    title: string;
+	    notes?: string;
+	    status: string;
+	    due?: string;
+	    updated?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Task(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.notes = source["notes"];
+	        this.status = source["status"];
+	        this.due = source["due"];
+	        this.updated = source["updated"];
+	    }
+	}
+	export class TaskList {
+	    id: string;
+	    title: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TaskList(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
 	    }
 	}
 

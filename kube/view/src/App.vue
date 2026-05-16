@@ -44,6 +44,39 @@ const authReady = ref(false)
 // localStorage session token onto the OS-native secret store.
 const secretStore = useSecretStore()
 
+// Touch ID unlock state. Surfaced to LoginView via provide() so the
+// login form can render a "Touch ID requested…" hint while the system
+// dialog is open instead of the regular email/password form.
+const bio = ref({ available: false, prompting: false, err: '' })
+provide('argus:biometric', bio)
+
+// tryBiometric — if the Mac has Touch ID configured AND there's a
+// session token already in the Keychain, prompt the user for a tap
+// instead of making them retype anything. On success the existing
+// adoptToken path validates the token with /auth/me; on any failure
+// (cancel, no biometric enrolled, retry limit) we silently fall
+// through to the regular login flow.
+async function tryBiometric() {
+  try {
+    bio.value.available = await secretStore.biometricAvailable()
+    if (!bio.value.available) return
+    const hasToken = await secretStore.hasSessionToken()
+    if (!hasToken) return
+    bio.value.prompting = true
+    await secretStore.authenticateWithBiometrics('Unlock Argus')
+    const tok = await secretStore.getSessionToken()
+    if (tok) await auth.adoptToken(tok)
+  } catch (e) {
+    // Touch ID failures are expected (user cancels, no enroll) — log
+    // for the developer but keep the UI quiet; the login form handles
+    // the unauthenticated state.
+    bio.value.err = e?.message || String(e)
+    console.info('[biometric] unlock skipped:', bio.value.err)
+  } finally {
+    bio.value.prompting = false
+  }
+}
+
 // Smart-defaults probes — reveal optional sidebar sections when their
 // matching subsystem is configured (S3 bucket → Knowledge, cluster
 // has PVCs → Storage). Fire-and-forget: a slow probe never blocks
@@ -62,6 +95,13 @@ onMounted(async () => {
   const tasks = [auth.loadProviders()]
   if (auth.token) tasks.push(auth.restoreSession())
   await Promise.all(tasks)
+  // After provider + restore-from-localStorage settle, give Touch ID
+  // a shot at unlocking the Keychain-stored token. Runs in front of
+  // the gate so a successful unlock takes the user straight to the
+  // dashboard without a LoginView flash.
+  if (!auth.isAuthenticated) {
+    await tryBiometric()
+  }
   authReady.value = true
   // Kick off the probes after auth has settled so they don't fight
   // for the bridge with the auth restore call.

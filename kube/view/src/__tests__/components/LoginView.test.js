@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import LoginView from '../../components/auth/LoginView.vue'
@@ -96,6 +97,130 @@ describe('LoginView.vue — password reveal', () => {
     const w = mount(LoginView, { attachTo: document.body })
     const pw = w.find('input.ri-input')
     expect(pw.attributes('aria-label')).toBe('Password')
+    w.unmount()
+  })
+})
+
+// --- biometric unlock state -----------------------------------------------
+// When App.vue is mid-Touch-ID-prompt, LoginView should hide the regular
+// form and show a "Touch ID requested…" hint instead. We exercise this by
+// injecting the bio state directly — same channel App.vue uses.
+describe('LoginView.vue — biometric unlock hint', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    for (const k of Object.keys(memory)) delete memory[k]
+    const auth = useAuthStore()
+    auth.loadProviders = vi.fn().mockResolvedValue(undefined)
+    auth.restoreSession = vi.fn().mockResolvedValue(false)
+  })
+
+  it('renders the Touch ID hint and hides the password form while prompting', () => {
+    const bioState = { available: true, prompting: true, err: '' }
+    const w = mount(LoginView, {
+      attachTo: document.body,
+      global: { provide: { 'argus:biometric': ref(bioState) } },
+    })
+    expect(w.find('[data-testid="bio-prompting"]').exists()).toBe(true)
+    expect(w.text()).toContain('Touch ID requested')
+    // The regular form's password input must not be rendered while
+    // the biometric prompt is the active surface.
+    expect(w.find('input.ri-input').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('falls back to the regular form when not prompting', () => {
+    const bioState = { available: true, prompting: false, err: '' }
+    const w = mount(LoginView, {
+      attachTo: document.body,
+      global: { provide: { 'argus:biometric': ref(bioState) } },
+    })
+    expect(w.find('[data-testid="bio-prompting"]').exists()).toBe(false)
+    expect(w.find('input.ri-input').exists()).toBe(true)
+    w.unmount()
+  })
+})
+
+describe('LoginView.vue — detect-&-default returning user', () => {
+  let auth
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    for (const k of Object.keys(memory)) delete memory[k]
+    auth = useAuthStore()
+    auth.loadProviders = vi.fn().mockResolvedValue(undefined)
+    auth.restoreSession = vi.fn().mockResolvedValue(false)
+  })
+
+  function flush() {
+    return new Promise((r) => setTimeout(r, 0))
+  }
+
+  it('renders state A (one-tap) when lastMethod=oauth and the provider exists', async () => {
+    auth.providers = [{ name: 'google', displayName: 'Google' }]
+    auth.lastUsedMethod = { kind: 'oauth', provider: 'google', email: null, at: Math.floor(Date.now()/1000) }
+    const w = mount(LoginView, { attachTo: document.body })
+    await flush()
+    expect(w.find('[data-testid="one-tap"]').exists()).toBe(true)
+    const btn = w.find('[data-testid="one-tap-provider"]')
+    expect(btn.exists()).toBe(true)
+    // Label uses the displayName, not the internal name.
+    expect(btn.text()).toContain('Continue with Google')
+    expect(btn.text()).not.toContain('google')
+    // The tab row from state B should NOT render.
+    expect(w.findAll('button.tab').length).toBe(0)
+    w.unmount()
+  })
+
+  it('renders state B when lastMethod is null', async () => {
+    auth.providers = [{ name: 'google', displayName: 'Google' }]
+    auth.lastUsedMethod = null
+    const w = mount(LoginView, { attachTo: document.body })
+    await flush()
+    expect(w.find('[data-testid="one-tap"]').exists()).toBe(false)
+    expect(w.findAll('button.tab').length).toBeGreaterThan(0)
+    w.unmount()
+  })
+
+  it('renders state B when the recorded provider is no longer offered', async () => {
+    // Google was used before, but operator disabled it.
+    auth.providers = [{ name: 'oidc', displayName: 'Acme SSO' }]
+    auth.lastUsedMethod = { kind: 'oauth', provider: 'google', email: null, at: Math.floor(Date.now()/1000) }
+    const w = mount(LoginView, { attachTo: document.body })
+    await flush()
+    expect(w.find('[data-testid="one-tap"]').exists()).toBe(false)
+    expect(w.findAll('button.tab').length).toBeGreaterThan(0)
+    w.unmount()
+  })
+
+  it('renders state A for local lastMethod and prefills the email', async () => {
+    auth.providers = []
+    auth.lastUsedMethod = { kind: 'local', provider: null, email: 'alice@example.com', at: Math.floor(Date.now()/1000) }
+    const w = mount(LoginView, { attachTo: document.body })
+    await flush()
+    const emailInput = w.find('[data-testid="one-tap-email"]')
+    expect(emailInput.exists()).toBe(true)
+    expect(emailInput.element.value).toBe('alice@example.com')
+    w.unmount()
+  })
+
+  it('clicking "Sign in with a different account" expands the full UI', async () => {
+    auth.providers = [{ name: 'google', displayName: 'Google' }]
+    auth.lastUsedMethod = { kind: 'oauth', provider: 'google', email: null, at: Math.floor(Date.now()/1000) }
+    const w = mount(LoginView, { attachTo: document.body })
+    await flush()
+    expect(w.find('[data-testid="one-tap"]').exists()).toBe(true)
+    await w.find('[data-testid="expand-different-account"]').trigger('click')
+    expect(w.find('[data-testid="one-tap"]').exists()).toBe(false)
+    expect(w.findAll('button.tab').length).toBeGreaterThan(0)
+    w.unmount()
+  })
+
+  it('uses displayName for the OIDC label, not the literal "oidc"', async () => {
+    auth.providers = [{ name: 'oidc', displayName: 'Acme Corp SSO' }]
+    auth.lastUsedMethod = { kind: 'oauth', provider: 'oidc', email: null, at: Math.floor(Date.now()/1000) }
+    const w = mount(LoginView, { attachTo: document.body })
+    await flush()
+    const btn = w.find('[data-testid="one-tap-provider"]')
+    expect(btn.text()).toContain('Continue with Acme Corp SSO')
     w.unmount()
   })
 })

@@ -52,6 +52,17 @@ type AuthConfig struct {
 	OIDCClientSecret string `env:"ARGUS_OIDC_CLIENT_SECRET"`
 	OIDCDisplayName  string `env:"ARGUS_OIDC_DISPLAY_NAME"` // e.g. "Acme SSO"
 
+	// Sign in with Apple. ApplePrivateKey is the PEM contents of the .p8
+	// key file; ApplePrivateKeyFile is an alternative path read at
+	// config-load time so operators don't have to inline a multi-line
+	// PEM into an env var.
+	AppleServicesID     string `env:"ARGUS_APPLE_SERVICES_ID"`      // e.g. "com.argus.signin"
+	AppleTeamID         string `env:"ARGUS_APPLE_TEAM_ID"`          // 10-char Developer team ID
+	AppleKeyID          string `env:"ARGUS_APPLE_KEY_ID"`           // 10-char key ID from the .p8
+	ApplePrivateKey     string `env:"ARGUS_APPLE_PRIVATE_KEY"`      // PEM contents (inline)
+	ApplePrivateKeyFile string `env:"ARGUS_APPLE_PRIVATE_KEY_FILE"` // alternative: path to .p8
+	AppleDisplayName    string `env:"ARGUS_APPLE_DISPLAY_NAME"`     // default "Apple"
+
 	// AllowLocalSignup controls whether the email/password registration
 	// endpoint is open. Default is true for the desktop app; SaaS
 	// admins typically flip it off and rely on SSO + invites.
@@ -119,7 +130,7 @@ type ArgoCDConfig struct {
 // SecurityConfig holds optional paths and tokens for security scanning tools.
 // All fields are optional — features degrade gracefully when not configured.
 type SecurityConfig struct {
-	SnykToken   string `env:"SNYK_TOKEN"`            // API token for Snyk CLI
+	SnykToken   string `env:"SNYK_TOKEN"`      // API token for Snyk CLI
 	TrivyBinary string `env:"ARGUS_TRIVY_BIN"` // path to trivy binary (default: "trivy")
 	FalcoURL    string `env:"ARGUS_FALCO_URL"` // Falco gRPC/HTTP endpoint
 }
@@ -374,20 +385,35 @@ func New() (*OnlineDataConfig, error) {
 			APIKey:  env("ARGUS_SAAS_API_KEY", ""),
 		},
 		Auth: AuthConfig{
-			PublicBaseURL:      env("ARGUS_AUTH_BASE_URL", "http://127.0.0.1:8080"),
-			GoogleClientID:     env("ARGUS_GOOGLE_CLIENT_ID", ""),
-			GoogleClientSecret: env("ARGUS_GOOGLE_CLIENT_SECRET", ""),
-			OIDCIssuer:         env("ARGUS_OIDC_ISSUER", ""),
-			OIDCClientID:       env("ARGUS_OIDC_CLIENT_ID", ""),
-			OIDCClientSecret:   env("ARGUS_OIDC_CLIENT_SECRET", ""),
-			OIDCDisplayName:    env("ARGUS_OIDC_DISPLAY_NAME", "Corporate SSO"),
-			AllowLocalSignup:   env("ARGUS_AUTH_ALLOW_SIGNUP", "true") != "false",
-			DevMode:            envBool("ARGUS_AUTH_DISABLED", false),
-			PasskeyEnabled:     envBool("ARGUS_PASSKEY_ENABLED", false),
-			PasskeyRPID:        env("ARGUS_PASSKEY_RP_ID", "localhost"),
-			PasskeyRPName:      env("ARGUS_PASSKEY_RP_NAME", "Argus"),
-			PasskeyRPOrigin:    env("ARGUS_PASSKEY_RP_ORIGIN", "http://localhost:8080"),
+			PublicBaseURL:       env("ARGUS_AUTH_BASE_URL", "http://127.0.0.1:8080"),
+			GoogleClientID:      env("ARGUS_GOOGLE_CLIENT_ID", ""),
+			GoogleClientSecret:  env("ARGUS_GOOGLE_CLIENT_SECRET", ""),
+			OIDCIssuer:          env("ARGUS_OIDC_ISSUER", ""),
+			OIDCClientID:        env("ARGUS_OIDC_CLIENT_ID", ""),
+			OIDCClientSecret:    env("ARGUS_OIDC_CLIENT_SECRET", ""),
+			OIDCDisplayName:     env("ARGUS_OIDC_DISPLAY_NAME", "Corporate SSO"),
+			AppleServicesID:     env("ARGUS_APPLE_SERVICES_ID", ""),
+			AppleTeamID:         env("ARGUS_APPLE_TEAM_ID", ""),
+			AppleKeyID:          env("ARGUS_APPLE_KEY_ID", ""),
+			ApplePrivateKey:     env("ARGUS_APPLE_PRIVATE_KEY", ""),
+			ApplePrivateKeyFile: env("ARGUS_APPLE_PRIVATE_KEY_FILE", ""),
+			AppleDisplayName:    env("ARGUS_APPLE_DISPLAY_NAME", "Apple"),
+			AllowLocalSignup:    env("ARGUS_AUTH_ALLOW_SIGNUP", "true") != "false",
+			DevMode:             envBool("ARGUS_AUTH_DISABLED", false),
+			PasskeyEnabled:      envBool("ARGUS_PASSKEY_ENABLED", false),
+			PasskeyRPID:         env("ARGUS_PASSKEY_RP_ID", "localhost"),
+			PasskeyRPName:       env("ARGUS_PASSKEY_RP_NAME", "Argus"),
+			PasskeyRPOrigin:     env("ARGUS_PASSKEY_RP_ORIGIN", "http://localhost:8080"),
 		},
+	}
+
+	// If the operator gave us a path to the .p8 instead of inlining
+	// the PEM, slurp it now. Failure is non-fatal — Apple sign-in just
+	// won't register, mirroring how other partial OAuth configs degrade.
+	if cfg.Auth.ApplePrivateKey == "" && cfg.Auth.ApplePrivateKeyFile != "" {
+		if data, err := os.ReadFile(cfg.Auth.ApplePrivateKeyFile); err == nil {
+			cfg.Auth.ApplePrivateKey = string(data)
+		}
 	}
 
 	// Layer in user-customized settings persisted from the desktop UI. Persisted

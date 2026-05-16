@@ -281,6 +281,8 @@ func clearEnv(t testing.TB) {
 		"ARGUS_DECISION_LOG",
 		"ARGUS_S3_BUCKET", "ARGUS_S3_REGION",
 		"ARGUS_S3_ENDPOINT", "ARGUS_S3_ACCESS_KEY", "ARGUS_S3_SECRET_KEY",
+		"ARGUS_APPLE_SERVICES_ID", "ARGUS_APPLE_TEAM_ID", "ARGUS_APPLE_KEY_ID",
+		"ARGUS_APPLE_PRIVATE_KEY", "ARGUS_APPLE_PRIVATE_KEY_FILE", "ARGUS_APPLE_DISPLAY_NAME",
 	}
 	for _, v := range vars {
 		os.Unsetenv(v)
@@ -301,4 +303,52 @@ func TestMain(m *testing.M) {
 	SetSettingsDirForTest("")
 	os.RemoveAll(tmp)
 	os.Exit(code)
+}
+
+// TestAppleSignin_PrivateKeyFile verifies that ARGUS_APPLE_PRIVATE_KEY_FILE
+// is read from disk at config-load time when ARGUS_APPLE_PRIVATE_KEY is
+// empty — operators shouldn't have to inline a multi-line PEM into env.
+func TestAppleSignin_PrivateKeyFile(t *testing.T) {
+	clearEnv(t)
+	defer clearEnv(t)
+
+	tmp, err := os.CreateTemp("", "apple-key-*.p8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmp.Name())
+	const fakePEM = "-----BEGIN PRIVATE KEY-----\nMIGTAgEAMBMGByqGSM49\n-----END PRIVATE KEY-----\n"
+	if _, err := tmp.WriteString(fakePEM); err != nil {
+		t.Fatal(err)
+	}
+	tmp.Close()
+
+	os.Setenv("ARGUS_APPLE_SERVICES_ID", "com.example.signin")
+	os.Setenv("ARGUS_APPLE_TEAM_ID", "TEAM000000")
+	os.Setenv("ARGUS_APPLE_KEY_ID", "KEY0000000")
+	os.Setenv("ARGUS_APPLE_PRIVATE_KEY_FILE", tmp.Name())
+
+	cfg, err := New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if cfg.Auth.ApplePrivateKey != fakePEM {
+		t.Errorf("ApplePrivateKey not populated from file; got %q", cfg.Auth.ApplePrivateKey)
+	}
+	if cfg.Auth.AppleServicesID != "com.example.signin" {
+		t.Errorf("AppleServicesID = %q", cfg.Auth.AppleServicesID)
+	}
+}
+
+// TestAppleSignin_MissingFieldsSkipGracefully — Apple half-config must
+// not panic at boot. The handler-side test (auth_handler_test.go) covers
+// the warn-and-skip behavior; here we just confirm config.New() returns.
+func TestAppleSignin_MissingFieldsSkipGracefully(t *testing.T) {
+	clearEnv(t)
+	defer clearEnv(t)
+	os.Setenv("ARGUS_APPLE_SERVICES_ID", "com.example.signin")
+	// other fields intentionally absent
+	if _, err := New(); err != nil {
+		t.Fatalf("partial Apple config caused boot failure: %v", err)
+	}
 }

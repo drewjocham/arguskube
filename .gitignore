@@ -9,6 +9,12 @@ build/
 !kube/backend/build/
 kube/backend/build/*
 !kube/backend/build/appicon.png
+# Wails reads the Info.plist templates from build/darwin at packaging
+# time. The NSFaceIDUsageDescription key in there is what makes the
+# Touch ID prompt render at all, so this directory must be tracked.
+!kube/backend/build/darwin/
+!kube/backend/build/darwin/Info.plist
+!kube/backend/build/darwin/Info.dev.plist
 !kube/mcp/build/
 kube/mcp/build/*
 !kube/mcp/build/appicon.png
