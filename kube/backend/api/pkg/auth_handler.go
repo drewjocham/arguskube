@@ -143,18 +143,23 @@ func (a *App) SetupAuth(store *auth.Store, cfg config.AuthConfig) {
 		}
 	}
 	// Best-effort cleanup loop — runs every hour so the session table
-	// doesn't grow without bound on long-running installs.
-	pk := a.auth.passkey
-	go func() {
-		t := time.NewTicker(1 * time.Hour)
-		defer t.Stop()
-		for range t.C {
-			store.PurgeExpired()
-			if pk != nil {
-				pk.PurgeExpired()
+	// doesn't grow without bound on long-running installs. Gated by
+	// authJanitorOnce because SetupAuth is re-invoked on every Settings
+	// save to hot-reload OAuth credentials; we don't want a new
+	// goroutine leaking on each save. The goroutine re-reads
+	// a.auth.passkey on each tick so the live (post-reload) value wins.
+	a.authJanitorOnce.Do(func() {
+		go func() {
+			t := time.NewTicker(1 * time.Hour)
+			defer t.Stop()
+			for range t.C {
+				store.PurgeExpired()
+				if a.auth != nil && a.auth.passkey != nil {
+					a.auth.passkey.PurgeExpired()
+				}
 			}
-		}
-	}()
+		}()
+	})
 }
 
 // AuthRoutes returns a function suitable for http.HandleFunc-style

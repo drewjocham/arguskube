@@ -110,6 +110,12 @@ type App struct {
 	// auth gates /api/* on a valid session. nil until SetupAuth runs.
 	auth *authState
 
+	// authJanitorOnce ensures the session-purge goroutine started by
+	// SetupAuth is launched at most once across hot-reloads. SetupAuth
+	// is re-invoked whenever the user saves auth credentials from the
+	// Settings UI; without this guard a goroutine would leak per save.
+	authJanitorOnce sync.Once
+
 	// spotcheck runs periodic cluster probes (nodes, metrics, docs
 	// freshness) and emits findings via the notifications channel.
 	// nil until startSpotChecks runs in Startup.
