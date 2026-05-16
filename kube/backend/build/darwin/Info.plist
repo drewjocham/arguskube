@@ -22,6 +22,10 @@
     <true/>
     <key>NSHumanReadableCopyright</key>
     <string>{{.Info.Copyright}}</string>
+    <!-- Required for any LocalAuthentication framework prompt to render.
+         macOS shows this string in the Touch ID / Face ID dialog. -->
+    <key>NSFaceIDUsageDescription</key>
+    <string>Argus uses biometrics to unlock your session without retyping your password.</string>
     <!--
         CFBundleURLTypes registers the custom URL scheme argus:// with macOS
         so the OS routes argus://oauth/callback (and friends) into the

@@ -157,6 +157,38 @@ export const useAuthStore = defineStore('auth', () => {
     secretStore.setSessionToken(token.value).catch(() => {})
   }
 
+  // adoptToken — used by the biometric-unlock boot path. We already
+  // have a token from the Keychain; we just need to confirm it with
+  // /auth/me to populate `user` and re-persist it locally. If /auth/me
+  // 401s the server has revoked the session — wipe the Keychain entry
+  // so the user falls through to the regular login form instead of
+  // being prompted for Touch ID on every relaunch with a dead token.
+  async function adoptToken(rawToken) {
+    if (!rawToken) return false
+    token.value = rawToken
+    try {
+      const me = await _get('/auth/me')
+      user.value = me
+      // Reuse any persisted expiry; otherwise default to the same 14d
+      // window the login flow assumes. The token itself remains the
+      // source of truth — expiresAt is just a UI hint.
+      if (!expiresAt.value) {
+        expiresAt.value = Math.floor(Date.now() / 1000) + 14 * 24 * 60 * 60
+      }
+      writePersisted({ token: token.value, user: user.value, expiresAt: expiresAt.value })
+      return true
+    } catch {
+      // Stale token in the Keychain. Clear both stores so the next
+      // launch doesn't re-prompt for Touch ID against a dead session.
+      token.value = ''
+      user.value = null
+      expiresAt.value = 0
+      writePersisted(null)
+      secretStore.clearSessionToken().catch(() => {})
+      return false
+    }
+  }
+
   // Record the path the user just took. Called from each successful
   // sign-in handler. We keep just the most-recent affinity (no list)
   // because the UI only needs one big primary button.
@@ -299,6 +331,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     authHeaders,
     loadProviders,
+    adoptToken,
     login,
     register,
     logout,

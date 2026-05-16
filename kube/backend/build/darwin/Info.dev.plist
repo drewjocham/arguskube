@@ -27,6 +27,8 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Argus uses biometrics to unlock your session without retyping your password.</string>
     <!-- See Info.plist for rationale. Dev build needs the same scheme so
          developers can test the future custom-scheme flow locally. -->
     <key>CFBundleURLTypes</key>

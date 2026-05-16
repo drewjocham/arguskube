@@ -1,10 +1,16 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, inject } from 'vue'
 import { useAuthStore } from '../../stores/auth'
 import OAuthLoginButton from './OAuthLoginButton.vue'
 import RevealableInput from '../common/RevealableInput.vue'
 
 const auth = useAuthStore()
+
+// App.vue provides the live biometric-unlock state. When the Touch ID
+// dialog is in flight we hide the form and show a small hint so the
+// user knows where the focus is. Falls back to a stub if mounted
+// standalone (e.g. in tests) so the component still renders.
+const bio = inject('argus:biometric', ref({ available: false, prompting: false, err: '' }))
 
 const mode = ref('login') // 'login' | 'signup'
 const email = ref('')
@@ -139,10 +145,19 @@ function triggerOneTapOAuth() {
         <p class="subtitle">SRE Console for Kubernetes</p>
       </header>
 
+      <!-- Touch ID in flight: render a hint instead of the form so the
+           user knows the system dialog is the active surface. App.vue
+           takes the user to the dashboard automatically on success. -->
+      <div v-if="bio.prompting" class="bio-hint" data-testid="bio-prompting">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Touch ID requested…</p>
+        <p class="hint">Use your fingerprint to unlock Argus.</p>
+      </div>
+
       <!-- State A: one-tap return path. The detect-&-default UX kicks
            in only when we have a valid recorded affinity AND the user
            hasn't explicitly asked to switch accounts. -->
-      <section v-if="showOneTap" class="one-tap" data-testid="one-tap">
+      <section v-else-if="showOneTap" class="one-tap" data-testid="one-tap">
         <p class="welcome-back">Welcome back</p>
 
         <!-- Local-password fast path: email is prefilled, user only
@@ -468,6 +483,36 @@ function triggerOneTapOAuth() {
   color: var(--text3);
   text-align: center;
 }
+
+.oauth-pending {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .75rem;
+  padding: 1.5rem 0;
+  text-align: center;
+}
+.oauth-pending p { color: var(--text2); font-size: .9rem; max-width: 22rem; }
+.oauth-pending .hint { color: var(--text3); font-size: .8rem; }
+.spinner {
+  width: 28px; height: 28px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.bio-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .6rem;
+  padding: 1.5rem 0;
+  text-align: center;
+}
+.bio-hint p { color: var(--text2); font-size: .9rem; margin: 0; }
+.bio-hint .hint { color: var(--text3); font-size: .8rem; }
 
 .link {
   background: transparent; border: 0; color: var(--text3);

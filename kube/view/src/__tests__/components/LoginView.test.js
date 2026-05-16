@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import LoginView from '../../components/auth/LoginView.vue'
@@ -96,6 +97,45 @@ describe('LoginView.vue — password reveal', () => {
     const w = mount(LoginView, { attachTo: document.body })
     const pw = w.find('input.ri-input')
     expect(pw.attributes('aria-label')).toBe('Password')
+    w.unmount()
+  })
+})
+
+// --- biometric unlock state -----------------------------------------------
+// When App.vue is mid-Touch-ID-prompt, LoginView should hide the regular
+// form and show a "Touch ID requested…" hint instead. We exercise this by
+// injecting the bio state directly — same channel App.vue uses.
+describe('LoginView.vue — biometric unlock hint', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    for (const k of Object.keys(memory)) delete memory[k]
+    const auth = useAuthStore()
+    auth.loadProviders = vi.fn().mockResolvedValue(undefined)
+    auth.restoreSession = vi.fn().mockResolvedValue(false)
+  })
+
+  it('renders the Touch ID hint and hides the password form while prompting', () => {
+    const bioState = { available: true, prompting: true, err: '' }
+    const w = mount(LoginView, {
+      attachTo: document.body,
+      global: { provide: { 'argus:biometric': ref(bioState) } },
+    })
+    expect(w.find('[data-testid="bio-prompting"]').exists()).toBe(true)
+    expect(w.text()).toContain('Touch ID requested')
+    // The regular form's password input must not be rendered while
+    // the biometric prompt is the active surface.
+    expect(w.find('input.ri-input').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('falls back to the regular form when not prompting', () => {
+    const bioState = { available: true, prompting: false, err: '' }
+    const w = mount(LoginView, {
+      attachTo: document.body,
+      global: { provide: { 'argus:biometric': ref(bioState) } },
+    })
+    expect(w.find('[data-testid="bio-prompting"]').exists()).toBe(false)
+    expect(w.find('input.ri-input').exists()).toBe(true)
     w.unmount()
   })
 })
