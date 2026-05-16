@@ -53,10 +53,9 @@ frontend-dev: ## Start Vite dev server standalone (for debugging)
 
 build: frontend ## Production build (app + term)
 	rm -rf $(BACKEND_DIR)/build/bin
-	cd $(BACKEND_DIR) && wails build; \
-	  test -d build/bin/argus.app || (echo "wails build did not produce argus.app" && exit 1)
-	$(MAKE) sign-app
+	cd $(BACKEND_DIR) && wails build || test -d build/bin/argus.app
 	$(MAKE) build-terminal-app
+	$(MAKE) sign-app
 
 sign-app: ## Strip xattrs and ad-hoc codesign the main .app bundle
 	@# When the repo lives under ~/Documents (iCloud Drive / File Provider),
@@ -80,9 +79,9 @@ build-terminal-app: ## Build the standalone Terminal as its own .app bundle insi
 	@TERM_APP="$(BACKEND_DIR)/build/bin/argus.app/Contents/Resources/ArgusTerminal.app"; \
 	rm -rf "$$TERM_APP"; \
 	mkdir -p "$$TERM_APP/Contents/MacOS" "$$TERM_APP/Contents/Resources"; \
-	cd $(BACKEND_DIR) && go build -trimpath -ldflags '-w -s' \
+	(cd $(BACKEND_DIR) && go build -trimpath -ldflags '-w -s' \
 		-o "build/bin/argus.app/Contents/Resources/ArgusTerminal.app/Contents/MacOS/ArgusTerminal" \
-		./cmd/terminal; \
+		./cmd/terminal); \
 	cp $(BACKEND_DIR)/build/darwin/Info.terminal.plist "$$TERM_APP/Contents/Info.plist"; \
 	if [ -f $(BACKEND_DIR)/build/bin/argus.app/Contents/Resources/iconfile.icns ]; then \
 		cp $(BACKEND_DIR)/build/bin/argus.app/Contents/Resources/iconfile.icns "$$TERM_APP/Contents/Resources/iconfile.icns"; \
