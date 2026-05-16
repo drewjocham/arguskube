@@ -13,6 +13,41 @@ import { apiBase } from '../composables/useBridge'
 import { useSecretStore } from '../composables/useSecretStore'
 
 const STORAGE_KEY = 'argus.auth.session'
+// Separate key from STORAGE_KEY because lastMethod survives logout —
+// the user's preferred sign-in path is a per-device affinity, not a
+// session credential. Keeping them in different slots means a logout
+// (or token expiry) doesn't accidentally wipe the affinity.
+const LAST_METHOD_KEY = 'argus.auth.lastMethod'
+// 90 days. After this we treat the record as null so an old machine
+// shared with someone else doesn't show a stale "Continue as <them>"
+// affordance forever.
+const LAST_METHOD_TTL_SECONDS = 90 * 24 * 60 * 60
+
+function readPersistedLastMethod() {
+  try {
+    const raw = localStorage.getItem(LAST_METHOD_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || !parsed.kind || !parsed.at) return null
+    const nowSec = Math.floor(Date.now() / 1000)
+    if (nowSec - parsed.at > LAST_METHOD_TTL_SECONDS) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function writePersistedLastMethod(payload) {
+  try {
+    if (payload) {
+      localStorage.setItem(LAST_METHOD_KEY, JSON.stringify(payload))
+    } else {
+      localStorage.removeItem(LAST_METHOD_KEY)
+    }
+  } catch {
+    // localStorage can throw in private mode; non-fatal.
+  }
+}
 
 function readPersisted() {
   try {
@@ -51,6 +86,10 @@ export const useAuthStore = defineStore('auth', () => {
   // form renders even if no OAuth is configured.
   const providers = ref([])
   const allowSignup = ref(true)
+  // lastUsedMethod — affinity for the user's most recent successful
+  // sign-in. Drives the "Continue with <X>" one-tap UI on LoginView.
+  // Persisted separately from the session so logout doesn't clear it.
+  const lastUsedMethod = ref(readPersistedLastMethod())
   // authDisabled is set by /auth/providers when the backend is running
   // with ARGUS_AUTH_DISABLED=true. App.vue uses it to skip the
   // LoginView gate entirely. We default to false so a network failure
@@ -118,6 +157,22 @@ export const useAuthStore = defineStore('auth', () => {
     secretStore.setSessionToken(token.value).catch(() => {})
   }
 
+  // Record the path the user just took. Called from each successful
+  // sign-in handler. We keep just the most-recent affinity (no list)
+  // because the UI only needs one big primary button.
+  function _recordMethod(rec) {
+    if (!rec || !rec.kind) return
+    const nowSec = Math.floor(Date.now() / 1000)
+    const payload = {
+      kind: rec.kind,
+      provider: rec.provider || null,
+      email: rec.email || null,
+      at: nowSec,
+    }
+    lastUsedMethod.value = payload
+    writePersistedLastMethod(payload)
+  }
+
   async function loadProviders() {
     try {
       const r = await _get('/auth/providers')
@@ -142,12 +197,14 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(email, password) {
     const r = await _post('/auth/login', { email, password })
     _adopt(r)
+    _recordMethod({ kind: 'local', email })
     return user.value
   }
 
   async function register(email, name, password) {
     const r = await _post('/auth/register', { email, name, password })
     _adopt(r)
+    _recordMethod({ kind: 'local', email })
     return user.value
   }
 
@@ -213,6 +270,16 @@ export const useAuthStore = defineStore('auth', () => {
     const r = await res.json()
     if (r.status === 'ok') {
       _adopt({ token: r.token, user: r.user, expiresAt: 0 })
+      // The OAuth poll resolution is shared by Apple and regular OAuth.
+      // Distinguish by provider name so the affinity record gets the
+      // right kind — Apple's button uses different branding.
+      const providerName = r.provider || r.user?.provider || null
+      const isApple = providerName === 'apple'
+      _recordMethod({
+        kind: isApple ? 'apple' : 'oauth',
+        provider: providerName,
+        email: isApple ? (r.user?.email || null) : null,
+      })
       return { done: true, user: user.value }
     }
     if (r.status === 'error') {
@@ -228,6 +295,7 @@ export const useAuthStore = defineStore('auth', () => {
     providers,
     allowSignup,
     authDisabled,
+    lastUsedMethod,
     isAuthenticated,
     authHeaders,
     loadProviders,
