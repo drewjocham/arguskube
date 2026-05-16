@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>{{.Info.ProductName}}</string>
+    <key>CFBundleExecutable</key>
+    <string>{{.Name}}</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.djocham.argus</string>
+    <key>CFBundleVersion</key>
+    <string>{{.Info.ProductVersion}}</string>
+    <key>CFBundleGetInfoString</key>
+    <string>{{.Info.Comments}}</string>
+    <key>CFBundleShortVersionString</key>
+    <string>{{.Info.ProductVersion}}</string>
+    <key>CFBundleIconFile</key>
+    <string>iconfile</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.15</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSHumanReadableCopyright</key>
+    <string>{{.Info.Copyright}}</string>
+    <!--
+        CFBundleURLTypes registers the custom URL scheme argus:// with macOS
+        so the OS routes argus://oauth/callback (and friends) into the
+        running app via OnSecondInstanceLaunch / open-url events. This is
+        reserved for the future (a) custom-scheme OAuth path; the current
+        flow uses the loopback callback at http://127.0.0.1:8080, which
+        works without any OS scheme registration. Keeping the entry here
+        means upgrading is a frontend-only change later.
+    -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.djocham.argus.oauth</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>argus</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>
