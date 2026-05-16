@@ -1,0 +1,110 @@
+# golangci-lint configuration for the Argus backend Go module.
+#
+# Tested against v1.64.x. Run from kube/backend:
+#   golangci-lint run ./...
+#
+# The linter set was chosen for the Argus Code Review P0.5 findings:
+# gosec catches the security-relevant gotchas (insecure file perms,
+# SQL injection from string concatenation, unhardened HTTP defaults);
+# bodyclose ensures every http.Response.Body is closed so we stop
+# leaking connections into the K8s API server pool; paralleltest
+# guards against the bare t.Run subtests that share state under -race.
+#
+# The default linter set (errcheck, gosimple, govet, ineffassign,
+# staticcheck, unused) stays on. Anything noisier than that lands
+# behind a justification in the exclude rules below.
+
+run:
+  timeout: 5m
+  go: "1.26"
+  build-tags:
+    - integration
+
+linters:
+  disable-all: false
+  enable:
+    # Defaults kept explicit so the config doesn't drift if the
+    # golangci-lint default set changes between releases.
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Argus Code Review P0.5 — required.
+    - gosec
+    - bodyclose
+    - paralleltest
+
+    # Cheap quality wins.
+    - misspell
+    - gofmt
+    - goimports
+    - unconvert
+    - unparam
+    - nilerr
+
+linters-settings:
+  gosec:
+    # G104 (errcheck) and G304 (file inclusion) overlap with errcheck +
+    # our config-file loaders that legitimately read user-supplied
+    # paths. Keep the report quiet for those; the rest of the gosec
+    # suite stays on.
+    excludes:
+      - G104
+      - G304
+      # G601 (taking address of range value) was relaxed in Go 1.22+;
+      # the linter still fires on older patterns even when the loop
+      # variable is fresh per iteration.
+      - G601
+    severity: medium
+
+  staticcheck:
+    checks:
+      - all
+      # SA1019 fires on every deprecated K8s API we still use; the
+      # migration off them is tracked separately, so silence the noise
+      # to keep the rest of staticcheck actionable.
+      - -SA1019
+
+  paralleltest:
+    # Subtests don't need t.Parallel if the parent is already parallel
+    # — the parent's WG covers them. Keeps the table-driven conversions
+    # honest without forcing every nested t.Run() to opt in.
+    ignore-missing-subtests: true
+
+  misspell:
+    locale: US
+
+issues:
+  # Don't truncate the report.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  # Generated code (Wails frontend bindings, mocks) is never the right
+  # place to chase lint findings.
+  exclude-dirs:
+    - frontend
+    - build
+    - vendor
+  exclude-files:
+    - ".*_mock\\.go$"
+    - ".*\\.pb\\.go$"
+
+  exclude-rules:
+    # Test files write to stdout / setenv / call rand.Read with weak
+    # entropy — none of which matters in test land. Silence the gosec
+    # findings that are purely about tests.
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
+        - unparam
+
+    # main.go is allowed to ignore errors from logger.Sync() style
+    # teardown calls; nothing else cares about them.
+    - path: cmd/.*/main\.go
+      text: "Error return value.*Sync.*not checked"
+      linters:
+        - errcheck
