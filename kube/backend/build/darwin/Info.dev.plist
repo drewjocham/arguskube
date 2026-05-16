@@ -29,5 +29,18 @@
     </dict>
     <key>NSFaceIDUsageDescription</key>
     <string>Argus uses biometrics to unlock your session without retyping your password.</string>
+    <!-- See Info.plist for rationale. Dev build needs the same scheme so
+         developers can test the future custom-scheme flow locally. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.djocham.argus.oauth</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>argus</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>
