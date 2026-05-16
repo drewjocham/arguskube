@@ -108,7 +108,10 @@ function openInBrowser(url) {
   if (typeof window !== 'undefined' && window.runtime?.BrowserOpenURL) {
     window.runtime.BrowserOpenURL(url)
   } else if (typeof window !== 'undefined') {
-    window.open(url, '_blank', 'noopener,noreferrer')
+    const popup = window.open(url, '_blank', 'noopener,noreferrer')
+    if (!popup || popup.closed) {
+      errorMsg.value = 'Pop-up was blocked. Open this URL manually:\n' + url
+    }
   }
 }
 

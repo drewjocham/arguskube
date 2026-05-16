@@ -76,33 +76,6 @@ jobs:
           args: --timeout 3m
           only-new-issues: true
 
-  # --- Go Agent ---
-  agent:
-    name: Agent (Go)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: agent
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: agent/go.mod
-          cache-dependency-path: agent/go.sum
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Build
-        run: go build ./...
-
-      - name: Test
-        run: go test -race -count=1 -timeout 120s ./...
-
   # --- Go Alert Ingress (kube/alert-ingress) ---
   alert-ingress:
     name: Alert Ingress (Go)

@@ -4200,6 +4200,27 @@ export namespace pkg {
 	    notionToken: string;
 	    tier: string;
 	    logLevel: string;
+	    googleClientId: string;
+	    googleClientSecret: string;
+	    oidcIssuer: string;
+	    oidcClientId: string;
+	    oidcClientSecret: string;
+	    oidcDisplayName: string;
+	    appleServicesId: string;
+	    appleTeamId: string;
+	    appleKeyId: string;
+	    applePrivateKey: string;
+	    appleDisplayName: string;
+	    allowLocalSignup: boolean;
+	    passkeyEnabled: boolean;
+	    passkeyRpId: string;
+	    passkeyRpName: string;
+	    passkeyRpOrigin: string;
+	    workspaceGoogleClientId: string;
+	    workspaceGoogleClientSecret: string;
+	    slackClientId: string;
+	    slackClientSecret: string;
+	    slackSigningSecret: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SettingsPayload(source);
@@ -4250,6 +4271,27 @@ export namespace pkg {
 	        this.notionToken = source["notionToken"];
 	        this.tier = source["tier"];
 	        this.logLevel = source["logLevel"];
+	        this.googleClientId = source["googleClientId"];
+	        this.googleClientSecret = source["googleClientSecret"];
+	        this.oidcIssuer = source["oidcIssuer"];
+	        this.oidcClientId = source["oidcClientId"];
+	        this.oidcClientSecret = source["oidcClientSecret"];
+	        this.oidcDisplayName = source["oidcDisplayName"];
+	        this.appleServicesId = source["appleServicesId"];
+	        this.appleTeamId = source["appleTeamId"];
+	        this.appleKeyId = source["appleKeyId"];
+	        this.applePrivateKey = source["applePrivateKey"];
+	        this.appleDisplayName = source["appleDisplayName"];
+	        this.allowLocalSignup = source["allowLocalSignup"];
+	        this.passkeyEnabled = source["passkeyEnabled"];
+	        this.passkeyRpId = source["passkeyRpId"];
+	        this.passkeyRpName = source["passkeyRpName"];
+	        this.passkeyRpOrigin = source["passkeyRpOrigin"];
+	        this.workspaceGoogleClientId = source["workspaceGoogleClientId"];
+	        this.workspaceGoogleClientSecret = source["workspaceGoogleClientSecret"];
+	        this.slackClientId = source["slackClientId"];
+	        this.slackClientSecret = source["slackClientSecret"];
+	        this.slackSigningSecret = source["slackSigningSecret"];
 	    }
 	}
 	export class SettingsResult {

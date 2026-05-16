@@ -454,6 +454,8 @@ export function UpdateGoogleTask(arg1:string,arg2:string,arg3:string,arg4:string
 
 export function UpdateIncident(arg1:string,arg2:string,arg3:string):Promise<incidents.Incident>;
 
+export function UpdateSettings(arg1:pkg.SettingsPayload):Promise<pkg.SettingsResult>;
+
 export function UpsertDBConnection(arg1:context.Context,arg2:pkg.DBConnectionInput):Promise<pkg.DBConnectionView>;
 
 export function ValidateEnvFile(arg1:string,arg2:string,arg3:string):Promise<pkg.EnvValidationResult>;

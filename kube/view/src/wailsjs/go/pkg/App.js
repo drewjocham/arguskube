@@ -858,6 +858,10 @@ export function UpdateIncident(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['UpdateIncident'](arg1, arg2, arg3);
 }
 
+export function UpdateSettings(arg1) {
+  return window['go']['pkg']['App']['UpdateSettings'](arg1);
+}
+
 export function UpsertDBConnection(arg1, arg2) {
   return window['go']['pkg']['App']['UpsertDBConnection'](arg1, arg2);
 }
