@@ -14,7 +14,6 @@ import (
 	"github.com/argues/argus/internal/k8s"
 )
 
-// emitStatus publishes a StatusEvent for the frontend StatusRibbon.
 func (a *App) emitStatus(source, severity, message, detail string) {
 	if a.ctx == nil {
 		return
@@ -27,7 +26,6 @@ func (a *App) emitStatus(source, severity, message, detail string) {
 	})
 }
 
-// HandleURL handles deep links from custom URL schemes like argus://
 func (a *App) HandleURL(u string) {
 	a.logger.Info("Received custom URL", slog.String("url", u))
 	if a.ctx != nil {
@@ -35,7 +33,6 @@ func (a *App) HandleURL(u string) {
 	}
 }
 
-// SwitchContext changes the active kubeconfig context at runtime.
 func (a *App) SwitchContext(name string) error {
 	if a.k8s == nil {
 		a.logger.Info("bootstrapping k8s client on first context switch",
@@ -58,7 +55,6 @@ func (a *App) SwitchContext(name string) error {
 	return nil
 }
 
-// GetSettings returns the current settings payload.
 func (a *App) GetSettings() SettingsPayload {
 	payload := SettingsPayload{
 		KubeconfigPath:    a.cfg.Kubernetes.Config,
@@ -146,42 +142,41 @@ func (a *App) findTerminalBinary() string {
 	return ""
 }
 
-// SettingsPayload is the JSON structure for runtime config.
 type SettingsPayload struct {
-	KubeconfigPath      string `json:"kubeconfigPath"`
-	CurrentContext      string `json:"currentContext"`
-	Namespace           string `json:"namespace"`
-	DeepSeekAPIKey      string `json:"deepseekApiKey"`
-	LLMBaseURL          string `json:"llmBaseUrl"`
-	LLMModel            string `json:"llmModel"`
-	MCPServersConfig    string `json:"mcpServersConfig"`
-	AgentInstructions   string `json:"agentInstructions"`
-	ArgoCDURL           string `json:"argocdUrl"`
-	ArgoCDToken         string `json:"argocdToken"`
-	ArgoCDInsecure      bool   `json:"argocdInsecure"`
-	PipelinesEnabled    bool   `json:"pipelinesEnabled"`
-	PipelinesProvider   string `json:"pipelinesProvider"`
-	GitHubOwner         string `json:"githubOwner"`
-	GitHubRepo          string `json:"githubRepo"`
-	GitHubWorkflow      string `json:"githubWorkflow"`
-	GitHubToken         string `json:"githubToken"`
-	GitLabURL           string `json:"gitlabUrl"`
-	GitLabProjectID     string `json:"gitlabProjectId"`
-	GitLabRef           string `json:"gitlabRef"`
-	GitLabToken         string `json:"gitlabToken"`
-	AWSRegion           string `json:"awsRegion"`
-	AWSAccessKey        string `json:"awsAccessKey"`
-	AWSSecretKey        string `json:"awsSecretKey"`
-	GCPProject          string `json:"gcpProject"`
-	GCPRegion           string `json:"gcpRegion"`
-	GCPCredentials      string `json:"gcpCredentials"`
-	CircleCIToken       string `json:"circleciToken"`
+	KubeconfigPath     string `json:"kubeconfigPath"`
+	CurrentContext     string `json:"currentContext"`
+	Namespace          string `json:"namespace"`
+	DeepSeekAPIKey     string `json:"deepseekApiKey"`
+	LLMBaseURL         string `json:"llmBaseUrl"`
+	LLMModel           string `json:"llmModel"`
+	MCPServersConfig   string `json:"mcpServersConfig"`
+	AgentInstructions  string `json:"agentInstructions"`
+	ArgoCDURL          string `json:"argocdUrl"`
+	ArgoCDToken        string `json:"argocdToken"`
+	ArgoCDInsecure     bool   `json:"argocdInsecure"`
+	PipelinesEnabled   bool   `json:"pipelinesEnabled"`
+	PipelinesProvider  string `json:"pipelinesProvider"`
+	GitHubOwner        string `json:"githubOwner"`
+	GitHubRepo         string `json:"githubRepo"`
+	GitHubWorkflow     string `json:"githubWorkflow"`
+	GitHubToken        string `json:"githubToken"`
+	GitLabURL          string `json:"gitlabUrl"`
+	GitLabProjectID    string `json:"gitlabProjectId"`
+	GitLabRef          string `json:"gitlabRef"`
+	GitLabToken        string `json:"gitlabToken"`
+	AWSRegion          string `json:"awsRegion"`
+	AWSAccessKey       string `json:"awsAccessKey"`
+	AWSSecretKey       string `json:"awsSecretKey"`
+	GCPProject         string `json:"gcpProject"`
+	GCPRegion          string `json:"gcpRegion"`
+	GCPCredentials     string `json:"gcpCredentials"`
+	CircleCIToken      string `json:"circleciToken"`
 	CircleCIProjectSlug string `json:"circleciProjectSlug"`
-	AzureOrganization   string `json:"azureOrganization"`
-	AzureProject        string `json:"azureProject"`
-	AzurePipelineID     string `json:"azurePipelineId"`
-	AzureToken          string `json:"azureToken"`
-	AzureBranch         string `json:"azureBranch"`
+	AzureOrganization  string `json:"azureOrganization"`
+	AzureProject       string `json:"azureProject"`
+	AzurePipelineID    string `json:"azurePipelineId"`
+	AzureToken         string `json:"azureToken"`
+	AzureBranch        string `json:"azureBranch"`
 	NotifyOnPROpened    bool   `json:"notifyOnPrOpened"`
 	NotifyOnPRUpdated   bool   `json:"notifyOnPrUpdated"`
 	NotifyOnPRCommented bool   `json:"notifyOnPrCommented"`

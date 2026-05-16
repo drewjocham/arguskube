@@ -14,6 +14,7 @@ import { useNotificationGuardStore } from '../../stores/notificationGuard'
 import { useWatcherRegistryStore } from '../../stores/watcherRegistry'
 import { runDueNow as watcherRunDueNow, runWatcherById } from '../../composables/useWatcherEngine'
 import Select from '../common/Select.vue'
+import RevealableInput from '../common/RevealableInput.vue'
 import SecretsToolProbeRow from './SecretsToolProbeRow.vue'
 import SetupChecklist from './SetupChecklist.vue'
 import PrivacyControls from './PrivacyControls.vue'
@@ -469,6 +470,32 @@ const form = ref({
   joplinToken: '',
   logseqGraphPath: '',
   bearToken: '',
+
+  // Sign-in & integrations: OAuth client credentials operators used to
+  // set via env vars. The backend masks secrets on read; the masked
+  // sentinel ("••••") is skipped on save so an unedited form preserves
+  // the on-disk value.
+  googleClientId: '',
+  googleClientSecret: '',
+  oidcIssuer: '',
+  oidcClientId: '',
+  oidcClientSecret: '',
+  oidcDisplayName: '',
+  appleServicesId: '',
+  appleTeamId: '',
+  appleKeyId: '',
+  applePrivateKey: '',
+  appleDisplayName: '',
+  allowLocalSignup: true,
+  passkeyEnabled: false,
+  passkeyRpId: 'localhost',
+  passkeyRpName: 'Argus',
+  passkeyRpOrigin: 'http://localhost:8080',
+  workspaceGoogleClientId: '',
+  workspaceGoogleClientSecret: '',
+  slackClientId: '',
+  slackClientSecret: '',
+  slackSigningSecret: '',
 })
 
 const PIPELINE_PROVIDERS = [
@@ -652,6 +679,28 @@ async function loadSettings() {
         joplinToken: result.joplinToken || '',
         logseqGraphPath: result.logseqGraphPath || '',
         bearToken: result.bearToken || '',
+
+        googleClientId: result.googleClientId || '',
+        googleClientSecret: result.googleClientSecret || '',
+        oidcIssuer: result.oidcIssuer || '',
+        oidcClientId: result.oidcClientId || '',
+        oidcClientSecret: result.oidcClientSecret || '',
+        oidcDisplayName: result.oidcDisplayName || '',
+        appleServicesId: result.appleServicesId || '',
+        appleTeamId: result.appleTeamId || '',
+        appleKeyId: result.appleKeyId || '',
+        applePrivateKey: result.applePrivateKey || '',
+        appleDisplayName: result.appleDisplayName || '',
+        allowLocalSignup: result.allowLocalSignup ?? true,
+        passkeyEnabled: result.passkeyEnabled || false,
+        passkeyRpId: result.passkeyRpId || 'localhost',
+        passkeyRpName: result.passkeyRpName || 'Argus',
+        passkeyRpOrigin: result.passkeyRpOrigin || 'http://localhost:8080',
+        workspaceGoogleClientId: result.workspaceGoogleClientId || '',
+        workspaceGoogleClientSecret: result.workspaceGoogleClientSecret || '',
+        slackClientId: result.slackClientId || '',
+        slackClientSecret: result.slackClientSecret || '',
+        slackSigningSecret: result.slackSigningSecret || '',
       }
     }
   } catch (e) {
@@ -734,8 +783,30 @@ async function saveSettings() {
       joplinToken: form.value.joplinToken,
       logseqGraphPath: form.value.logseqGraphPath,
       bearToken: form.value.bearToken,
+
+      googleClientId: form.value.googleClientId,
+      googleClientSecret: form.value.googleClientSecret,
+      oidcIssuer: form.value.oidcIssuer,
+      oidcClientId: form.value.oidcClientId,
+      oidcClientSecret: form.value.oidcClientSecret,
+      oidcDisplayName: form.value.oidcDisplayName,
+      appleServicesId: form.value.appleServicesId,
+      appleTeamId: form.value.appleTeamId,
+      appleKeyId: form.value.appleKeyId,
+      applePrivateKey: form.value.applePrivateKey,
+      appleDisplayName: form.value.appleDisplayName,
+      allowLocalSignup: form.value.allowLocalSignup,
+      passkeyEnabled: form.value.passkeyEnabled,
+      passkeyRpId: form.value.passkeyRpId,
+      passkeyRpName: form.value.passkeyRpName,
+      passkeyRpOrigin: form.value.passkeyRpOrigin,
+      workspaceGoogleClientId: form.value.workspaceGoogleClientId,
+      workspaceGoogleClientSecret: form.value.workspaceGoogleClientSecret,
+      slackClientId: form.value.slackClientId,
+      slackClientSecret: form.value.slackClientSecret,
+      slackSigningSecret: form.value.slackSigningSecret,
     })
-    saveMessage.value = 'Settings saved.'
+    saveMessage.value = 'Sign-in providers reloaded — no restart needed.'
     await loadSettings()
     await listContexts()
   } catch (e) {
@@ -784,6 +855,8 @@ onMounted(async () => {
     let anchorEl = null
     if (pending.anchor === 'notification-channels') {
       anchorEl = channelsAnchorRef.value
+    } else if (pending.anchor === 'sign-in-integrations') {
+      anchorEl = document.getElementById('sign-in-integrations')
     } else if (pending.anchor === 'pipelines-github') {
       anchorEl = githubAnchorRef.value
       // Pre-select the GitHub provider so the corresponding fields render.
@@ -1183,6 +1256,133 @@ onMounted(async () => {
               <div class="secret-stamp">updated {{ formatVaultCheck(s.updatedAt) }}</div>
               <button class="vault-btn danger" @click="removeCustomSecret(s.key)" title="Remove">Delete</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sign-in & integrations. Replaces the previous "set ARGUS_*
+           env vars and restart" UX: paste OAuth client credentials in
+           here, hit Save, and the backend hot-reloads providers. -->
+      <div class="section" id="sign-in-integrations">
+        <h2 class="section-title">Sign-in &amp; integrations</h2>
+        <p class="hint" style="margin: -6px 0 14px; font-size: 12px; color: var(--text3); line-height: 1.45;">
+          Paste OAuth client credentials below to enable Sign-In providers and
+          Workspace Connect buttons. Create credentials at
+          <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>
+          and
+          <a href="https://api.slack.com/apps" target="_blank" rel="noopener">Slack apps</a>.
+          Saved values are encrypted on disk; no backend restart needed.
+        </p>
+
+        <!-- Sub-section: Sign-in providers (used by the LoginView). -->
+        <div class="sub-section">
+          <h3 class="subsection-title">Sign-in providers</h3>
+
+          <div class="field-group">
+            <div class="field"><label class="label">Google client ID</label>
+              <input v-model="form.googleClientId" type="text" class="input mono" placeholder="123…-abc.apps.googleusercontent.com" />
+            </div>
+            <div class="field"><label class="label">Google client secret</label>
+              <RevealableInput v-model="form.googleClientSecret" input-class="input mono" placeholder="GOCSPX-…" />
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field"><label class="label">OIDC issuer URL</label>
+              <input v-model="form.oidcIssuer" type="text" class="input mono" placeholder="https://acme.okta.com" />
+            </div>
+            <div class="field"><label class="label">OIDC display name</label>
+              <input v-model="form.oidcDisplayName" type="text" class="input" placeholder="Corporate SSO" />
+            </div>
+          </div>
+          <div class="field-group">
+            <div class="field"><label class="label">OIDC client ID</label>
+              <input v-model="form.oidcClientId" type="text" class="input mono" />
+            </div>
+            <div class="field"><label class="label">OIDC client secret</label>
+              <RevealableInput v-model="form.oidcClientSecret" input-class="input mono" />
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field"><label class="label">Apple services ID</label>
+              <input v-model="form.appleServicesId" type="text" class="input mono" placeholder="com.argus.signin" />
+            </div>
+            <div class="field"><label class="label">Apple team ID</label>
+              <input v-model="form.appleTeamId" type="text" class="input mono" placeholder="ABCD123456" />
+            </div>
+          </div>
+          <div class="field-group">
+            <div class="field"><label class="label">Apple key ID</label>
+              <input v-model="form.appleKeyId" type="text" class="input mono" placeholder="KEYID67890" />
+            </div>
+            <div class="field"><label class="label">Apple display name</label>
+              <input v-model="form.appleDisplayName" type="text" class="input" placeholder="Apple" />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Apple private key (.p8 contents)</label>
+            <RevealableInput v-model="form.applePrivateKey" input-class="input mono"
+              placeholder="-----BEGIN PRIVATE KEY-----…" />
+          </div>
+
+          <div class="field-group">
+            <div class="field">
+              <label class="toggle">
+                <input type="checkbox" v-model="form.passkeyEnabled" />
+                <span>Enable passkeys (WebAuthn)</span>
+              </label>
+            </div>
+            <div class="field">
+              <label class="toggle">
+                <input type="checkbox" v-model="form.allowLocalSignup" />
+                <span>Allow email/password sign-up</span>
+              </label>
+            </div>
+          </div>
+          <div v-if="form.passkeyEnabled" class="field-group">
+            <div class="field"><label class="label">Passkey RP ID</label>
+              <input v-model="form.passkeyRpId" type="text" class="input mono" placeholder="localhost" />
+            </div>
+            <div class="field"><label class="label">Passkey RP name</label>
+              <input v-model="form.passkeyRpName" type="text" class="input" placeholder="Argus" />
+            </div>
+            <div class="field"><label class="label">Passkey RP origin</label>
+              <input v-model="form.passkeyRpOrigin" type="text" class="input mono" placeholder="http://localhost:8080" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-section: Workspace OAuth (distinct from sign-in Google
+             because the scopes/consent screen are independent). -->
+        <div class="sub-section">
+          <h3 class="subsection-title">Workspace OAuth clients</h3>
+          <p class="hint" style="margin: 0 0 10px; font-size: 12px; color: var(--text3);">
+            These power the Connect buttons on the Workspace page. Slack and
+            Google Workspace each need their own client ID/secret — separate
+            from the sign-in credentials above.
+          </p>
+
+          <div class="field-group">
+            <div class="field"><label class="label">Google Workspace client ID</label>
+              <input v-model="form.workspaceGoogleClientId" type="text" class="input mono" />
+            </div>
+            <div class="field"><label class="label">Google Workspace client secret</label>
+              <RevealableInput v-model="form.workspaceGoogleClientSecret" input-class="input mono" />
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field"><label class="label">Slack client ID</label>
+              <input v-model="form.slackClientId" type="text" class="input mono" />
+            </div>
+            <div class="field"><label class="label">Slack client secret</label>
+              <RevealableInput v-model="form.slackClientSecret" input-class="input mono" />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Slack signing secret (Events API)</label>
+            <RevealableInput v-model="form.slackSigningSecret" input-class="input mono" />
           </div>
         </div>
       </div>

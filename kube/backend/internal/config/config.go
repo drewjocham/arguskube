@@ -31,6 +31,25 @@ type OnlineDataConfig struct {
 	S3          S3Config
 	SaaS        SaaSConfig
 	Auth        AuthConfig
+	Workspace   WorkspaceConfig
+}
+
+// WorkspaceConfig holds OAuth client credentials for the workspace
+// integrations (Slack + Google Workspace). These are separate from the
+// AuthConfig sign-in credentials because the OAuth scopes and consent
+// screens are independent — a deployment can have Google Sign-In
+// without Google Workspace scopes, or vice versa.
+type WorkspaceConfig struct {
+	// Google Workspace (Docs/Sheets/Tasks/Chat unified grant).
+	GoogleClientID     string `env:"ARGUS_GOOGLE_WORKSPACE_CLIENT_ID"`
+	GoogleClientSecret string `env:"ARGUS_GOOGLE_WORKSPACE_CLIENT_SECRET"`
+
+	// Slack — separate ClientID/Secret pair from the sign-in providers.
+	// SigningSecret is used by the Events API webhook (SaaS-only); the
+	// HTTP route only mounts when this is set.
+	SlackClientID      string `env:"ARGUS_SLACK_CLIENT_ID"`
+	SlackClientSecret  string `env:"ARGUS_SLACK_CLIENT_SECRET"`
+	SlackSigningSecret string `env:"ARGUS_SLACK_SIGNING_SECRET"`
 }
 
 // AuthConfig holds sign-in settings. By default, every /api endpoint
@@ -404,6 +423,13 @@ func New() (*OnlineDataConfig, error) {
 			PasskeyRPID:         env("ARGUS_PASSKEY_RP_ID", "localhost"),
 			PasskeyRPName:       env("ARGUS_PASSKEY_RP_NAME", "Argus"),
 			PasskeyRPOrigin:     env("ARGUS_PASSKEY_RP_ORIGIN", "http://localhost:8080"),
+		},
+		Workspace: WorkspaceConfig{
+			GoogleClientID:     env("ARGUS_GOOGLE_WORKSPACE_CLIENT_ID", ""),
+			GoogleClientSecret: env("ARGUS_GOOGLE_WORKSPACE_CLIENT_SECRET", ""),
+			SlackClientID:      env("ARGUS_SLACK_CLIENT_ID", ""),
+			SlackClientSecret:  env("ARGUS_SLACK_CLIENT_SECRET", ""),
+			SlackSigningSecret: env("ARGUS_SLACK_SIGNING_SECRET", ""),
 		},
 	}
 

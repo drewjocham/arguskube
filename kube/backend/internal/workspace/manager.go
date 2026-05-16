@@ -19,9 +19,14 @@ import (
 // Phase 1B+ implementations of Integration (Google Docs/Sheets/Tasks)
 // plug into the same Manager without changes.
 type Manager struct {
-	store     *Store
-	logger    *slog.Logger
-	providers map[Service]Provider
+	store  *Store
+	logger *slog.Logger
+	// providersMu guards providers. Originally the registry was
+	// written once at boot and read-only afterwards; now that the
+	// Settings UI can hot-reload OAuth credentials, the registry can
+	// be swapped at runtime via ReregisterProviders.
+	providersMu sync.RWMutex
+	providers   map[Service]Provider
 
 	// pendingMu guards pending; pending maps an opaque state nonce
 	// (returned by Provider.Start) to the binding the callback needs
@@ -72,10 +77,34 @@ func (m *Manager) Register(p Provider) {
 		panic("workspace: nil Provider")
 	}
 	svc := p.Service()
+	m.providersMu.Lock()
+	defer m.providersMu.Unlock()
 	if _, ok := m.providers[svc]; ok {
 		panic(fmt.Sprintf("workspace: Provider for %q already registered", svc))
 	}
 	m.providers[svc] = p
+}
+
+// ReregisterProviders atomically swaps the provider registry. Used by
+// the Settings UI to apply new OAuth client credentials without
+// restarting the backend. The caller passes the desired set of
+// providers (typically built from the live config); any previously
+// registered Service not in the new set is dropped.
+//
+// In-flight OAuth flows tracked in `pending` are unaffected — Provider
+// implementations close over their own config at construction time, so
+// the state-machine isn't corrupted by a hot-reload mid-flow.
+func (m *Manager) ReregisterProviders(providers []Provider) {
+	next := make(map[Service]Provider, len(providers))
+	for _, p := range providers {
+		if p == nil {
+			continue
+		}
+		next[p.Service()] = p
+	}
+	m.providersMu.Lock()
+	m.providers = next
+	m.providersMu.Unlock()
 }
 
 // HasProvider tells the UI whether a given service is wired in this
@@ -83,6 +112,8 @@ func (m *Manager) Register(p Provider) {
 // add real providers and HasProvider lights up the corresponding
 // connect button.
 func (m *Manager) HasProvider(svc Service) bool {
+	m.providersMu.RLock()
+	defer m.providersMu.RUnlock()
 	_, ok := m.providers[svc]
 	return ok
 }
@@ -91,6 +122,8 @@ func (m *Manager) HasProvider(svc Service) bool {
 // can actually connect to right now (i.e. has a Provider registered
 // for). The frontend uses this to build the connect-buttons list.
 func (m *Manager) AvailableServices() []Service {
+	m.providersMu.RLock()
+	defer m.providersMu.RUnlock()
 	out := make([]Service, 0, len(m.providers))
 	for svc := range m.providers {
 		out = append(out, svc)
@@ -102,7 +135,9 @@ func (m *Manager) AvailableServices() []Service {
 // open in the user's browser plus the state nonce the callback will
 // echo back.
 func (m *Manager) Start(ctx context.Context, userID string, svc Service, redirectURL string) (AuthURL, error) {
+	m.providersMu.RLock()
 	p, ok := m.providers[svc]
+	m.providersMu.RUnlock()
 	if !ok {
 		return AuthURL{}, fmt.Errorf("workspace: no provider registered for %q", svc)
 	}
@@ -146,7 +181,9 @@ func (m *Manager) gcPendingLocked() {
 // Complete is the OAuth callback path. It claims the pending state,
 // asks the Provider to finalize, then upserts a Connection + Token.
 func (m *Manager) Complete(ctx context.Context, svc Service, state, code string) (Connection, error) {
+	m.providersMu.RLock()
 	p, ok := m.providers[svc]
+	m.providersMu.RUnlock()
 	if !ok {
 		return Connection{}, fmt.Errorf("workspace: no provider registered for %q", svc)
 	}
@@ -227,7 +264,9 @@ func (m *Manager) Token(ctx context.Context, connectionID string) (Token, error)
 	if err != nil {
 		return Token{}, err
 	}
+	m.providersMu.RLock()
 	prov, ok := m.providers[svc]
+	m.providersMu.RUnlock()
 	if !ok {
 		return tok, nil
 	}
@@ -303,7 +342,9 @@ func (m *Manager) RefreshIfStale(ctx context.Context, connectionID string, thres
 	if err != nil {
 		return err
 	}
+	m.providersMu.RLock()
 	prov, ok := m.providers[svc]
+	m.providersMu.RUnlock()
 	if !ok {
 		return nil
 	}
