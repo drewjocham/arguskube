@@ -211,7 +211,9 @@ func run() error {
 		// set. The OAuth callback lands on PublicBaseURL +
 		// /workspace/oauth/callback — the same URL the user pastes into
 		// their Slack app's "OAuth Redirect URLs" config.
-		if id, sec := os.Getenv("ARGUS_SLACK_CLIENT_ID"), os.Getenv("ARGUS_SLACK_CLIENT_SECRET"); id != "" && sec != "" {
+		// Reads from cfg.Workspace so persisted settings (set via the
+		// Sign-in & integrations Settings UI) can override env vars.
+		if id, sec := cfg.Workspace.SlackClientID, cfg.Workspace.SlackClientSecret; id != "" && sec != "" {
 			workspaceMgr.Register(&workspace.SlackProvider{
 				ClientID:     id,
 				ClientSecret: sec,
@@ -226,7 +228,7 @@ func run() error {
 		// the two consents are independently configurable — a deployment
 		// can have Google Sign-In without exposing workspace scopes, or
 		// vice versa.
-		if id, sec := os.Getenv("ARGUS_GOOGLE_WORKSPACE_CLIENT_ID"), os.Getenv("ARGUS_GOOGLE_WORKSPACE_CLIENT_SECRET"); id != "" && sec != "" {
+		if id, sec := cfg.Workspace.GoogleClientID, cfg.Workspace.GoogleClientSecret; id != "" && sec != "" {
 			workspaceMgr.Register(&workspace.GoogleProvider{
 				ClientID:     id,
 				ClientSecret: sec,
@@ -239,7 +241,7 @@ func run() error {
 		// Registers when ARGUS_SLACK_SIGNING_SECRET is set; the HTTP
 		// routes (/workspace/slack/events, /workspace/slack/commands)
 		// only mount when the bus exists.
-		if sigSec := os.Getenv("ARGUS_SLACK_SIGNING_SECRET"); sigSec != "" {
+		if sigSec := cfg.Workspace.SlackSigningSecret; sigSec != "" {
 			slackEvents = workspace.NewEventBus(sigSec, logger.With("component", "slack-events"))
 			// Built-in /argus-ping so operators can confirm the
 			// webhook plumbing end-to-end without writing any handler.

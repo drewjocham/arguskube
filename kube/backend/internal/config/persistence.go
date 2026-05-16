@@ -54,6 +54,54 @@ type PersistedSettings struct {
 
 	// Logging
 	LogLevel string `json:"logLevel,omitempty"`
+
+	// Auth (sign-in providers). HasAuth gates whether to apply this
+	// block on reload — same pattern as HasPipelines — so an explicit
+	// "off" survives restart but an unset block lets env vars win.
+	HasAuth bool                  `json:"hasAuth,omitempty"`
+	Auth    PersistedAuthSettings `json:"auth,omitempty"`
+
+	// Workspace OAuth client credentials. HasWorkspace gated for the
+	// same reason as HasAuth.
+	HasWorkspace bool                       `json:"hasWorkspace,omitempty"`
+	Workspace    PersistedWorkspaceSettings `json:"workspace,omitempty"`
+}
+
+// PersistedAuthSettings mirrors the fields of AuthConfig the Settings
+// UI is allowed to mutate. PublicBaseURL, DevMode, and the .p8 file
+// path are deliberately omitted — those are infra config, not
+// per-user settings.
+type PersistedAuthSettings struct {
+	GoogleClientID     string `json:"googleClientId,omitempty"`
+	GoogleClientSecret string `json:"googleClientSecret,omitempty"`
+
+	OIDCIssuer       string `json:"oidcIssuer,omitempty"`
+	OIDCClientID     string `json:"oidcClientId,omitempty"`
+	OIDCClientSecret string `json:"oidcClientSecret,omitempty"`
+	OIDCDisplayName  string `json:"oidcDisplayName,omitempty"`
+
+	AppleServicesID  string `json:"appleServicesId,omitempty"`
+	AppleTeamID      string `json:"appleTeamId,omitempty"`
+	AppleKeyID       string `json:"appleKeyId,omitempty"`
+	ApplePrivateKey  string `json:"applePrivateKey,omitempty"`
+	AppleDisplayName string `json:"appleDisplayName,omitempty"`
+
+	AllowLocalSignup bool `json:"allowLocalSignup"`
+
+	PasskeyEnabled  bool   `json:"passkeyEnabled"`
+	PasskeyRPID     string `json:"passkeyRpId,omitempty"`
+	PasskeyRPName   string `json:"passkeyRpName,omitempty"`
+	PasskeyRPOrigin string `json:"passkeyRpOrigin,omitempty"`
+}
+
+// PersistedWorkspaceSettings holds the Slack + Google Workspace OAuth
+// client credentials.
+type PersistedWorkspaceSettings struct {
+	GoogleClientID     string `json:"googleClientId,omitempty"`
+	GoogleClientSecret string `json:"googleClientSecret,omitempty"`
+	SlackClientID      string `json:"slackClientId,omitempty"`
+	SlackClientSecret  string `json:"slackClientSecret,omitempty"`
+	SlackSigningSecret string `json:"slackSigningSecret,omitempty"`
 }
 
 // PersistedPipelinesSettings mirrors PipelinesConfig 1:1 so every field the
@@ -270,6 +318,51 @@ func (s *PersistedSettings) MergeInto(cfg *OnlineDataConfig) {
 	if s.HasPipelines {
 		cfg.Pipelines = s.Pipelines.toConfig()
 	}
+
+	// Auth: same authoritative-replace logic, but preserve infra-only
+	// fields (PublicBaseURL, DevMode, ApplePrivateKeyFile) that the UI
+	// never touches.
+	if s.HasAuth {
+		s.Auth.applyTo(&cfg.Auth)
+	}
+
+	// Workspace OAuth credentials: same gated replace.
+	if s.HasWorkspace {
+		cfg.Workspace = WorkspaceConfig{
+			GoogleClientID:     s.Workspace.GoogleClientID,
+			GoogleClientSecret: s.Workspace.GoogleClientSecret,
+			SlackClientID:      s.Workspace.SlackClientID,
+			SlackClientSecret:  s.Workspace.SlackClientSecret,
+			SlackSigningSecret: s.Workspace.SlackSigningSecret,
+		}
+	}
+}
+
+// applyTo overlays the persisted auth fields onto an existing
+// AuthConfig, leaving infra-only fields untouched.
+func (a PersistedAuthSettings) applyTo(dst *AuthConfig) {
+	dst.GoogleClientID = a.GoogleClientID
+	dst.GoogleClientSecret = a.GoogleClientSecret
+	dst.OIDCIssuer = a.OIDCIssuer
+	dst.OIDCClientID = a.OIDCClientID
+	dst.OIDCClientSecret = a.OIDCClientSecret
+	dst.OIDCDisplayName = a.OIDCDisplayName
+	dst.AppleServicesID = a.AppleServicesID
+	dst.AppleTeamID = a.AppleTeamID
+	dst.AppleKeyID = a.AppleKeyID
+	dst.ApplePrivateKey = a.ApplePrivateKey
+	dst.AppleDisplayName = a.AppleDisplayName
+	dst.AllowLocalSignup = a.AllowLocalSignup
+	dst.PasskeyEnabled = a.PasskeyEnabled
+	if a.PasskeyRPID != "" {
+		dst.PasskeyRPID = a.PasskeyRPID
+	}
+	if a.PasskeyRPName != "" {
+		dst.PasskeyRPName = a.PasskeyRPName
+	}
+	if a.PasskeyRPOrigin != "" {
+		dst.PasskeyRPOrigin = a.PasskeyRPOrigin
+	}
 }
 
 // FromConfig captures the persistable subset of an OnlineDataConfig.
@@ -297,6 +390,37 @@ func FromConfig(cfg *OnlineDataConfig) *PersistedSettings {
 		HasPipelines:      true, // any save through this path is a user action
 		Pipelines:         pipelinesFromConfig(cfg.Pipelines),
 		LogLevel:          cfg.Logging.Level,
+		HasAuth:           true,
+		Auth:              authFromConfig(cfg.Auth),
+		HasWorkspace:      true,
+		Workspace: PersistedWorkspaceSettings{
+			GoogleClientID:     cfg.Workspace.GoogleClientID,
+			GoogleClientSecret: cfg.Workspace.GoogleClientSecret,
+			SlackClientID:      cfg.Workspace.SlackClientID,
+			SlackClientSecret:  cfg.Workspace.SlackClientSecret,
+			SlackSigningSecret: cfg.Workspace.SlackSigningSecret,
+		},
+	}
+}
+
+func authFromConfig(a AuthConfig) PersistedAuthSettings {
+	return PersistedAuthSettings{
+		GoogleClientID:     a.GoogleClientID,
+		GoogleClientSecret: a.GoogleClientSecret,
+		OIDCIssuer:         a.OIDCIssuer,
+		OIDCClientID:       a.OIDCClientID,
+		OIDCClientSecret:   a.OIDCClientSecret,
+		OIDCDisplayName:    a.OIDCDisplayName,
+		AppleServicesID:    a.AppleServicesID,
+		AppleTeamID:        a.AppleTeamID,
+		AppleKeyID:         a.AppleKeyID,
+		ApplePrivateKey:    a.ApplePrivateKey,
+		AppleDisplayName:   a.AppleDisplayName,
+		AllowLocalSignup:   a.AllowLocalSignup,
+		PasskeyEnabled:     a.PasskeyEnabled,
+		PasskeyRPID:        a.PasskeyRPID,
+		PasskeyRPName:      a.PasskeyRPName,
+		PasskeyRPOrigin:    a.PasskeyRPOrigin,
 	}
 }
 

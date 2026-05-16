@@ -9,6 +9,9 @@ build/
 !kube/backend/build/
 kube/backend/build/*
 !kube/backend/build/appicon.png
+# Keep the icon's source generator so a future redesign is a one-file
+# diff; the PNG is the build artefact Wails reads, the .py is the spec.
+!kube/backend/build/make_icon.py
 # Wails reads the Info.plist templates from build/darwin at packaging
 # time. The NSFaceIDUsageDescription key in there is what makes the
 # Touch ID prompt render at all, so this directory must be tracked.
