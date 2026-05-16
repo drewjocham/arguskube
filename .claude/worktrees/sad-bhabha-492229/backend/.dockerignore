@@ -1,7 +1,0 @@
-view/dist/
-*.exe
-*.test
-*.tmp
-.git
-.DS_Store
-tmp/
