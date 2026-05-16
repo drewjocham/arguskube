@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	Terminal TerminalConfig `toml:"terminal"`
+	Argus    ArgusContext   `toml:"-"`
 }
 
 type TerminalConfig struct {
@@ -18,6 +19,25 @@ type TerminalConfig struct {
 	FontSize int    `toml:"font_size"`
 	Width    int    `toml:"width"`
 	Height   int    `toml:"height"`
+	// Title overrides the OS window title. Empty falls back to
+	// "Argus Terminal". Populated from $ARGUS_TERMINAL_TITLE when the
+	// process is launched by Argus.
+	Title string `toml:"title"`
+}
+
+// ArgusContext is the bag of values the Argus app injects via env
+// when it spawns lufis-terminal via LaunchPopOutTerminal. None are
+// stored in the on-disk TOML — they live for the lifetime of the
+// spawned process and are reset on every launch. Empty fields mean
+// "not provided"; consumers should treat them as advisory.
+//
+// The corresponding env var names match what
+// kube/backend/api/pkg.buildPopOutEnv writes, so changes need to
+// happen in lock-step across both repos.
+type ArgusContext struct {
+	K8sContext   string // $ARGUS_K8S_CONTEXT — current cluster context
+	K8sNamespace string // $ARGUS_K8S_NAMESPACE — default namespace
+	Kubeconfig   string // $KUBECONFIG — path to the kubeconfig
 }
 
 func defaultShell() string {
@@ -55,6 +75,15 @@ func Load() (Config, error) {
 
 	if v := os.Getenv("ARGUS_SHELL"); v != "" {
 		cfg.Terminal.Shell = v
+	}
+	if v := os.Getenv("ARGUS_TERMINAL_TITLE"); v != "" {
+		cfg.Terminal.Title = v
+	}
+	// Argus context — populated only when the Argus app spawned us.
+	cfg.Argus = ArgusContext{
+		K8sContext:   os.Getenv("ARGUS_K8S_CONTEXT"),
+		K8sNamespace: os.Getenv("ARGUS_K8S_NAMESPACE"),
+		Kubeconfig:   os.Getenv("KUBECONFIG"),
 	}
 
 	p, err := path()

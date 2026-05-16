@@ -91,7 +91,22 @@ func run() error {
 		app.parser.WriteString(data)
 	}
 
-	app.win, err = render.New(app.cfg.Terminal.Width, app.cfg.Terminal.Height, "Argus Terminal", app.logger)
+	// Title preference: ARGUS_TERMINAL_TITLE (set by Argus's
+	// LaunchPopOutTerminal) wins; otherwise show the active K8s
+	// context so a user juggling multiple windows can tell them
+	// apart at a glance; otherwise the bare "Argus Terminal" default.
+	title := app.cfg.Terminal.Title
+	if title == "" {
+		title = "Argus Terminal"
+	}
+	if app.cfg.Argus.K8sContext != "" {
+		title = title + " · " + app.cfg.Argus.K8sContext
+		if app.cfg.Argus.K8sNamespace != "" {
+			title = title + "/" + app.cfg.Argus.K8sNamespace
+		}
+	}
+
+	app.win, err = render.New(app.cfg.Terminal.Width, app.cfg.Terminal.Height, title, app.logger)
 	if err != nil {
 		return err
 	}
