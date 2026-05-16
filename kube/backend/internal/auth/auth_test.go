@@ -71,38 +71,66 @@ func TestCreateLocalUser_RejectsBadEmail(t *testing.T) {
 	}
 }
 
-func TestAuthenticateLocal_HappyPath(t *testing.T) {
+// TestAuthenticateLocal is the table-driven replacement for the
+// three TestAuthenticateLocal_* tests that used to live here. The
+// rows make the contract obvious at a glance: which inputs are
+// accepted, which are rejected, and — crucially — that the wrong-
+// password and unknown-email paths return the SAME sentinel error so
+// the API can't be used to enumerate accounts. Adding a new edge
+// case is one row of struct literal, not 30 lines of boilerplate.
+func TestAuthenticateLocal(t *testing.T) {
+	// Setup: every row reuses the same store with one seeded local
+	// user so we exercise the same code paths in isolation.
 	s := newTestStore(t)
 	if _, err := s.CreateLocalUser("user@x.com", "User", "correcthorsebattery"); err != nil {
 		t.Fatal(err)
 	}
-	u, err := s.AuthenticateLocal("USER@x.com", "correcthorsebattery") // case-insensitive
-	if err != nil {
-		t.Fatalf("AuthenticateLocal: %v", err)
-	}
-	if u.Email != "user@x.com" {
-		t.Errorf("got %q", u.Email)
-	}
-}
 
-func TestAuthenticateLocal_WrongPassword(t *testing.T) {
-	s := newTestStore(t)
-	if _, err := s.CreateLocalUser("user@x.com", "", "correcthorsebattery"); err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name      string
+		email     string
+		password  string
+		wantErr   error  // nil → expect success
+		wantEmail string // only checked on success
+	}{
+		{
+			name:      "happy path — case-insensitive email",
+			email:     "USER@x.com",
+			password:  "correcthorsebattery",
+			wantErr:   nil,
+			wantEmail: "user@x.com",
+		},
+		{
+			name:     "wrong password",
+			email:    "user@x.com",
+			password: "wrongwrongwrong",
+			wantErr:  ErrInvalidCredentials,
+		},
+		{
+			name:     "unknown email — identical to wrong password (no enumeration)",
+			email:    "ghost@x.com",
+			password: "anything12345",
+			wantErr:  ErrInvalidCredentials,
+		},
 	}
-	_, err := s.AuthenticateLocal("user@x.com", "wrongwrongwrong")
-	if !errors.Is(err, ErrInvalidCredentials) {
-		t.Errorf("expected ErrInvalidCredentials, got %v", err)
-	}
-}
 
-func TestAuthenticateLocal_UnknownEmailLooksIdenticalToWrongPassword(t *testing.T) {
-	// Both paths must return the same sentinel — leaks otherwise let
-	// an attacker enumerate accounts.
-	s := newTestStore(t)
-	_, err := s.AuthenticateLocal("ghost@x.com", "anything12345")
-	if !errors.Is(err, ErrInvalidCredentials) {
-		t.Errorf("unknown email path returned %v, want ErrInvalidCredentials", err)
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			u, err := s.AuthenticateLocal(tc.email, tc.password)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Errorf("err = %v, want %v", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if u.Email != tc.wantEmail {
+				t.Errorf("user email = %q, want %q", u.Email, tc.wantEmail)
+			}
+		})
 	}
 }
 
