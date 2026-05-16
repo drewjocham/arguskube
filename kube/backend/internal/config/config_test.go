@@ -124,16 +124,16 @@ func TestEnvOverrides(t *testing.T) {
 	clearEnv(t)
 	defer clearEnv(t)
 
-	os.Setenv("ARGUS_PORT", "3000")
-	os.Setenv("ARGUS_LOG_LEVEL", "debug")
-	os.Setenv("ARGUS_LOG_FORMAT", "json")
-	os.Setenv("ARGUS_TIER", "free")
-	os.Setenv("DEEPSEEK_API_KEY", "sk-test-key")
-	os.Setenv("ARGUS_CONTEXT", "my-cluster")
-	os.Setenv("ARGUS_IN_CLUSTER", "true")
-	os.Setenv("ARGUS_S3_BUCKET", "my-bucket")
-	os.Setenv("ARGOCD_INSECURE", "true")
-	os.Setenv("ARGUS_TRIVY_BIN", "/usr/local/bin/trivy")
+	t.Setenv("ARGUS_PORT", "3000")
+	t.Setenv("ARGUS_LOG_LEVEL", "debug")
+	t.Setenv("ARGUS_LOG_FORMAT", "json")
+	t.Setenv("ARGUS_TIER", "free")
+	t.Setenv("DEEPSEEK_API_KEY", "sk-test-key")
+	t.Setenv("ARGUS_CONTEXT", "my-cluster")
+	t.Setenv("ARGUS_IN_CLUSTER", "true")
+	t.Setenv("ARGUS_S3_BUCKET", "my-bucket")
+	t.Setenv("ARGOCD_INSECURE", "true")
+	t.Setenv("ARGUS_TRIVY_BIN", "/usr/local/bin/trivy")
 
 	cfg, err := New()
 	if err != nil {
@@ -182,8 +182,8 @@ func TestConfigValidation(t *testing.T) {
 		clearEnv(t)
 		defer clearEnv(t)
 
-		os.Setenv("ARGUS_KUBECONFIG", "/tmp/kubeconfig")
-		os.Setenv("ARGUS_IN_CLUSTER", "true")
+		t.Setenv("ARGUS_KUBECONFIG", "/tmp/kubeconfig")
+		t.Setenv("ARGUS_IN_CLUSTER", "true")
 
 		_, err := New()
 		if err == nil {
@@ -195,7 +195,7 @@ func TestConfigValidation(t *testing.T) {
 		clearEnv(t)
 		defer clearEnv(t)
 
-		os.Setenv("ARGUS_KUBECONFIG", "/tmp/kubeconfig")
+		t.Setenv("ARGUS_KUBECONFIG", "/tmp/kubeconfig")
 
 		cfg, err := New()
 		if err != nil {
@@ -210,7 +210,7 @@ func TestConfigValidation(t *testing.T) {
 		clearEnv(t)
 		defer clearEnv(t)
 
-		os.Setenv("ARGUS_IN_CLUSTER", "true")
+		t.Setenv("ARGUS_IN_CLUSTER", "true")
 
 		cfg, err := New()
 		if err != nil {
@@ -257,7 +257,7 @@ func TestEnvFunction(t *testing.T) {
 	}
 
 	// Should return value when env var is set.
-	os.Setenv(key, "custom")
+	t.Setenv(key, "custom")
 	if got := env(key, "fallback"); got != "custom" {
 		t.Errorf("env(%q, \"fallback\") = %q, want %q", key, got, "custom")
 	}
@@ -323,10 +323,10 @@ func TestAppleSignin_PrivateKeyFile(t *testing.T) {
 	}
 	tmp.Close()
 
-	os.Setenv("ARGUS_APPLE_SERVICES_ID", "com.example.signin")
-	os.Setenv("ARGUS_APPLE_TEAM_ID", "TEAM000000")
-	os.Setenv("ARGUS_APPLE_KEY_ID", "KEY0000000")
-	os.Setenv("ARGUS_APPLE_PRIVATE_KEY_FILE", tmp.Name())
+	t.Setenv("ARGUS_APPLE_SERVICES_ID", "com.example.signin")
+	t.Setenv("ARGUS_APPLE_TEAM_ID", "TEAM000000")
+	t.Setenv("ARGUS_APPLE_KEY_ID", "KEY0000000")
+	t.Setenv("ARGUS_APPLE_PRIVATE_KEY_FILE", tmp.Name())
 
 	cfg, err := New()
 	if err != nil {
@@ -346,7 +346,7 @@ func TestAppleSignin_PrivateKeyFile(t *testing.T) {
 func TestAppleSignin_MissingFieldsSkipGracefully(t *testing.T) {
 	clearEnv(t)
 	defer clearEnv(t)
-	os.Setenv("ARGUS_APPLE_SERVICES_ID", "com.example.signin")
+	t.Setenv("ARGUS_APPLE_SERVICES_ID", "com.example.signin")
 	// other fields intentionally absent
 	if _, err := New(); err != nil {
 		t.Fatalf("partial Apple config caused boot failure: %v", err)
