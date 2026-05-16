@@ -73,6 +73,7 @@ func (f *fakeChannel) Publish(_, _ string, _, _ bool, _ amqp.Publishing) error {
 		return f.publishErr
 	}
 	f.publishCount.Add(1)
+	time.Sleep(time.Microsecond)
 	return nil
 }
 
