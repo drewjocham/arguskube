@@ -13,6 +13,10 @@ const password = ref('')
 const passwordConfirm = ref('')
 const errorMsg = ref('')
 const busy = ref(false)
+// When true, the "full UI" (state B) renders even if lastUsedMethod is
+// set. Lets a returning user pick a different account / provider
+// without losing their affinity until they actually sign in.
+const expanded = ref(false)
 
 onMounted(async () => {
   await auth.loadProviders()
@@ -22,6 +26,55 @@ onMounted(async () => {
   if (auth.token) {
     await auth.restoreSession()
   }
+  // If the recorded provider is no longer offered (operator disabled
+  // it), don't lie to the user — fall back to state B and leave a
+  // breadcrumb for support.
+  if (
+    auth.lastUsedMethod &&
+    auth.lastUsedMethod.kind !== 'local' &&
+    !providerByName.value(auth.lastUsedMethod.provider)
+  ) {
+    console.info(
+      '[auth] last-used provider no longer configured; falling back to full login UI',
+      { provider: auth.lastUsedMethod.provider }
+    )
+  }
+  // Prefill the email field for the local-account fast path so the
+  // returning user only types their password.
+  if (auth.lastUsedMethod?.kind === 'local' && auth.lastUsedMethod.email) {
+    email.value = auth.lastUsedMethod.email
+  }
+})
+
+// Provider lookup by name — returns the full provider record (with
+// displayName), or undefined if it's not currently offered.
+const providerByName = computed(() => {
+  return (n) => auth.providers.find((p) => p.name === n)
+})
+
+// Does the recorded affinity still match a currently-offered provider
+// (or is it the always-available local-password path)?
+const hasValidAffinity = computed(() => {
+  const m = auth.lastUsedMethod
+  if (!m) return false
+  if (m.kind === 'local') return true
+  return Boolean(providerByName.value(m.provider))
+})
+
+// State A renders when we have a valid affinity AND the user hasn't
+// explicitly asked for the full list.
+const showOneTap = computed(() => hasValidAffinity.value && !expanded.value)
+
+// For state A's button label, prefer the live displayName from the
+// providers payload — operators can rename "oidc" → "Acme SSO" and the
+// affinity record's "oidc" name shouldn't leak through.
+const oneTapLabel = computed(() => {
+  const m = auth.lastUsedMethod
+  if (!m) return ''
+  if (m.kind === 'local') return `Continue as ${m.email || 'returning user'}`
+  const p = providerByName.value(m.provider)
+  const display = p?.displayName || m.provider || 'provider'
+  return `Continue with ${display}`
 })
 
 const canSubmit = computed(() => {
@@ -49,6 +102,15 @@ async function submit() {
   }
 }
 
+function expandFullUI() {
+  expanded.value = true
+  // Clear any prefilled email when the user explicitly chose to use a
+  // different account — they probably want a blank form.
+  if (auth.lastUsedMethod?.kind === 'local') {
+    email.value = ''
+  }
+}
+
 // OAuth flow is handled inside OAuthLoginButton; we only surface its
 // outcome here so the LoginView's own error banner stays in sync.
 function onOAuthLogin(_user) {
@@ -56,6 +118,15 @@ function onOAuthLogin(_user) {
 }
 function onOAuthError(msg) {
   errorMsg.value = msg || 'OAuth sign-in failed'
+}
+
+// Trigger the one-tap OAuth flow. We forward to the existing
+// OAuthLoginButton via a ref so we don't duplicate the polling logic.
+const oneTapBtn = ref(null)
+function triggerOneTapOAuth() {
+  const m = auth.lastUsedMethod
+  if (!m || m.kind === 'local') return
+  oneTapBtn.value?.startFlow?.(m.provider)
 }
 </script>
 
@@ -68,7 +139,86 @@ function onOAuthError(msg) {
         <p class="subtitle">SRE Console for Kubernetes</p>
       </header>
 
-      <template>
+      <!-- State A: one-tap return path. The detect-&-default UX kicks
+           in only when we have a valid recorded affinity AND the user
+           hasn't explicitly asked to switch accounts. -->
+      <section v-if="showOneTap" class="one-tap" data-testid="one-tap">
+        <p class="welcome-back">Welcome back</p>
+
+        <!-- Local-password fast path: email is prefilled, user only
+             types their password. -->
+        <form
+          v-if="auth.lastUsedMethod.kind === 'local'"
+          class="form one-tap-form"
+          autocomplete="on"
+          @submit.prevent="submit"
+        >
+          <label>
+            <span>Email</span>
+            <input
+              type="email"
+              v-model="email"
+              autocomplete="email"
+              required
+              data-testid="one-tap-email"
+            />
+          </label>
+          <label>
+            <span>Password</span>
+            <RevealableInput
+              v-model="password"
+              autocomplete="current-password"
+              :required="true"
+              :minlength="12"
+              aria-label="Password"
+            />
+          </label>
+          <button type="submit" class="primary big" :disabled="!canSubmit">
+            <span v-if="!busy">{{ oneTapLabel }}</span>
+            <span v-else>Working…</span>
+          </button>
+        </form>
+
+        <!-- OAuth / Apple fast path: render a single big provider
+             button. We mount OAuthLoginButton with a hidden trigger
+             and drive it via ref so branding stays consistent. -->
+        <div v-else class="one-tap-oauth">
+          <button
+            type="button"
+            class="primary big one-tap-provider"
+            :data-provider="auth.lastUsedMethod.provider"
+            data-testid="one-tap-provider"
+            @click="triggerOneTapOAuth"
+          >
+            <span class="provider-mark" :data-provider="auth.lastUsedMethod.provider">
+              {{ (providerByName(auth.lastUsedMethod.provider)?.displayName || auth.lastUsedMethod.provider || '?').charAt(0).toUpperCase() }}
+            </span>
+            <span>{{ oneTapLabel }}</span>
+          </button>
+          <!-- Hidden delegate: reuses the existing polling logic so we
+               don't duplicate startOAuth/pollOAuth here. -->
+          <div class="hidden-delegate" aria-hidden="true">
+            <OAuthLoginButton
+              ref="oneTapBtn"
+              @login="onOAuthLogin"
+              @error="onOAuthError"
+              @cancel="errorMsg = ''"
+            />
+          </div>
+        </div>
+
+        <p v-if="errorMsg" class="error">{{ errorMsg }}</p>
+
+        <button
+          type="button"
+          class="link different-account"
+          data-testid="expand-different-account"
+          @click="expandFullUI"
+        >Sign in with a different account</button>
+      </section>
+
+      <!-- State B: full login form + provider list. -->
+      <template v-else>
         <div class="tab-row">
           <button
             type="button"
@@ -135,9 +285,7 @@ function onOAuthError(msg) {
         </form>
 
         <!-- Single unified OAuth button. Picks one provider directly when
-             only one is configured, otherwise opens a menu. We forward the
-             same in-flight state to the rest of the form so manual
-             email/password login is disabled while OAuth is mid-flight. -->
+             only one is configured, otherwise opens a menu. -->
         <div v-if="auth.providers.length" class="oauth-section">
           <div class="divider"><span>or</span></div>
           <OAuthLoginButton
@@ -232,6 +380,56 @@ function onOAuthError(msg) {
 }
 .primary:hover:not(:disabled) { filter: brightness(1.1); }
 .primary:disabled { opacity: .55; cursor: not-allowed; }
+.primary.big {
+  padding: .85rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  width: 100%;
+}
+
+.one-tap { display: flex; flex-direction: column; gap: .9rem; }
+.one-tap .welcome-back {
+  font-size: .85rem;
+  color: var(--text2);
+  text-align: center;
+  margin: 0 0 .25rem;
+}
+.one-tap-form { gap: .75rem; }
+.one-tap-oauth { display: flex; flex-direction: column; gap: .5rem; }
+.one-tap-provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .65rem;
+}
+.one-tap-provider .provider-mark {
+  width: 1.5rem; height: 1.5rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.18);
+  border-radius: 50%;
+  font-weight: 700; font-size: .85rem;
+  color: #fff;
+}
+/* Apple branding — match the system convention: black bg, white text. */
+.one-tap-provider[data-provider="apple"] {
+  background: #000;
+  color: #fff;
+}
+.one-tap-provider[data-provider="apple"]:hover:not(:disabled) {
+  filter: brightness(1.2);
+}
+.hidden-delegate {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  pointer-events: none;
+  opacity: 0;
+}
+.different-account {
+  align-self: center;
+  margin-top: .25rem;
+}
 
 .oauth-section { margin-top: 1.5rem; }
 .divider {
@@ -254,31 +452,6 @@ function onOAuthError(msg) {
   text-transform: uppercase;
   letter-spacing: .08em;
 }
-.oauth-buttons { display: flex; flex-direction: column; gap: .55rem; }
-.oauth-btn {
-  display: flex;
-  align-items: center;
-  gap: .65rem;
-  background: var(--bg3);
-  border: 1px solid var(--border2);
-  color: var(--text);
-  padding: .55rem .8rem;
-  border-radius: var(--r2);
-  font: inherit;
-  cursor: pointer;
-  transition: background .15s var(--ease);
-}
-.oauth-btn:hover:not(:disabled) { background: var(--bg4); }
-.oauth-btn:disabled { opacity: .5; cursor: not-allowed; }
-.provider-mark {
-  width: 1.4rem; height: 1.4rem;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--bg);
-  border-radius: 50%;
-  font-weight: 600; font-size: .8rem;
-}
-.oauth-google .provider-mark { color: #4285F4; }
-.oauth-oidc .provider-mark { color: var(--purple); }
 
 .error {
   margin-top: 1rem;
@@ -295,25 +468,6 @@ function onOAuthError(msg) {
   color: var(--text3);
   text-align: center;
 }
-
-.oauth-pending {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: .75rem;
-  padding: 1.5rem 0;
-  text-align: center;
-}
-.oauth-pending p { color: var(--text2); font-size: .9rem; max-width: 22rem; }
-.oauth-pending .hint { color: var(--text3); font-size: .8rem; }
-.spinner {
-  width: 28px; height: 28px;
-  border: 2px solid var(--border2);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
 
 .link {
   background: transparent; border: 0; color: var(--text3);
