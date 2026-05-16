@@ -66,6 +66,100 @@ func TestSaveAndLoadRoundtrip(t *testing.T) {
 	}
 }
 
+// TestSaveAndLoadRoundtrip_AuthAndWorkspace verifies the auth + workspace
+// blocks round-trip cleanly. Without this, fields written by the Sign-in
+// & integrations Settings section would be silently dropped on restart.
+func TestSaveAndLoadRoundtrip_AuthAndWorkspace(t *testing.T) {
+	dir := t.TempDir()
+	prev := settingsDirOverride
+	SetSettingsDirForTest(dir)
+	t.Cleanup(func() { SetSettingsDirForTest(prev) })
+
+	want := &PersistedSettings{
+		HasAuth: true,
+		Auth: PersistedAuthSettings{
+			GoogleClientID:     "google-id",
+			GoogleClientSecret: "google-secret",
+			OIDCIssuer:         "https://acme.okta.com",
+			OIDCClientID:       "oidc-id",
+			OIDCClientSecret:   "oidc-secret",
+			OIDCDisplayName:    "Acme SSO",
+			AppleServicesID:    "com.argus.signin",
+			AppleTeamID:        "ABCD123456",
+			AppleKeyID:         "KEYID67890",
+			ApplePrivateKey:    "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----",
+			AppleDisplayName:   "Apple",
+			AllowLocalSignup:   true,
+			PasskeyEnabled:     true,
+			PasskeyRPID:        "localhost",
+			PasskeyRPName:      "Argus",
+			PasskeyRPOrigin:    "http://localhost:8080",
+		},
+		HasWorkspace: true,
+		Workspace: PersistedWorkspaceSettings{
+			GoogleClientID:     "ws-google-id",
+			GoogleClientSecret: "ws-google-secret",
+			SlackClientID:      "slack-id",
+			SlackClientSecret:  "slack-secret",
+			SlackSigningSecret: "slack-signing",
+		},
+	}
+	if err := SavePersistedSettings(want); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := LoadPersistedSettings()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Auth != want.Auth {
+		t.Errorf("auth roundtrip mismatch.\nwant: %+v\ngot : %+v", want.Auth, got.Auth)
+	}
+	if got.Workspace != want.Workspace {
+		t.Errorf("workspace roundtrip mismatch.\nwant: %+v\ngot : %+v", want.Workspace, got.Workspace)
+	}
+}
+
+// TestMergeInto_AuthAndWorkspace verifies the persisted block overlays
+// the live config on boot — without this, env vars would silently win
+// after a settings save.
+func TestMergeInto_AuthAndWorkspace(t *testing.T) {
+	cfg := &OnlineDataConfig{
+		Auth: AuthConfig{
+			PublicBaseURL:  "http://127.0.0.1:8080", // infra-only, must survive
+			DevMode:        true,                    // infra-only, must survive
+			GoogleClientID: "env-default",
+		},
+		Workspace: WorkspaceConfig{SlackClientID: "env-slack"},
+	}
+	persisted := &PersistedSettings{
+		HasAuth: true,
+		Auth: PersistedAuthSettings{
+			GoogleClientID:     "ui-google",
+			GoogleClientSecret: "ui-google-secret",
+			AllowLocalSignup:   false,
+		},
+		HasWorkspace: true,
+		Workspace:    PersistedWorkspaceSettings{SlackClientID: "ui-slack"},
+	}
+	persisted.MergeInto(cfg)
+
+	if cfg.Auth.GoogleClientID != "ui-google" {
+		t.Errorf("expected UI value to override env, got %q", cfg.Auth.GoogleClientID)
+	}
+	if cfg.Auth.GoogleClientSecret != "ui-google-secret" {
+		t.Errorf("expected client secret applied, got %q", cfg.Auth.GoogleClientSecret)
+	}
+	if cfg.Auth.PublicBaseURL != "http://127.0.0.1:8080" {
+		t.Errorf("PublicBaseURL is infra-only and must survive merge, got %q", cfg.Auth.PublicBaseURL)
+	}
+	if !cfg.Auth.DevMode {
+		t.Errorf("DevMode is infra-only and must survive merge")
+	}
+	if cfg.Workspace.SlackClientID != "ui-slack" {
+		t.Errorf("expected workspace override, got %q", cfg.Workspace.SlackClientID)
+	}
+}
+
 func TestLoadPersistedSettings_MalformedJSON(t *testing.T) {
 	dir := t.TempDir()
 	prev := settingsDirOverride

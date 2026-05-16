@@ -28,6 +28,25 @@ describe('ConnectionPanel.vue', () => {
     expect(w.text()).toContain('No workspace integrations are available')
   })
 
+  it('empty state surfaces a button that navigates to the sign-in-integrations Settings anchor', async () => {
+    mockCachedCallGo.mockResolvedValueOnce([])
+    mockCallGo.mockResolvedValueOnce([])
+    const w = mount(ConnectionPanel)
+    await flushPromises()
+    const btn = w.find('.open-settings-btn')
+    expect(btn.exists()).toBe(true)
+    expect(btn.text()).toMatch(/sign-in/i)
+    // Click queues a nav request through the appNav store; lazily
+    // import after the panel mounts so we observe the same store
+    // Pinia hands to the component.
+    const { useAppNavStore } = await import('../../stores/appNav')
+    const appNav = useAppNavStore()
+    await btn.trigger('click')
+    expect(appNav.pending).toEqual({ navId: 'settings', anchor: 'sign-in-integrations' })
+    // No env-var hint anymore.
+    expect(w.text()).not.toContain('ARGUS_SLACK_CLIENT_ID')
+  })
+
   it('renders a tile with a Connect button when no connections exist', async () => {
     mockCachedCallGo.mockResolvedValueOnce(['gdocs'])
     mockCallGo.mockResolvedValueOnce([])
