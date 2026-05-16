@@ -166,6 +166,22 @@ describe('OAuthLoginButton.vue', () => {
     expect(window.runtime.BrowserOpenURL).toHaveBeenCalledWith('https://gh')
   })
 
+  it('falls back to window.open when Wails runtime is unavailable (e.g. npm run dev)', async () => {
+    // Simulate a plain-browser context: no window.runtime injected.
+    delete window.runtime
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    setProviders(auth, [{ name: 'github', displayName: 'GitHub' }])
+    auth.startOAuth = vi.fn().mockResolvedValue({ authUrl: 'https://gh', state: 's1' })
+    auth.pollOAuth = vi.fn().mockResolvedValue({ done: true, user: {} })
+
+    const w = mount(OAuthLoginButton)
+    await w.find('button.oauth-login-trigger').trigger('click')
+    await flushPromises()
+    expect(openSpy).toHaveBeenCalledWith('https://gh', '_blank', 'noopener,noreferrer')
+    openSpy.mockRestore()
+  })
+
   it('selects providers via ArrowDown / Enter keyboard navigation', async () => {
     setProviders(auth, [
       { name: 'google',  displayName: 'Google' },
