@@ -14,7 +14,14 @@ const connecting = ref({})  // service -> bool
 
 // Service metadata is local — the backend's authoritative list is
 // service *ids* only; labels/colors/icons are presentation concerns.
+// Keep this in sync with kube/backend/internal/workspace/types.go —
+// any Service constant the backend exposes via AvailableServices()
+// should have a matching entry here, otherwise the tile is filtered
+// out and the user sees the "no integrations wired" empty state.
 const SERVICE_META = {
+  slack:   { label: 'Slack',         color: '#4A154B', letter: 'S' },
+  gchat:   { label: 'Google Chat',   color: '#0F9D58', letter: 'C' },
+  google:  { label: 'Google Workspace', color: '#4285F4', letter: 'G' },
   gdocs:   { label: 'Google Docs',   color: '#4285F4', letter: 'D' },
   gsheets: { label: 'Google Sheets', color: '#0F9D58', letter: 'S' },
   gtasks:  { label: 'Google Tasks',  color: '#4285F4', letter: 'T' },
@@ -63,8 +70,12 @@ function avatarStyle(meta) {
     <div v-if="store.error" class="error">{{ store.error }}</div>
 
     <div v-if="!visibleServices.length" class="empty">
-      <p>No workspace integrations are wired in this build.</p>
-      <p class="hint">Google Docs, Sheets, and Tasks adapters land in Phase 1B.</p>
+      <p>No workspace integrations are available.</p>
+      <p class="hint">
+        Set the matching OAuth client env vars (e.g. <code>ARGUS_SLACK_CLIENT_ID</code>,
+        <code>ARGUS_GOOGLE_CLIENT_ID</code>) and restart the backend to enable the
+        Connect buttons for Slack, Google Chat, Docs, Sheets, and Tasks.
+      </p>
     </div>
 
     <ul v-else class="tiles">

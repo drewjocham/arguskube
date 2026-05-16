@@ -25,7 +25,7 @@ describe('ConnectionPanel.vue', () => {
     mockCallGo.mockResolvedValueOnce([])
     const w = mount(ConnectionPanel)
     await flushPromises()
-    expect(w.text()).toContain('No workspace integrations are wired')
+    expect(w.text()).toContain('No workspace integrations are available')
   })
 
   it('renders a tile with a Connect button when no connections exist', async () => {
@@ -38,6 +38,18 @@ describe('ConnectionPanel.vue', () => {
     const connectBtn = w.find('.connect-btn')
     expect(connectBtn.exists()).toBe(true)
     expect(connectBtn.text()).toContain('Connect')
+  })
+
+  it('renders Slack and Google Workspace tiles when the backend reports them', async () => {
+    mockCachedCallGo.mockResolvedValueOnce(['slack', 'google', 'gchat'])
+    mockCallGo.mockResolvedValueOnce([])
+    const w = mount(ConnectionPanel)
+    await flushPromises()
+    expect(w.text()).toContain('Slack')
+    expect(w.text()).toContain('Google Workspace')
+    expect(w.text()).toContain('Google Chat')
+    // One Connect button per service tile.
+    expect(w.findAll('.connect-btn').length).toBe(3)
   })
 
   it('renders one row per connection with a Disconnect button', async () => {
