@@ -25,13 +25,10 @@ const workspacePathOAuthCallback = "/workspace/oauth/callback"
 // flows. The state nonce is server-issued (Manager.Start) so the
 // callback can't be forged by an unrelated browser.
 
-// WorkspaceRoutes builds the /workspace/* router and returns it as a
-// chi sub-tree the parent server mounts. Matches the pim-agl
-// "Routes() http.Handler" composition pattern.
-func (a *App) WorkspaceRoutes() http.Handler {
-	r := gochi.NewRouter()
+// WorkspaceRoutes registers the /workspace/* handlers onto the
+// supplied chi router, matching the AuthRoutes pattern.
+func (a *App) WorkspaceRoutes(r gochi.Router) {
 	r.Get(workspacePathOAuthCallback, a.handleWorkspaceCallback)
-	return r
 }
 
 func (a *App) handleWorkspaceCallback(w http.ResponseWriter, r *http.Request) {
