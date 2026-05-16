@@ -8,6 +8,7 @@ import {setup} from '../models';
 import {oauthproviders} from '../models';
 import {pkg} from '../models';
 import {agentconn} from '../models';
+import {workspace} from '../models';
 import {incidents} from '../models';
 import {runbooks} from '../models';
 import {alerts} from '../models';
@@ -25,7 +26,6 @@ import {vulnscan} from '../models';
 import {popeye} from '../models';
 import {envprobe} from '../models';
 import {auth} from '../models';
-import {workspace} from '../models';
 
 export function AcceptSuggestion(arg1:string,arg2:string):Promise<void>;
 
@@ -38,6 +38,8 @@ export function AnalyzeDB(arg1:context.Context,arg2:string,arg3:string):Promise<
 export function AnalyzeEndpointReadiness(arg1:string,arg2:string):Promise<k8s.EndpointReadiness>;
 
 export function AnalyzeLabelMatch(arg1:string,arg2:string):Promise<k8s.LabelDiffResult>;
+
+export function AppendGoogleDoc(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function ApplyYaml(arg1:string):Promise<string>;
 
@@ -79,6 +81,12 @@ export function CreateCodeReviewReport(arg1:string,arg2:string,arg3:string,arg4:
 
 export function CreateExternalBridge(arg1:k8s.ExternalBridgeSpec):Promise<k8s.BridgeResult>;
 
+export function CreateGoogleDoc(arg1:string,arg2:string,arg3:string,arg4:string):Promise<workspace.Doc>;
+
+export function CreateGoogleSheet(arg1:string,arg2:string,arg3:string):Promise<workspace.Sheet>;
+
+export function CreateGoogleTask(arg1:string,arg2:string,arg3:string,arg4:workspace.Task):Promise<workspace.Task>;
+
 export function CreateIncident(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<incidents.Incident>;
 
 export function CreateNotebookFolder(arg1:string):Promise<void>;
@@ -92,6 +100,8 @@ export function DeleteAnomalyRule(arg1:string):Promise<void>;
 export function DeleteCodeReviewReport(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteDBConnection(arg1:context.Context,arg2:string):Promise<void>;
+
+export function DeleteGoogleTask(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function DeleteIncident(arg1:string):Promise<void>;
 
@@ -201,6 +211,8 @@ export function GetFeatures():Promise<Record<features.Feature, boolean>>;
 
 export function GetGatewayStatusByRole(arg1:string):Promise<any>;
 
+export function GetGoogleSheet(arg1:string,arg2:string,arg3:string):Promise<workspace.Sheet>;
+
 export function GetLocalDistLoadQuota():Promise<pkg.LocalQuotaStatus>;
 
 export function GetMetrics():Promise<alerts.ClusterMetrics>;
@@ -299,6 +311,12 @@ export function ListGitHubBranches():Promise<Array<pkg.GitHubBranch>>;
 
 export function ListGitHubPullRequests():Promise<Array<pkg.GitHubPullRequest>>;
 
+export function ListGoogleChatSpaces(arg1:string,arg2:string):Promise<Array<pkg.GChatSpaceView>>;
+
+export function ListGoogleTaskLists(arg1:string,arg2:string):Promise<Array<workspace.TaskList>>;
+
+export function ListGoogleTasks(arg1:string,arg2:string,arg3:string):Promise<Array<workspace.Task>>;
+
 export function ListHTTPRoutes(arg1:string):Promise<Array<k8s.HTTPRouteSummary>>;
 
 export function ListIncidents():Promise<Array<incidents.Incident>>;
@@ -316,6 +334,8 @@ export function ListResources(arg1:string,arg2:string):Promise<k8s.ResourceListR
 export function ListRunbooks():Promise<Array<runbooks.Runbook>>;
 
 export function ListServiceSelectors(arg1:string):Promise<Array<k8s.ServiceSelectorInfo>>;
+
+export function ListSlackChannels(arg1:string,arg2:string):Promise<Array<pkg.SlackChannelView>>;
 
 export function ListSpotChecks():Promise<Array<string>>;
 
@@ -348,6 +368,10 @@ export function QueryLogs(arg1:string,arg2:string,arg3:number):Promise<k8s.LogQu
 export function QueryPromQL(arg1:context.Context,arg2:string,arg3:string):Promise<Array<number>>;
 
 export function QueryTimeSeriesMetrics(arg1:string,arg2:string):Promise<Array<number>>;
+
+export function ReadGoogleDoc(arg1:string,arg2:string,arg3:string):Promise<workspace.DocBody>;
+
+export function ReadGoogleSheetRange(arg1:string,arg2:string,arg3:string,arg4:string):Promise<Array<any>>;
 
 export function RecordView(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -398,6 +422,10 @@ export function ScanImage(arg1:string,arg2:string):Promise<string>;
 export function SendChatMessage(arg1:string,arg2:string):Promise<string>;
 
 export function SendExecInput(arg1:string):Promise<void>;
+
+export function SendGoogleChatMessage(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function SendSlackMessage(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function SendTerminalInput(arg1:string):Promise<void>;
 
@@ -457,6 +485,8 @@ export function UndeployAgent(arg1:string):Promise<setup.SetupResult>;
 
 export function UpdateBillingRates(arg1:number,arg2:number,arg3:number):Promise<void>;
 
+export function UpdateGoogleTask(arg1:string,arg2:string,arg3:string,arg4:string,arg5:workspace.Task):Promise<workspace.Task>;
+
 export function UpdateIncident(arg1:string,arg2:string,arg3:string):Promise<incidents.Incident>;
 
 export function UpdateSettings(arg1:pkg.SettingsPayload):Promise<void>;
@@ -464,3 +494,7 @@ export function UpdateSettings(arg1:pkg.SettingsPayload):Promise<void>;
 export function UpsertDBConnection(arg1:context.Context,arg2:pkg.DBConnectionInput):Promise<pkg.DBConnectionView>;
 
 export function ValidateEnvFile(arg1:string,arg2:string,arg3:string):Promise<pkg.EnvValidationResult>;
+
+export function WorkspaceRoutes(arg1:http.ServeMux):Promise<void>;
+
+export function WriteGoogleSheetRange(arg1:string,arg2:string,arg3:string,arg4:string,arg5:Array<any>):Promise<void>;

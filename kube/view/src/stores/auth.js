@@ -124,9 +124,6 @@ export const useAuthStore = defineStore('auth', () => {
       providers.value = r.providers || []
       allowSignup.value = r.allowSignup !== false
       authDisabled.value = r.authDisabled === true
-      // Visible breadcrumb so the operator can confirm in dev tools
-      // exactly what landed when `make no-auth-run` mysteriously
-      // doesn't bypass the gate. Mirror the backend's startup banner.
       if (authDisabled.value) {
         console.info('[auth] dev-mode ON — gate bypassed (server reports authDisabled=true)')
       } else {
@@ -134,7 +131,6 @@ export const useAuthStore = defineStore('auth', () => {
           { providers: providers.value.map((p) => p.name), allowSignup: allowSignup.value })
       }
     } catch (err) {
-      // Network failure: keep secure defaults so the local form still renders.
       providers.value = []
       allowSignup.value = true
       authDisabled.value = false
