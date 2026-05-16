@@ -8,9 +8,19 @@
 
 import { onMounted, ref, computed } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspace'
+import { useAppNavStore } from '../../stores/appNav'
 
 const store = useWorkspaceStore()
+const appNav = useAppNavStore()
 const connecting = ref({})  // service -> bool
+
+// Empty-state CTA: jump to the new "Sign-in & integrations" section in
+// Settings so the user can paste OAuth client credentials without
+// editing env vars + restarting the backend. The same anchor is what
+// SettingsPanel's onMounted handler scrolls to.
+function openSettings() {
+  appNav.requestNav({ navId: 'settings', anchor: 'sign-in-integrations' })
+}
 
 // Service metadata is local — the backend's authoritative list is
 // service *ids* only; labels/colors/icons are presentation concerns.
@@ -72,10 +82,12 @@ function avatarStyle(meta) {
     <div v-if="!visibleServices.length" class="empty">
       <p>No workspace integrations are available.</p>
       <p class="hint">
-        Set the matching OAuth client env vars (e.g. <code>ARGUS_SLACK_CLIENT_ID</code>,
-        <code>ARGUS_GOOGLE_CLIENT_ID</code>) and restart the backend to enable the
-        Connect buttons for Slack, Google Chat, Docs, Sheets, and Tasks.
+        Paste your Slack and Google OAuth client credentials in Settings to
+        enable the Connect buttons — no restart needed.
       </p>
+      <button class="open-settings-btn" type="button" @click="openSettings">
+        Open sign-in &amp; integrations settings
+      </button>
     </div>
 
     <ul v-else class="tiles">
@@ -149,6 +161,18 @@ header h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--tex
   border-radius: 8px;
 }
 .empty p { margin: 4px 0; }
+.open-settings-btn {
+  margin-top: 14px;
+  padding: 7px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.open-settings-btn:hover { filter: brightness(1.06); }
 
 .tiles { list-style: none; padding: 0; margin: 18px 0 0; display: flex; flex-direction: column; gap: 12px; }
 

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -455,6 +456,33 @@ type SettingsPayload struct {
 	BearToken              string `json:"bearToken"`
 	Tier                   string `json:"tier"`
 	LogLevel               string `json:"logLevel"`
+
+	// Sign-in providers (auth). Secrets are masked on read; on write
+	// the masked sentinel skips re-applying so an unedited form
+	// preserves the on-disk value.
+	GoogleClientID     string `json:"googleClientId"`
+	GoogleClientSecret string `json:"googleClientSecret"` // masked
+	OIDCIssuer         string `json:"oidcIssuer"`
+	OIDCClientID       string `json:"oidcClientId"`
+	OIDCClientSecret   string `json:"oidcClientSecret"` // masked
+	OIDCDisplayName    string `json:"oidcDisplayName"`
+	AppleServicesID    string `json:"appleServicesId"`
+	AppleTeamID        string `json:"appleTeamId"`
+	AppleKeyID         string `json:"appleKeyId"`
+	ApplePrivateKey    string `json:"applePrivateKey"` // masked
+	AppleDisplayName   string `json:"appleDisplayName"`
+	AllowLocalSignup   bool   `json:"allowLocalSignup"`
+	PasskeyEnabled     bool   `json:"passkeyEnabled"`
+	PasskeyRPID        string `json:"passkeyRpId"`
+	PasskeyRPName      string `json:"passkeyRpName"`
+	PasskeyRPOrigin    string `json:"passkeyRpOrigin"`
+
+	// Workspace OAuth clients (separate from sign-in Google).
+	WorkspaceGoogleClientID     string `json:"workspaceGoogleClientId"`
+	WorkspaceGoogleClientSecret string `json:"workspaceGoogleClientSecret"` // masked
+	SlackClientID               string `json:"slackClientId"`
+	SlackClientSecret           string `json:"slackClientSecret"`  // masked
+	SlackSigningSecret          string `json:"slackSigningSecret"` // masked
 }
 
 // maskSecret returns a display-safe rendering of a secret string. Empty input
@@ -549,6 +577,29 @@ func (a *App) GetSettings() SettingsPayload {
 
 		Tier:     string(a.cfg.Features.Tier),
 		LogLevel: a.cfg.Logging.Level,
+
+		GoogleClientID:     a.cfg.Auth.GoogleClientID,
+		GoogleClientSecret: maskSecret(a.cfg.Auth.GoogleClientSecret),
+		OIDCIssuer:         a.cfg.Auth.OIDCIssuer,
+		OIDCClientID:       a.cfg.Auth.OIDCClientID,
+		OIDCClientSecret:   maskSecret(a.cfg.Auth.OIDCClientSecret),
+		OIDCDisplayName:    a.cfg.Auth.OIDCDisplayName,
+		AppleServicesID:    a.cfg.Auth.AppleServicesID,
+		AppleTeamID:        a.cfg.Auth.AppleTeamID,
+		AppleKeyID:         a.cfg.Auth.AppleKeyID,
+		ApplePrivateKey:    maskSecret(a.cfg.Auth.ApplePrivateKey),
+		AppleDisplayName:   a.cfg.Auth.AppleDisplayName,
+		AllowLocalSignup:   a.cfg.Auth.AllowLocalSignup,
+		PasskeyEnabled:     a.cfg.Auth.PasskeyEnabled,
+		PasskeyRPID:        a.cfg.Auth.PasskeyRPID,
+		PasskeyRPName:      a.cfg.Auth.PasskeyRPName,
+		PasskeyRPOrigin:    a.cfg.Auth.PasskeyRPOrigin,
+
+		WorkspaceGoogleClientID:     a.cfg.Workspace.GoogleClientID,
+		WorkspaceGoogleClientSecret: maskSecret(a.cfg.Workspace.GoogleClientSecret),
+		SlackClientID:               a.cfg.Workspace.SlackClientID,
+		SlackClientSecret:           maskSecret(a.cfg.Workspace.SlackClientSecret),
+		SlackSigningSecret:          maskSecret(a.cfg.Workspace.SlackSigningSecret),
 	}
 }
 
@@ -805,6 +856,108 @@ func (a *App) UpdateSettings(s SettingsPayload) error {
 		a.cfg.Pipelines.BearToken = s.BearToken
 	}
 
+	// Sign-in providers + workspace OAuth clients. Strings apply when
+	// non-empty; secrets additionally skip the masked sentinel so a
+	// "view-then-save" cycle doesn't overwrite the on-disk value with
+	// "••••". Booleans apply unconditionally so the user can flip them
+	// off again.
+	authChanged := false
+	if s.GoogleClientID != "" && s.GoogleClientID != a.cfg.Auth.GoogleClientID {
+		a.cfg.Auth.GoogleClientID = s.GoogleClientID
+		authChanged = true
+	}
+	if s.GoogleClientSecret != "" && !containsMask(s.GoogleClientSecret) {
+		a.cfg.Auth.GoogleClientSecret = s.GoogleClientSecret
+		authChanged = true
+	}
+	if s.OIDCIssuer != "" && s.OIDCIssuer != a.cfg.Auth.OIDCIssuer {
+		a.cfg.Auth.OIDCIssuer = s.OIDCIssuer
+		authChanged = true
+	}
+	if s.OIDCClientID != "" && s.OIDCClientID != a.cfg.Auth.OIDCClientID {
+		a.cfg.Auth.OIDCClientID = s.OIDCClientID
+		authChanged = true
+	}
+	if s.OIDCClientSecret != "" && !containsMask(s.OIDCClientSecret) {
+		a.cfg.Auth.OIDCClientSecret = s.OIDCClientSecret
+		authChanged = true
+	}
+	if s.OIDCDisplayName != "" && s.OIDCDisplayName != a.cfg.Auth.OIDCDisplayName {
+		a.cfg.Auth.OIDCDisplayName = s.OIDCDisplayName
+		authChanged = true
+	}
+	if s.AppleServicesID != "" && s.AppleServicesID != a.cfg.Auth.AppleServicesID {
+		a.cfg.Auth.AppleServicesID = s.AppleServicesID
+		authChanged = true
+	}
+	if s.AppleTeamID != "" && s.AppleTeamID != a.cfg.Auth.AppleTeamID {
+		a.cfg.Auth.AppleTeamID = s.AppleTeamID
+		authChanged = true
+	}
+	if s.AppleKeyID != "" && s.AppleKeyID != a.cfg.Auth.AppleKeyID {
+		a.cfg.Auth.AppleKeyID = s.AppleKeyID
+		authChanged = true
+	}
+	if s.ApplePrivateKey != "" && !containsMask(s.ApplePrivateKey) {
+		a.cfg.Auth.ApplePrivateKey = s.ApplePrivateKey
+		authChanged = true
+	}
+	if s.AppleDisplayName != "" && s.AppleDisplayName != a.cfg.Auth.AppleDisplayName {
+		a.cfg.Auth.AppleDisplayName = s.AppleDisplayName
+		authChanged = true
+	}
+	if s.AllowLocalSignup != a.cfg.Auth.AllowLocalSignup {
+		a.cfg.Auth.AllowLocalSignup = s.AllowLocalSignup
+		authChanged = true
+	}
+	if s.PasskeyEnabled != a.cfg.Auth.PasskeyEnabled {
+		a.cfg.Auth.PasskeyEnabled = s.PasskeyEnabled
+		authChanged = true
+	}
+	if s.PasskeyRPID != "" && s.PasskeyRPID != a.cfg.Auth.PasskeyRPID {
+		a.cfg.Auth.PasskeyRPID = s.PasskeyRPID
+		authChanged = true
+	}
+	if s.PasskeyRPName != "" && s.PasskeyRPName != a.cfg.Auth.PasskeyRPName {
+		a.cfg.Auth.PasskeyRPName = s.PasskeyRPName
+		authChanged = true
+	}
+	if s.PasskeyRPOrigin != "" && s.PasskeyRPOrigin != a.cfg.Auth.PasskeyRPOrigin {
+		a.cfg.Auth.PasskeyRPOrigin = s.PasskeyRPOrigin
+		authChanged = true
+	}
+	if authChanged && a.auth != nil && a.auth.store != nil {
+		a.SetupAuth(a.auth.store, a.cfg.Auth)
+		a.logger.Info("auth providers reloaded from settings")
+	}
+
+	// Workspace OAuth clients.
+	workspaceChanged := false
+	if s.WorkspaceGoogleClientID != "" && s.WorkspaceGoogleClientID != a.cfg.Workspace.GoogleClientID {
+		a.cfg.Workspace.GoogleClientID = s.WorkspaceGoogleClientID
+		workspaceChanged = true
+	}
+	if s.WorkspaceGoogleClientSecret != "" && !containsMask(s.WorkspaceGoogleClientSecret) {
+		a.cfg.Workspace.GoogleClientSecret = s.WorkspaceGoogleClientSecret
+		workspaceChanged = true
+	}
+	if s.SlackClientID != "" && s.SlackClientID != a.cfg.Workspace.SlackClientID {
+		a.cfg.Workspace.SlackClientID = s.SlackClientID
+		workspaceChanged = true
+	}
+	if s.SlackClientSecret != "" && !containsMask(s.SlackClientSecret) {
+		a.cfg.Workspace.SlackClientSecret = s.SlackClientSecret
+		workspaceChanged = true
+	}
+	if s.SlackSigningSecret != "" && !containsMask(s.SlackSigningSecret) {
+		a.cfg.Workspace.SlackSigningSecret = s.SlackSigningSecret
+		workspaceChanged = true
+	}
+	if workspaceChanged && a.workspace != nil {
+		a.workspace.ReregisterProviders(buildWorkspaceProviders(a.cfg))
+		a.logger.Info("workspace providers reloaded from settings")
+	}
+
 	if reconnect {
 		a.logger.Info("settings changed — reconnecting k8s client",
 			slog.String("kubeconfig", a.cfg.Kubernetes.Config),
@@ -1048,4 +1201,30 @@ func buildDomainEnv(a *App, d terminal.Domain) []string {
 		}
 	}
 	return env
+}
+
+// buildWorkspaceProviders constructs the list of workspace Providers
+// to register from the live config. Returns only those whose
+// credentials are fully populated. Used by UpdateSettings on hot-reload.
+func buildWorkspaceProviders(cfg *config.OnlineDataConfig) []workspace.Provider {
+	if cfg == nil {
+		return nil
+	}
+	redirect := strings.TrimRight(cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback"
+	out := []workspace.Provider{}
+	if cfg.Workspace.SlackClientID != "" && cfg.Workspace.SlackClientSecret != "" {
+		out = append(out, &workspace.SlackProvider{
+			ClientID:     cfg.Workspace.SlackClientID,
+			ClientSecret: cfg.Workspace.SlackClientSecret,
+			RedirectURL:  redirect,
+		})
+	}
+	if cfg.Workspace.GoogleClientID != "" && cfg.Workspace.GoogleClientSecret != "" {
+		out = append(out, &workspace.GoogleProvider{
+			ClientID:     cfg.Workspace.GoogleClientID,
+			ClientSecret: cfg.Workspace.GoogleClientSecret,
+			RedirectURL:  redirect,
+		})
+	}
+	return out
 }
