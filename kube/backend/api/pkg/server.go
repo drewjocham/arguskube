@@ -575,6 +575,19 @@ var httpExposedMethods = map[string]struct{}{
 	"CreateGoogleTask":      {},
 	"UpdateGoogleTask":      {},
 	"DeleteGoogleTask":      {},
+	// Workspace profiles — per-user UI snapshots (appearance, nav
+	// visibility, section tabs, saved filters). Same security posture
+	// as the workspace methods above: every call routes through
+	// profilesUserID, which validates the session and binds writes to
+	// the caller's own rows. Cross-user reads/writes are impossible
+	// regardless of args, so HTTP exposure is safe.
+	"ListProfileGroups":    {},
+	"SaveProfileGroup":     {},
+	"DeleteProfileGroup":   {},
+	"SaveProfileVariant":   {},
+	"DeleteProfileVariant": {},
+	"GetActiveProfile":     {},
+	"SetActiveProfile":     {},
 }
 
 func methodAllowedOverHTTP(name string) bool {
