@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
-Generate the Argus app icon — a clean, minimal badger face emblem.
+Generate the Argus app icon — a honey badger face emblem.
 
-Why a badger? Argus watches over Kubernetes clusters with the same
-patient, no-nonsense attention a badger gives its sett: persistent,
-unflappable, and unimpressed by surface drama. The two white face
-stripes are the signature visual feature, so the icon leans on them
-rather than fine detail that won't survive the 16×16 Finder thumbnail.
+Why a honey badger? Argus watches Kubernetes clusters with the same
+unflappable obstinance a honey badger gives a beehive: persistent,
+fearless, and uninterested in being told the task is too hard.
+
+The signature visual differentiator from a European badger is the
+single broad white "cape" sweeping over the top of the head (not the
+two parallel white stripes of the European species). The icon leans
+on that one feature plus a hint of bared teeth so the silhouette
+still reads at the 16×16 Finder thumbnail.
 
 Rendered at 1024×1024 RGBA so macOS's iconutil / Wails can downscale
 to the full asset family without re-rasterizing.
@@ -22,14 +26,14 @@ HERE = Path(__file__).resolve().parent
 OUT = HERE / "appicon.png"
 
 # Palette — picked to sit comfortably on both a light Dock and a dark
-# menu bar. The background is the same slate the LoginView gradient
-# lands on, so the icon reads as "Argus" before the user even sees
-# the wordmark.
+# menu bar. The background slate matches the LoginView gradient so
+# the icon reads as "Argus" before the user sees the wordmark.
 BG_TOP    = (32, 36, 42, 255)
 BG_BOTTOM = (14, 16, 18, 255)
 ACCENT    = (240, 196, 84, 255)   # warm amber — the badger's "eye spark"
 FUR_BLACK = (24, 24, 26, 255)
 FUR_WHITE = (240, 240, 236, 255)
+TOOTH     = (245, 244, 240, 255)
 NOSE      = (24, 24, 26, 255)
 
 
@@ -57,40 +61,64 @@ def rounded_rect_gradient():
     return img
 
 
-def badger_face(img):
-    """Draws the badger emblem centred on the background tile."""
+def honey_badger_face(img):
+    """Draw the honey badger emblem centred on the background tile."""
     d = ImageDraw.Draw(img)
     cx, cy = SIZE // 2, SIZE // 2
 
-    # --- Head silhouette (white) -------------------------------------
-    # A slightly elongated wedge: wider at the brow, tapering to a
-    # rounded muzzle. We compose it from a rounded rectangle (cranium)
-    # plus a downward-pointing chord (muzzle) to avoid the "pizza
-    # slice" look a pure triangle gives at icon sizes.
-    head_w = int(SIZE * 0.62)
-    head_h = int(SIZE * 0.74)
-    head_box = (cx - head_w // 2, cy - head_h // 2 + 30,
-                cx + head_w // 2, cy + head_h // 2 + 30)
-    d.rounded_rectangle(head_box, radius=int(SIZE * 0.22), fill=FUR_WHITE)
+    # --- Black head silhouette ---------------------------------------
+    # The honey badger reads as a wide, low head — wider than a
+    # European badger's pointed muzzle, with a soft squarish jaw.
+    # Composed as a rounded rectangle (cranium) + a slightly wider
+    # rounded rectangle below (jowls) so the bottom doesn't taper.
+    head_w = int(SIZE * 0.66)
+    head_h = int(SIZE * 0.62)
+    head_box = (cx - head_w // 2, cy - head_h // 2 + 20,
+                cx + head_w // 2, cy + head_h // 2 + 20)
+    d.rounded_rectangle(head_box, radius=int(SIZE * 0.20), fill=FUR_BLACK)
 
-    # Muzzle: a smaller rounded rect overlapping the lower face, so the
-    # bottom reads as a softer chin than the cranium rectangle alone.
-    muzzle_w = int(SIZE * 0.36)
-    muzzle_h = int(SIZE * 0.30)
-    muzzle_box = (cx - muzzle_w // 2,
-                  cy + head_h // 2 - muzzle_h // 2 - 40,
-                  cx + muzzle_w // 2,
-                  cy + head_h // 2 + muzzle_h // 2 - 40)
-    d.rounded_rectangle(muzzle_box, radius=int(SIZE * 0.18), fill=FUR_WHITE)
+    jowl_w = int(SIZE * 0.56)
+    jowl_h = int(SIZE * 0.22)
+    jowl_box = (cx - jowl_w // 2,
+                cy + head_h // 2 - jowl_h // 2 - 10,
+                cx + jowl_w // 2,
+                cy + head_h // 2 + jowl_h // 2 - 10)
+    d.rounded_rectangle(jowl_box, radius=int(SIZE * 0.16), fill=FUR_BLACK)
 
-    # --- Ears (black, sit on top of the head) ------------------------
-    # Two stubby triangles set just inside the cranium edges. We park
-    # them well outside the stripe channel so a 32×32 render still
-    # reads as "ears + stripes" rather than a single dark slab.
-    ear_inset_x = int(SIZE * 0.085)
-    ear_top_y   = head_box[1] - int(SIZE * 0.04)
-    ear_base_y  = head_box[1] + int(SIZE * 0.08)
-    ear_half_w  = int(SIZE * 0.05)
+    # --- Signature white cape ----------------------------------------
+    # The defining visual: a single broad arch of white from temple to
+    # temple, sweeping over the top of the head. Drawn as a rounded
+    # rectangle covering the upper-third of the head with the bottom
+    # corners softened so it reads as a hood, not a hat. A small
+    # amount of black above the eye-line keeps the brow visible.
+    cape_w = head_w - int(SIZE * 0.06)
+    cape_top = head_box[1] - int(SIZE * 0.06)
+    cape_bottom = cy - int(SIZE * 0.04)
+    d.rounded_rectangle(
+        (cx - cape_w // 2, cape_top,
+         cx + cape_w // 2, cape_bottom),
+        radius=int(SIZE * 0.22),
+        fill=FUR_WHITE,
+    )
+    # Tuck the cape's bottom edge down into a soft "V" over the
+    # forehead — without this the bottom edge looks like a hat brim.
+    # Two small black triangles on either side of the centre line
+    # bring the underside of the cape to a gentle peak.
+    peak_w = int(SIZE * 0.28)
+    peak_h = int(SIZE * 0.06)
+    d.polygon([
+        (cx - peak_w // 2, cape_bottom - 2),
+        (cx + peak_w // 2, cape_bottom - 2),
+        (cx, cape_bottom + peak_h),
+    ], fill=FUR_BLACK)
+
+    # --- Small dark ears poking through the cape ---------------------
+    # Just enough silhouette to register at small sizes without
+    # breaking the clean cape arch.
+    ear_inset_x = int(SIZE * 0.10)
+    ear_top_y   = head_box[1] - int(SIZE * 0.05)
+    ear_base_y  = head_box[1] + int(SIZE * 0.04)
+    ear_half_w  = int(SIZE * 0.045)
     for side in (-1, +1):
         ear_cx = cx + side * (head_w // 2 - ear_inset_x)
         d.polygon([
@@ -99,38 +127,24 @@ def badger_face(img):
             (ear_cx, ear_top_y),
         ], fill=FUR_BLACK)
 
-    # --- Signature black stripes -------------------------------------
-    # Two vertical bars running from the brow down through the eye
-    # line, with a narrow white blaze between them.  Width and spacing
-    # are deliberately chunky so the icon survives at 32×32.
-    stripe_w = int(SIZE * 0.085)
-    stripe_top    = head_box[1] - int(SIZE * 0.03)
-    stripe_bottom = cy + int(SIZE * 0.16)
-    blaze_half    = int(SIZE * 0.045)
+    # --- Amber eyes inside the black face ----------------------------
+    # Set wide; the honey badger's stare reads more aggressive than
+    # the European badger's quizzical squint.
+    eye_r = int(SIZE * 0.030)
+    eye_y = cy + int(SIZE * 0.03)
+    eye_dx = int(SIZE * 0.11)
     for side in (-1, +1):
-        cx_s = cx + side * (blaze_half + stripe_w // 2 + int(SIZE * 0.015))
-        d.rounded_rectangle(
-            (cx_s - stripe_w // 2, stripe_top,
-             cx_s + stripe_w // 2, stripe_bottom),
-            radius=int(stripe_w * 0.45),
-            fill=FUR_BLACK,
-        )
-
-    # --- Eyes (amber dots set inside the black stripes) --------------
-    eye_r = int(SIZE * 0.022)
-    eye_y = cy - int(SIZE * 0.03)
-    for side in (-1, +1):
-        cx_e = cx + side * (blaze_half + stripe_w // 2 + int(SIZE * 0.015))
+        cx_e = cx + side * eye_dx
         d.ellipse(
             (cx_e - eye_r, eye_y - eye_r,
              cx_e + eye_r, eye_y + eye_r),
             fill=ACCENT,
         )
 
-    # --- Nose ---------------------------------------------------------
-    nose_w = int(SIZE * 0.10)
+    # --- Nose --------------------------------------------------------
+    nose_w = int(SIZE * 0.11)
     nose_h = int(SIZE * 0.07)
-    nose_cy = cy + int(SIZE * 0.18)
+    nose_cy = cy + int(SIZE * 0.16)
     d.rounded_rectangle(
         (cx - nose_w // 2, nose_cy - nose_h // 2,
          cx + nose_w // 2, nose_cy + nose_h // 2),
@@ -138,12 +152,30 @@ def badger_face(img):
         fill=NOSE,
     )
 
+    # --- Bared-teeth detail ------------------------------------------
+    # Two tiny white fang shapes hanging just below the muzzle line.
+    # This is the "honey badger don't care" tell — a European badger
+    # icon would not include this. Sized to disappear gracefully at
+    # 16×16 (the fangs collapse to a single white sliver, which still
+    # reads as "open mouth").
+    fang_w = int(SIZE * 0.024)
+    fang_h = int(SIZE * 0.055)
+    fang_y = nose_cy + int(SIZE * 0.05)
+    fang_dx = int(SIZE * 0.035)
+    for side in (-1, +1):
+        fang_cx = cx + side * fang_dx
+        d.polygon([
+            (fang_cx - fang_w // 2, fang_y),
+            (fang_cx + fang_w // 2, fang_y),
+            (fang_cx, fang_y + fang_h),
+        ], fill=TOOTH)
+
     return img
 
 
 def main():
     bg = rounded_rect_gradient()
-    icon = badger_face(bg)
+    icon = honey_badger_face(bg)
     # A whisper of inner shadow against the squircle edge — pure
     # decoration, kept subtle so the icon doesn't look "graphic-designed".
     glow = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))

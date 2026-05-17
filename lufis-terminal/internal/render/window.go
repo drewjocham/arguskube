@@ -27,7 +27,7 @@ type Window struct {
 	texture  uint32
 	OnKey    func(key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey)
 	OnChar   func(char rune)
-	OnResize func(width, height int)
+	OnResize func(fbWidth, fbHeight int) // Changed to provide framebuffer physical size
 }
 
 func New(width, height int, title string, logger *slog.Logger) (*Window, error) {
@@ -89,7 +89,8 @@ func New(width, height int, title string, logger *slog.Logger) (*Window, error) 
 
 	window.SetKeyCallback(w.onKey)
 	window.SetCharCallback(w.onChar)
-	window.SetSizeCallback(w.onResize)
+	// We use FramebufferSizeCallback so we know the physical pixel dimensions
+	window.SetFramebufferSizeCallback(w.onFramebufferResize)
 
 	return w, nil
 }
@@ -181,6 +182,10 @@ func (w *Window) setupQuad() {
 	gl.VertexAttribPointerWithOffset(1, 2, gl.FLOAT, false, 4*4, 2*4)
 }
 
+func (w *Window) Scale() (float32, float32) {
+	return w.window.GetContentScale()
+}
+
 func (w *Window) ShouldClose() bool { return w.window.ShouldClose() }
 
 func (w *Window) PollEvents() { glfw.PollEvents() }
@@ -204,10 +209,20 @@ func (w *Window) Destroy() {
 
 func (w *Window) Present(img *image.RGBA) {
 	fbW, fbH := w.window.GetFramebufferSize()
-	gl.Viewport(0, 0, int32(fbW), int32(fbH))
+
+	// The image is already rendered at the physical pixel resolution (High DPI)
+	// so we map 1 pixel of the image to 1 pixel of the framebuffer natively.
+	texW := int32(img.Rect.Dx())
+	texH := int32(img.Rect.Dy())
+
+	// Anchor top-left
+	gl.Viewport(0, int32(fbH)-texH, texW, texH)
 
 	gl.ClearColor(0, 0, 0, 1)
+	gl.Enable(gl.SCISSOR_TEST)
+	gl.Scissor(0, 0, int32(fbW), int32(fbH))
 	gl.Clear(gl.COLOR_BUFFER_BIT)
+	gl.Disable(gl.SCISSOR_TEST)
 
 	gl.UseProgram(w.program)
 
@@ -244,10 +259,9 @@ func (w *Window) onChar(_ *glfw.Window, char rune) {
 	}
 }
 
-func (w *Window) onResize(_ *glfw.Window, width, height int) {
-	w.width = width
-	w.height = height
+func (w *Window) onFramebufferResize(_ *glfw.Window, fbWidth, fbHeight int) {
+	// Let the app handle grid resize using actual physical pixels
 	if w.OnResize != nil {
-		w.OnResize(width, height)
+		w.OnResize(fbWidth, fbHeight)
 	}
 }

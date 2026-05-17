@@ -13,6 +13,7 @@ import {incidents} from '../models';
 import {runbooks} from '../models';
 import {alerts} from '../models';
 import {saasapi} from '../models';
+import {profiles} from '../models';
 import {ai} from '../models';
 import {anomaly} from '../models';
 import {argocd} from '../models';
@@ -107,6 +108,10 @@ export function DeleteNotebook(arg1:string):Promise<void>;
 
 export function DeletePod(arg1:string,arg2:string):Promise<void>;
 
+export function DeleteProfileGroup(arg1:string,arg2:string):Promise<void>;
+
+export function DeleteProfileVariant(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function DeleteResource(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function DeleteRunbook(arg1:string):Promise<void>;
@@ -144,6 +149,8 @@ export function GenerateLoadTestPayload(arg1:string,arg2:number):Promise<string>
 export function GenerateTrafficSplitHTTPRoute(arg1:string,arg2:string,arg3:string,arg4:string,arg5:Array<k8s.BackendRefWeight>):Promise<string>;
 
 export function GenerateWorkloadYAML(arg1:k8s.WorkloadSpec):Promise<k8s.WorkloadYAML>;
+
+export function GetActiveProfile(arg1:string):Promise<profiles.Active>;
 
 export function GetAgentEventLog():Promise<Array<ai.AgentEvent>>;
 
@@ -307,6 +314,8 @@ export function ListNotebooks():Promise<Array<notebooks.FileEntry>>;
 
 export function ListOAuthProviders():Promise<Array<oauthproviders.ProviderInfo>>;
 
+export function ListProfileGroups(arg1:string):Promise<Array<profiles.Group>>;
+
 export function ListRegistryTags(arg1:string):Promise<Array<k8s.RegistryTag>>;
 
 export function ListResources(arg1:string,arg2:string):Promise<k8s.ResourceListResult>;
@@ -385,6 +394,10 @@ export function SaveNotebook(arg1:string,arg2:string):Promise<void>;
 
 export function SavePRGuidelines(arg1:string,arg2:string):Promise<void>;
 
+export function SaveProfileGroup(arg1:string,arg2:profiles.Group):Promise<profiles.Group>;
+
+export function SaveProfileVariant(arg1:string,arg2:string,arg3:profiles.Variant):Promise<profiles.Variant>;
+
 export function SaveRunbook(arg1:string,arg2:string):Promise<void>;
 
 export function SaveWorkflow(arg1:workflows.Workflow):Promise<workflows.Workflow>;
@@ -402,6 +415,8 @@ export function SendGoogleChatMessage(arg1:string,arg2:string,arg3:string,arg4:s
 export function SendSlackMessage(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function ServeHTTP(arg1:http.ResponseWriter,arg2:http.Request):Promise<void>;
+
+export function SetActiveProfile(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function SetAgentProfile(arg1:alertproc.AgentProfile):Promise<void>;
 

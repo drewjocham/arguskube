@@ -78,11 +78,6 @@ func run() error {
 	app.automation.Start()
 	defer app.automation.Stop()
 
-	app.font, err = render.NewFontFace(app.cfg.Terminal.FontSize)
-	if err != nil {
-		return err
-	}
-
 	app.buf = screen.NewBuffer(80, 24)
 	app.parser = ansi.NewParser(app.buf)
 
@@ -91,10 +86,6 @@ func run() error {
 		app.parser.WriteString(data)
 	}
 
-	// Title preference: ARGUS_TERMINAL_TITLE (set by Argus's
-	// LaunchPopOutTerminal) wins; otherwise show the active K8s
-	// context so a user juggling multiple windows can tell them
-	// apart at a glance; otherwise the bare "Argus Terminal" default.
 	title := app.cfg.Terminal.Title
 	if title == "" {
 		title = "Argus Terminal"
@@ -106,33 +97,60 @@ func run() error {
 		}
 	}
 
+	// Create window first so we can query the DPI scale factor
 	app.win, err = render.New(app.cfg.Terminal.Width, app.cfg.Terminal.Height, title, app.logger)
 	if err != nil {
 		return err
 	}
 	defer app.win.Destroy()
 
+	// Use the window's actual DPI scaling for crispy native-resolution fonts on Retina
+	_, scaleY := app.win.Scale()
+	dpi := 72.0 * float64(scaleY)
+	app.font, err = render.NewFontFace(app.cfg.Terminal.FontSize, dpi)
+	if err != nil {
+		return err
+	}
+
 	if err := app.term.Start(app.cfg.Terminal.Shell, 24, 80); err != nil {
 		return err
 	}
 	defer app.term.Close()
 
+	// Physical cell dimensions
 	cw := app.font.CellWidth()
 	ch := app.font.CellHeight()
 
-	app.win.OnResize = func(width, height int) {
-		cols := width / cw
-		rows := height / ch
+	app.win.OnResize = func(fbWidth, fbHeight int) {
+		cols := fbWidth / cw
+		rows := fbHeight / ch
 		if cols < 10 {
 			cols = 10
 		}
 		if rows < 2 {
 			rows = 2
 		}
+		app.buf.Resize(cols, rows)
+		app.screenImg = image.NewRGBA(image.Rect(0, 0, cols*cw, rows*ch))
 		_ = app.term.Resize(uint16(rows), uint16(cols))
+
+		renderTerminal(app.buf, app.font, app.screenImg)
+		app.buf.ClearDirty()
+		app.win.Present(app.screenImg)
 	}
 
-	app.screenImg = image.NewRGBA(image.Rect(0, 0, 80*cw, 24*ch))
+	// Initialize using the current physical framebuffer size
+	initialCols := app.win.FBWidth() / cw
+	initialRows := app.win.FBHeight() / ch
+	if initialCols < 10 {
+		initialCols = 10
+	}
+	if initialRows < 2 {
+		initialRows = 2
+	}
+	app.buf.Resize(initialCols, initialRows)
+	app.screenImg = image.NewRGBA(image.Rect(0, 0, initialCols*cw, initialRows*ch))
+	_ = app.term.Resize(uint16(initialRows), uint16(initialCols))
 
 	app.win.OnKey = func(key glfw.Key, _ int, action glfw.Action, mods glfw.ModifierKey) {
 		if action != glfw.Press && action != glfw.Repeat {

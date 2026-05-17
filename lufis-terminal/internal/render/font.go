@@ -20,9 +20,12 @@ type FontFace struct {
 	ascent int
 }
 
-func NewFontFace(size int) (*FontFace, error) {
+func NewFontFace(size int, dpi float64) (*FontFace, error) {
 	if size < 8 {
 		size = 8
+	}
+	if dpi <= 0 {
+		dpi = 72
 	}
 
 	ttf, err := loadSystemFont()
@@ -32,13 +35,21 @@ func NewFontFace(size int) (*FontFace, error) {
 
 	face := truetype.NewFace(ttf, &truetype.Options{
 		Size:    float64(size),
-		DPI:     72,
+		DPI:     dpi,
 		Hinting: font.HintingFull,
 	})
 
 	metrics := face.Metrics()
 	cellH := metrics.Ascent.Ceil() + metrics.Descent.Ceil()
-	cellW := cellH * 6 / 10
+
+	advance, ok := face.GlyphAdvance('M')
+	var cellW int
+	if ok {
+		cellW = advance.Ceil()
+	} else {
+		cellW = cellH * 6 / 10
+	}
+
 	if cellW < 5 {
 		cellW = 5
 	}
