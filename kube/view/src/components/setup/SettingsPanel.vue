@@ -15,6 +15,7 @@ import { useWatcherRegistryStore } from '../../stores/watcherRegistry'
 import { runDueNow as watcherRunDueNow, runWatcherById } from '../../composables/useWatcherEngine'
 import Select from '../common/Select.vue'
 import RevealableInput from '../common/RevealableInput.vue'
+import LockableField from '../common/LockableField.vue'
 import SecretsToolProbeRow from './SecretsToolProbeRow.vue'
 import SetupChecklist from './SetupChecklist.vue'
 import PrivacyControls from './PrivacyControls.vue'
@@ -1500,26 +1501,33 @@ onMounted(async () => {
             from the sign-in credentials above.
           </p>
 
+          <!-- Locked-by-default behavior:
+               When a saved credential comes back from GetSettings,
+               LockableField renders a "configured" placeholder
+               (••••••••) WITHOUT putting the value in the DOM.
+               The Unlock checkbox is required to view or replace it.
+               Empty fields start unlocked so first-time setup is
+               a single-step type-and-save. -->
           <div class="field-group">
             <div class="field"><label class="label">Google Workspace client ID</label>
-              <input v-model="form.workspaceGoogleClientId" type="text" class="input mono" />
+              <LockableField v-model="form.workspaceGoogleClientId" input-class="input mono" />
             </div>
             <div class="field"><label class="label">Google Workspace client secret</label>
-              <RevealableInput v-model="form.workspaceGoogleClientSecret" input-class="input mono" />
+              <LockableField v-model="form.workspaceGoogleClientSecret" input-class="input mono" />
             </div>
           </div>
 
           <div class="field-group">
             <div class="field"><label class="label">Slack client ID</label>
-              <input v-model="form.slackClientId" type="text" class="input mono" />
+              <LockableField v-model="form.slackClientId" input-class="input mono" />
             </div>
             <div class="field"><label class="label">Slack client secret</label>
-              <RevealableInput v-model="form.slackClientSecret" input-class="input mono" />
+              <LockableField v-model="form.slackClientSecret" input-class="input mono" />
             </div>
           </div>
           <div class="field">
             <label class="label">Slack signing secret (Events API)</label>
-            <RevealableInput v-model="form.slackSigningSecret" input-class="input mono" />
+            <LockableField v-model="form.slackSigningSecret" input-class="input mono" />
           </div>
         </div>
       </div>

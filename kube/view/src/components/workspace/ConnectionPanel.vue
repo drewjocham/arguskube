@@ -5,14 +5,101 @@
 //
 // Per-service control panels (channels, doc pickers, etc.) live in
 // their own tabs in 1B+; this tile is intentionally minimal.
+//
+// Inline OAuth credential editor: each Google-family tile exposes an
+// expander that shows the workspaceGoogle* values from settings via
+// LockableField. Saved values render LOCKED with a placeholder, no
+// raw value in the DOM, and require ticking "Unlock to edit" to be
+// modified. The expander lives here (not in Settings) so the user
+// can set up credentials WITHOUT navigating away from the page that
+// gates on them — the previous flow was "see the Connect button is
+// dead → click 'Open Settings' link → scroll to OAuth section → save
+// → go back". That trip is the entire reason this expander exists.
 
 import { onMounted, ref, computed } from 'vue'
+import { callGo } from '../../composables/useBridge'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useAppNavStore } from '../../stores/appNav'
+import LockableField from '../common/LockableField.vue'
 
 const store = useWorkspaceStore()
 const appNav = useAppNavStore()
 const connecting = ref({})  // service -> bool
+
+// OAuth-credential form state, loaded lazily from GetSettings the
+// first time the user expands a tile. Holds ALL settings so a save
+// can round-trip through UpdateSettings without nulling out unrelated
+// fields. settingsLoaded gates the expander UI so the user doesn't
+// see empty inputs before the backend round-trip completes.
+const settingsForm = ref(null)
+const settingsLoaded = ref(false)
+const settingsLoadError = ref('')
+const settingsSaving = ref(false)
+const settingsSavedAt = ref(0)
+// Tracks which tiles have their credentials expander open. Keyed by
+// service so multiple tiles can be open simultaneously.
+const credsExpanded = ref({})
+
+async function loadSettingsOnce() {
+  if (settingsLoaded.value) return
+  try {
+    const result = await callGo('GetSettings')
+    settingsForm.value = result || {}
+    settingsLoaded.value = true
+  } catch (err) {
+    settingsLoadError.value = err?.message || String(err)
+  }
+}
+
+async function toggleCreds(service) {
+  credsExpanded.value = { ...credsExpanded.value, [service]: !credsExpanded.value[service] }
+  if (credsExpanded.value[service]) {
+    await loadSettingsOnce()
+  }
+}
+
+// saveCredentials sends the full settings object back so the backend
+// keeps every other field intact. The user only edits OAuth values
+// here; the rest of the form is whatever we loaded.
+async function saveCredentials() {
+  if (!settingsForm.value) return
+  settingsSaving.value = true
+  try {
+    await callGo('UpdateSettings', settingsForm.value)
+    settingsSavedAt.value = Date.now()
+    // Re-load services because a new Google client ID could enable
+    // a Provider that wasn't available before.
+    await store.loadServices()
+  } catch (err) {
+    settingsLoadError.value = err?.message || String(err)
+  } finally {
+    settingsSaving.value = false
+  }
+}
+
+// Per-service field map. Only google + slack have OAuth credentials
+// the user can configure inline today; the other tiles fall back to
+// the "open Settings" link.
+const CRED_FIELDS = {
+  google: [
+    { key: 'workspaceGoogleClientId',     label: 'Google client ID' },
+    { key: 'workspaceGoogleClientSecret', label: 'Google client secret' },
+  ],
+  gchat: [
+    { key: 'workspaceGoogleClientId',     label: 'Google client ID' },
+    { key: 'workspaceGoogleClientSecret', label: 'Google client secret' },
+  ],
+  gdocs:   null,  // share the google entry above; no separate tile creds
+  gsheets: null,
+  gtasks:  null,
+  slack: [
+    { key: 'slackClientId',     label: 'Slack client ID' },
+    { key: 'slackClientSecret', label: 'Slack client secret' },
+  ],
+}
+function credFieldsFor(service) {
+  return CRED_FIELDS[service] || null
+}
 
 // Empty-state CTA: jump to the new "Sign-in & integrations" section in
 // Settings so the user can paste OAuth client credentials without
@@ -107,12 +194,57 @@ function avatarStyle(meta) {
             </div>
           </div>
           <button
+            v-if="credFieldsFor(svc)"
+            class="creds-btn"
+            type="button"
+            :aria-expanded="!!credsExpanded[svc]"
+            :title="credsExpanded[svc] ? 'Hide OAuth credentials' : 'Configure OAuth credentials'"
+            @click="toggleCreds(svc)"
+          >{{ credsExpanded[svc] ? 'Hide credentials' : 'Credentials' }}</button>
+          <button
             class="connect-btn"
             :disabled="connecting[svc]"
             @click="onConnect(svc)"
           >
             {{ connecting[svc] ? 'Connecting…' : (store.connectionsByService[svc]?.length ? 'Add another' : 'Connect') }}
           </button>
+        </div>
+
+        <!-- OAuth credential editor.
+             Locked by default when a saved value comes back from
+             GetSettings — LockableField renders the placeholder, NOT
+             the raw value, so the secret never reaches the DOM until
+             the user explicitly unlocks. -->
+        <div v-if="credsExpanded[svc] && credFieldsFor(svc)" class="creds-editor">
+          <div v-if="settingsLoadError" class="error" style="margin: 0 0 10px;">{{ settingsLoadError }}</div>
+          <div v-else-if="!settingsLoaded" class="hint">Loading current credentials…</div>
+          <template v-else>
+            <p class="hint" style="margin: 0 0 8px;">
+              Saved values are hidden until you unlock the field. The
+              same values are also editable in
+              <a href="#" @click.prevent="openSettings">Settings → Sign-in &amp; integrations</a>.
+            </p>
+            <div
+              v-for="f in credFieldsFor(svc)"
+              :key="f.key"
+              class="cred-field"
+            >
+              <label class="cred-label">{{ f.label }}</label>
+              <LockableField
+                v-model="settingsForm[f.key]"
+                input-class="creds-input"
+              />
+            </div>
+            <div class="cred-actions">
+              <button
+                class="save-btn"
+                type="button"
+                :disabled="settingsSaving"
+                @click="saveCredentials"
+              >{{ settingsSaving ? 'Saving…' : 'Save credentials' }}</button>
+              <span v-if="settingsSavedAt" class="save-ok">Saved ✓</span>
+            </div>
+          </template>
         </div>
 
         <ul v-if="store.connectionsByService[svc]?.length" class="conns">
@@ -206,6 +338,71 @@ header h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--tex
 }
 .connect-btn:hover:not(:disabled) { opacity: 0.85; }
 .connect-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.creds-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--text2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.creds-btn:hover { background: var(--bg3); color: var(--text); }
+.creds-btn[aria-expanded="true"] {
+  background: var(--bg3);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.creds-editor {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--bg3);
+}
+.cred-field {
+  margin-bottom: 10px;
+}
+.cred-field:last-of-type { margin-bottom: 12px; }
+.cred-label {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text3);
+  margin-bottom: 4px;
+}
+:deep(.creds-input) {
+  width: 100%;
+  padding: 5px 8px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+}
+:deep(.creds-input:focus) {
+  outline: none;
+  border-color: var(--accent);
+}
+.cred-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.save-btn {
+  padding: 5px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--border2);
+  background: var(--accent);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.save-ok { font-size: 11.5px; color: var(--green, #5ec76d); }
 
 .conns {
   list-style: none;
