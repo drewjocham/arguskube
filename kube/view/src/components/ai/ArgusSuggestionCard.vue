@@ -72,12 +72,26 @@ function onAccept() {
   if (!current.value) return
   const sg = current.value
   profile.accept(sg.muteKey, sg.kind)
-  // Most actions are "open view X" — actionId is "userprofile.open-view:<id>".
+
+  // Handle "open view X" suggestions.
   const m = (sg.actionId || '').match(/^userprofile\.open-view:(.+)$/)
   if (m) {
     appNav.requestNav({ navId: m[1] })
     emit('navigate', m[1])
+    current.value = null
+    clearExpiry()
+    return
   }
+
+  // Handle profile-related suggestions — open settings at the profiles section.
+  const pm = (sg.actionId || '').match(/^profiles\.suggest:(.+)$/)
+  if (pm) {
+    appNav.requestNav({ navId: 'settings', anchor: 'profile-groups' })
+    current.value = null
+    clearExpiry()
+    return
+  }
+
   current.value = null
   clearExpiry()
 }

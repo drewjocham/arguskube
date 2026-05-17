@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import { callGo, isWails, useAppMode, useClusterInfo, useMetrics, useAlerts, useDiagnostics, useFeatures } from './composables/useWails'
 import { useWailsEvent, Events } from './composables/useEvents'
 import { bus } from './lib/bus'
-import { useTerminalDispatch } from './composables/useTerminalDispatch'
+import { useTerminalDispatchStore } from './stores/terminalDispatch'
 import { useUIPrefsStore } from './stores/uiPrefs'
 import { useNotificationsStore } from './stores/notifications'
 import { useAuthStore } from './stores/auth'
@@ -327,7 +327,8 @@ provide('isAllowed', isAllowed)
 // When another view (e.g. Argus AI chat) requests a command be sent to the
 // terminal, make sure the terminal panel is visible so the user can see the
 // command land. The actual writing happens inside TerminalView.
-const { requestOpen: terminalOpenRequests } = useTerminalDispatch()
+const terminalDispatchStore = useTerminalDispatchStore()
+const { openRequestId: terminalOpenRequests } = storeToRefs(terminalDispatchStore)
 watch(terminalOpenRequests, () => {
   if (popOutOpen.value) popOutOpen.value = false
   terminalOpen.value = true

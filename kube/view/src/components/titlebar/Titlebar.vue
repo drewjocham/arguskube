@@ -11,6 +11,7 @@ import { useAppNavStore } from '../../stores/appNav'
 import { ALL_NAV_ITEMS } from '../../lib/sectionTabs'
 import NotificationsPanel from '../notifications/NotificationsPanel.vue'
 import EnvironmentSelector from './EnvironmentSelector.vue'
+import ProfileSwitcher from '../profiles/ProfileSwitcher.vue'
 import PasskeyManager from '../auth/PasskeyManager.vue'
 
 const { active: spotCheckActive, runAll: runSpotChecks } = useSpotCheck()
@@ -230,6 +231,7 @@ onUnmounted(() => document.removeEventListener('keydown', onPaletteShortcut))
         </button>
       </template>
       <EnvironmentSelector style="--wails-draggable: no-drag" />
+      <ProfileSwitcher style="--wails-draggable: no-drag" />
       <!-- Spot-check activity pill: visible only while a probe is
            running. Click runs all checks now (manual trigger). -->
       <button

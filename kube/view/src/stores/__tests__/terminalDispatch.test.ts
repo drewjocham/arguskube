@@ -12,18 +12,18 @@ describe('terminalDispatch store', () => {
     const s = useTerminalDispatchStore()
     s.sendToTerminal('kubectl get pods')
     expect(s.pendingCommand).not.toBeNull()
-    expect(s.pendingCommand.text).toBe('kubectl get pods')
-    expect(typeof s.pendingCommand.requestedAt).toBe('number')
+    expect(s.pendingCommand!.text).toBe('kubectl get pods')
+    expect(typeof s.pendingCommand!.requestedAt).toBe('number')
     expect(s.openRequestId).toBe(1)
   })
 
   it('sendToTerminal ignores empty / non-string input', () => {
     const s = useTerminalDispatchStore()
     s.sendToTerminal('')
-    s.sendToTerminal(null)
-    s.sendToTerminal(undefined)
-    s.sendToTerminal(42)
-    s.sendToTerminal({ text: 'nope' })
+    s.sendToTerminal(null as unknown as string)
+    s.sendToTerminal(undefined as unknown as string)
+    s.sendToTerminal(42 as unknown as string)
+    s.sendToTerminal({ text: 'nope' } as unknown as string)
     expect(s.pendingCommand).toBeNull()
     expect(s.openRequestId).toBe(0)
   })
@@ -32,17 +32,16 @@ describe('terminalDispatch store', () => {
     const s = useTerminalDispatchStore()
     s.sendToTerminal('ls')
     const peeked = s.peekPendingCommand()
-    expect(peeked.text).toBe('ls')
-    expect(s.pendingCommand).not.toBeNull() // still queued
+    expect(peeked!.text).toBe('ls')
+    expect(s.pendingCommand).not.toBeNull()
   })
 
   it('consumePendingCommand returns the value and clears it', () => {
     const s = useTerminalDispatchStore()
     s.sendToTerminal('ls')
     const consumed = s.consumePendingCommand()
-    expect(consumed.text).toBe('ls')
+    expect(consumed!.text).toBe('ls')
     expect(s.pendingCommand).toBeNull()
-    // A second consume returns null.
     expect(s.consumePendingCommand()).toBeNull()
   })
 
@@ -54,18 +53,18 @@ describe('terminalDispatch store', () => {
     expect(s.openRequestId).toBe(3)
   })
 
-  it('forwards optional meta (sessionId, sectionLabel) so the receiver can route to the right session', () => {
+  it('forwards optional meta (sessionId, sectionLabel)', () => {
     const s = useTerminalDispatchStore()
     s.sendToTerminal('kubectl get pods', { sessionId: 'rb-1::verify', sectionLabel: 'Verify pods' })
-    expect(s.pendingCommand.text).toBe('kubectl get pods')
-    expect(s.pendingCommand.sessionId).toBe('rb-1::verify')
-    expect(s.pendingCommand.sectionLabel).toBe('Verify pods')
+    expect(s.pendingCommand!.text).toBe('kubectl get pods')
+    expect(s.pendingCommand!.sessionId).toBe('rb-1::verify')
+    expect(s.pendingCommand!.sectionLabel).toBe('Verify pods')
   })
 
   it('ignores non-object meta gracefully', () => {
     const s = useTerminalDispatchStore()
-    s.sendToTerminal('cmd', 'not an object')
-    expect(s.pendingCommand.text).toBe('cmd')
-    expect(s.pendingCommand.sessionId).toBeUndefined()
+    s.sendToTerminal('cmd', 'not an object' as never)
+    expect(s.pendingCommand!.text).toBe('cmd')
+    expect(s.pendingCommand!.sessionId).toBeUndefined()
   })
 })
