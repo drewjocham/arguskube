@@ -18,7 +18,8 @@ type APIGovConfig struct {
 }
 
 type ServerConfig struct {
-	Port string `env:"PORT" envDefault:"8080"`
+	Port   string `env:"PORT" envDefault:"8080"`
+	APIKey string `env:"API_GOV_API_KEY"`
 }
 
 type DatabaseConfig struct {
@@ -56,7 +57,8 @@ func loadEnvFloat(key string, fallback float64) float64 {
 func New() *APIGovConfig {
 	return &APIGovConfig{
 		Server: ServerConfig{
-			Port: loadEnv("PORT", "8080"),
+			Port:   loadEnv("PORT", "8080"),
+			APIKey: loadEnv("API_GOV_API_KEY", ""),
 		},
 		Database: DatabaseConfig{
 			URL: loadEnv("DATABASE_URL", "postgres://api-gov:api-gov@localhost:5432/api-gov?sslmode=disable"),
@@ -66,7 +68,7 @@ func New() *APIGovConfig {
 			ScanTimeout: 5 * time.Minute,
 		},
 		LLM: LLMConfig{
-			APIKey:         loadEnv("LLM_API_KEY", ""),
+			APIKey:         loadEnv("LLM_API_KEY", loadEnv("DEEPSEEK_API_KEY", "")),
 			Model:          loadEnv("LLM_MODEL", "gemini-1.5-pro"),
 			EmbeddingModel: loadEnv("EMBEDDING_MODEL", "text-embedding-004"),
 			DriftThreshold: loadEnvFloat("DRIFT_THRESHOLD", 0.85),

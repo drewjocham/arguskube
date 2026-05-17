@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-		"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
@@ -28,7 +28,6 @@ const (
 	defaultIdleTimeout  = 120 * time.Second
 	defaultBodyLimit    = 10 << 20
 
-	logKeyError          = "error"
 	logKeyStack          = "stack"
 	logMsgPanicRecovered = "panic recovered"
 )
@@ -71,17 +70,17 @@ func New(cfg *config.APIGovConfig, logger *slog.Logger, db *database.DB) (*API, 
 	histogramLatency, _ := meter.Float64Histogram("api-gov.api.latency", metric.WithDescription("API handler latency"))
 
 	return &API{
-		Config:               cfg,
-		Logger:               logger,
-		tracer:               tracer,
-		meter:                meter,
-		specSvc:              specSvc,
-		driftSvc:             driftSvc,
-		agentCli:             agentCli,
-		counterSpecsCreated:  counterSpecsCreated,
-		counterDriftResolved: counterDriftResolved,
+		Config:                 cfg,
+		Logger:                 logger,
+		tracer:                 tracer,
+		meter:                  meter,
+		specSvc:                specSvc,
+		driftSvc:               driftSvc,
+		agentCli:               agentCli,
+		counterSpecsCreated:    counterSpecsCreated,
+		counterDriftResolved:   counterDriftResolved,
 		counterTrafficIngested: counterTrafficIngested,
-		histogramLatency:     histogramLatency,
+		histogramLatency:       histogramLatency,
 	}, nil
 }
 
@@ -90,6 +89,7 @@ func (a *API) Routes() http.Handler {
 
 	r.Use(middleware.CleanPath)
 	r.Use(middleware.RequestID, middleware.RealIP, middleware.Logger, middleware.Recoverer)
+	r.Use(a.WithRequestContext)
 	r.Use(a.WithCORS)
 	r.Use(a.WithContentTypeJSON)
 	r.Use(a.WithBodyLimit(defaultBodyLimit))
@@ -98,25 +98,28 @@ func (a *API) Routes() http.Handler {
 	r.Get("/health", a.handleHealth)
 	r.Get("/ready", a.handleReadiness)
 
-	r.Route(prefix, func(r chi.Router) {
-		r.Post("/specs", a.handleCreateSpec)
-		r.Get("/specs", a.handleListSpecs)
-		r.Get("/specs/{specID}", a.handleGetSpec)
-		r.Delete("/specs/{specID}", a.handleDeleteSpec)
-		r.Get("/specs/{specID}/endpoints", a.handleListEndpoints)
-		r.Get("/specs/{specID}/drift", a.handleGetDriftReports)
-		r.Get("/specs/{specID}/drift/summary", a.handleDriftSummary)
-		r.Post("/specs/{specID}/drift/scan", a.handleRequestDriftScan)
-		r.Post("/specs/{specID}/drift/resolve/{reportID}", a.handleResolveDrift)
-		r.Post("/traffic", a.handleIngestTraffic)
-		r.Post("/traffic/batch", a.handleIngestTrafficBatch)
-		r.Post("/analyze/{specID}", a.handleAgentAnalyze)
-		r.Post("/tests/generate/{specID}", a.handleAgentGenerateTests)
+	r.Group(func(r chi.Router) {
+		r.Use(a.WithAuth)
+		r.Route(prefix, func(r chi.Router) {
+			r.Post("/specs", a.handleCreateSpec)
+			r.Get("/specs", a.handleListSpecs)
+			r.Get("/specs/{specID}", a.handleGetSpec)
+			r.Delete("/specs/{specID}", a.handleDeleteSpec)
+			r.Get("/specs/{specID}/endpoints", a.handleListEndpoints)
+			r.Get("/specs/{specID}/drift", a.handleGetDriftReports)
+			r.Get("/specs/{specID}/drift/summary", a.handleDriftSummary)
+			r.Post("/specs/{specID}/drift/scan", a.handleRequestDriftScan)
+			r.Post("/specs/{specID}/drift/resolve/{reportID}", a.handleResolveDrift)
+			r.Post("/traffic", a.handleIngestTraffic)
+			r.Post("/traffic/batch", a.handleIngestTrafficBatch)
+			r.Post("/analyze/{specID}", a.handleAgentAnalyze)
+			r.Post("/tests/generate/{specID}", a.handleAgentGenerateTests)
 
-		r.Route("/admin", func(r chi.Router) {
-			r.Delete("/gdpr/{specID}", a.handleGDPRDeleteSpec)
-			r.Get("/gdpr/{specID}", a.handleGDPRGetData)
-			r.Get("/anomaly-metrics/{specID}", a.handleGetAnomalyMetrics)
+			r.Route("/admin", func(r chi.Router) {
+				r.Delete("/gdpr/{specID}", a.handleGDPRDeleteSpec)
+				r.Get("/gdpr/{specID}", a.handleGDPRGetData)
+				r.Get("/anomaly-metrics/{specID}", a.handleGetAnomalyMetrics)
+			})
 		})
 	})
 
@@ -168,7 +171,7 @@ func (a *API) execute(w http.ResponseWriter, r *http.Request, spanName string, f
 			}
 			apperrors.WriteHTTPResponse(ctx, w, a.Logger, apperrors.ErrUnknown)
 			a.Logger.ErrorContext(ctx, logMsgPanicRecovered,
-				logKeyError, rec, logKeyStack, string(debug.Stack()))
+				apperrors.LogKeyError, rec, logKeyStack, string(debug.Stack()))
 		}
 		if a.histogramLatency != nil {
 			a.histogramLatency.Record(ctx, time.Since(start).Seconds(),

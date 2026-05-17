@@ -10,10 +10,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/argus/api-gov/internal/apperrors"
 	"github.com/argus/api-gov/internal/models"
 )
-
-const logKeyError = "error"
 
 // AgentClient communicates with the Python LangGraph agent service
 // for spec analysis, drift detection, and test generation.
@@ -44,23 +43,23 @@ func NewAgentClient(baseURL string, driftThreshold float64, logger *slog.Logger)
 }
 
 type agentRequest struct {
-	SpecID         string         `json:"spec_id,omitempty"`
-	EndpointID     string         `json:"endpoint_id,omitempty"`
-	Method         string         `json:"method,omitempty"`
-	Path           string         `json:"path,omitempty"`
-	StatusCode     int            `json:"status_code,omitempty"`
-	Request        map[string]any `json:"request,omitempty"`
-	Response       map[string]any `json:"response,omitempty"`
+	SpecID         string            `json:"spec_id,omitempty"`
+	EndpointID     string            `json:"endpoint_id,omitempty"`
+	Method         string            `json:"method,omitempty"`
+	Path           string            `json:"path,omitempty"`
+	StatusCode     int               `json:"status_code,omitempty"`
+	Request        map[string]any    `json:"request,omitempty"`
+	Response       map[string]any    `json:"response,omitempty"`
 	Headers        map[string]string `json:"headers,omitempty"`
-	Count          int            `json:"count,omitempty"`
-	DriftThreshold float64        `json:"drift_threshold"`
+	Count          int               `json:"count,omitempty"`
+	DriftThreshold float64           `json:"drift_threshold"`
 }
 
 type analyzeResponse struct {
-	Endpoints     int      `json:"endpoints"`
-	CriticalPaths int      `json:"critical_paths"`
-	AuthRoutes    int      `json:"auth_routes"`
-	Summary       string   `json:"summary"`
+	Endpoints     int    `json:"endpoints"`
+	CriticalPaths int    `json:"critical_paths"`
+	AuthRoutes    int    `json:"auth_routes"`
+	Summary       string `json:"summary"`
 }
 
 type testCase struct {
@@ -97,7 +96,7 @@ func (c *AgentClient) post(ctx context.Context, path string, reqBody any, respBo
 	if err != nil {
 		c.logger.LogAttrs(ctx, slog.LevelError, "agent request failed",
 			slog.String(logKeyAgentEndpoint, path),
-			slog.Any(logKeyError, err),
+			slog.Any(apperrors.LogKeyError, err),
 		)
 		return fmt.Errorf("agent request to %s: %w", path, err)
 	}
@@ -154,7 +153,7 @@ func (c *AgentClient) IngestTraffic(ctx context.Context, specID string, data *mo
 	if err := c.post(ctx, "/traffic", req, nil); err != nil {
 		c.logger.LogAttrs(ctx, slog.LevelError, "traffic ingestion failed",
 			slog.String("spec_id", specID),
-			slog.Any(logKeyError, err),
+			slog.Any(apperrors.LogKeyError, err),
 		)
 	}
 }

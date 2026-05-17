@@ -6,6 +6,11 @@ func (e Error) Error() string {
 	return string(e)
 }
 
+// Shared log key constants used across packages for structured logging.
+const (
+	LogKeyError = "error"
+)
+
 const (
 	ErrSpecNotFound        Error = "spec not found"
 	ErrEndpointNotFound    Error = "endpoint not found"

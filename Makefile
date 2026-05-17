@@ -151,12 +151,16 @@ test-vue-ui: ## Vitest browser UI
 
 # ── Linting ──────────────────────────────────────────────────────
 
-lint: lint-go ## Run all linters
+lint: lint-go lint-vue ## Run all linters
 
 lint-go: ## Run golangci-lint on all Go modules
 	cd $(BACKEND_DIR) && golangci-lint run ./...
 	cd $(ALERT_INGRESS_DIR) && golangci-lint run ./...
 	cd agent && golangci-lint run ./...
+
+lint-vue: ## Type-check and lint Vue frontend
+	cd $(VIEW_DIR) && npx vue-tsc --noEmit
+	cd $(VIEW_DIR) && npx eslint src/ --max-warnings 100
 
 # ── Kubernetes Helpers ───────────────────────────────────────────
 
@@ -269,23 +273,34 @@ helm-package: ## Package all Helm charts
 		helm package $$chart --destination $(DEPLOY_DIR)/packages; \
 	done
 
-helm-install: ## Install all Helm charts into current k8s context
+helm-install: ## Install all Helm charts into current k8s context (atomic, auto-rollback)
 	@echo "Installing Argus charts..."
 	kubectl create namespace argus 2>/dev/null || true
 	helm upgrade --install argus-backend $(HELM_DIR)/argus-backend \
-		--namespace argus --create-namespace
+		--namespace argus --create-namespace \
+		--atomic --timeout 5m --history-max 3
 	helm upgrade --install argus-frontend $(HELM_DIR)/argus-frontend \
-		--namespace argus
+		--namespace argus \
+		--atomic --timeout 5m --history-max 3
+	helm upgrade --install argus-agent $(HELM_DIR)/argus-agent \
+		--namespace argus \
+		--atomic --timeout 5m --history-max 3
 
-helm-install-dev: ## Install Helm charts with dev overrides
+helm-install-dev: ## Install Helm charts with dev overrides (atomic, auto-rollback)
 	@echo "Installing Argus charts (dev mode)..."
 	kubectl create namespace argus 2>/dev/null || true
 	helm upgrade --install argus-backend $(HELM_DIR)/argus-backend \
 		--namespace argus --create-namespace \
+		--atomic --timeout 5m --history-max 3 \
 		-f $(HELM_DIR)/argus-backend/values-dev.yaml
 	helm upgrade --install argus-frontend $(HELM_DIR)/argus-frontend \
 		--namespace argus \
+		--atomic --timeout 5m --history-max 3 \
 		-f $(HELM_DIR)/argus-frontend/values-dev.yaml
+
+helm-test: ## Run Helm tests on deployed charts
+	helm test argus-backend --namespace argus --timeout 2m
+	helm test argus-frontend --namespace argus --timeout 2m
 
 helm-uninstall: ## Uninstall Helm charts
 	helm uninstall argus-backend --namespace argus 2>/dev/null || true

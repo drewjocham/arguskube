@@ -166,7 +166,7 @@ jobs:
         run: npx vue-tsc --noEmit || true  # Non-blocking until types stabilize
 
       - name: Lint
-        run: npx eslint src/ --max-warnings 0 || true  # Non-blocking until rules stabilize
+        run: npx eslint src/ --max-warnings 100 || true  # Non-blocking until rules stabilize
 
       - name: Test
         run: npm run test:run

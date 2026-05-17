@@ -1,0 +1,6 @@
+apiVersion: v2
+name: argus-common
+description: Shared library chart for all Argus components
+type: library
+version: 0.1.0
+appVersion: "1.0.0"

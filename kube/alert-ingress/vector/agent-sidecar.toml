@@ -1,0 +1,29 @@
+[sources.kubernetes_logs]
+type = "kubernetes_logs"
+auto_partial_merge = true
+
+[transforms.filter]
+type = "filter"
+inputs = ["kubernetes_logs"]
+condition = '.kubernetes.container_name == "argus-agent"'
+
+[transforms.structured]
+type = "remap"
+inputs = ["filter"]
+source = '''
+  . = merge(., parse_json!(.message) ?? {})
+  .stream = "agent"
+'''
+
+[sinks.stdout]
+type = "console"
+inputs = ["structured"]
+encoding.codec = "json"
+
+[sinks.s3]
+type = "aws_s3"
+inputs = ["structured"]
+bucket = ""
+compression = "gzip"
+encoding.codec = "json"
+region = "us-west-1"

@@ -47,6 +47,10 @@ securityContext:
     drop:
       - ALL
 
+# ── Network Policy ─────────────────────────────────────────────────
+networkPolicy:
+  enabled: false
+
 # ── Scheduling ─────────────────────────────────────────────────────
 nodeSelector: {}
 tolerations: []

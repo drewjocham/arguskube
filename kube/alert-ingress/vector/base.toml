@@ -1,0 +1,24 @@
+[sources.webhook]
+type = "http_server"
+address = "0.0.0.0:8080"
+path = "/webhooks/anomstack"
+headers = ["Content-Type"]
+
+[transforms.parse]
+type = "remap"
+inputs = ["webhook"]
+source = '''
+  . = parse_json!(.message) ?? {}
+  .timestamp = now()
+  .source = "anomstack"
+'''
+
+[sinks.stdout]
+type = "console"
+inputs = ["parse"]
+encoding.codec = "json"
+
+[sinks.prometheus_events]
+type = "prometheus"
+inputs = ["parse"]
+description = "Alert events processed"

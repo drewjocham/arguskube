@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	logKeyRequestID   = "request_id"
-	logKeyRemoteAddr  = "remote_addr"
-	logKeyDuration    = "duration"
+	logKeyRequestID    = "request_id"
+	logKeyRemoteAddr   = "remote_addr"
+	logKeyDuration     = "duration"
 	logMsgRequestStart = "request started"
-	logMsgRequestDone = "request completed"
+	logMsgRequestDone  = "request completed"
 )
 
 func (a *API) WithRequestContext(next http.Handler) http.Handler {
@@ -88,4 +88,29 @@ func (a *API) WithTimeout(timeout time.Duration) func(http.Handler) http.Handler
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+func (a *API) WithAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.Config.Server.APIKey == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		auth := r.Header.Get("Authorization")
+		if auth == "" {
+			http.Error(w, `{"error":"missing authorization header"}`, http.StatusUnauthorized)
+			return
+		}
+		const prefix = "Bearer "
+		if len(auth) < len(prefix) || auth[:len(prefix)] != prefix {
+			http.Error(w, `{"error":"invalid authorization format"}`, http.StatusUnauthorized)
+			return
+		}
+		token := auth[len(prefix):]
+		if token != a.Config.Server.APIKey {
+			http.Error(w, `{"error":"invalid api key"}`, http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/argus/api-gov/internal/models"
 )
 
@@ -18,16 +17,17 @@ func NewSpecStore(db *DB) *SpecStore {
 }
 
 func (s *SpecStore) Create(ctx context.Context, spec *models.APISpec) error {
-	spec.ID = uuid.New().String()
 	spec.CreatedAt = time.Now()
 	spec.UpdatedAt = spec.CreatedAt
 
-	q := InsertInto("api_specs", "id", "name", "version", "content", "format", "created_at", "updated_at")
+	q := InsertInto("api_specs",
+		"name", "version", "content", "format", "created_at", "updated_at").
+		Returning("id")
 	sql, _ := q.Build()
 
-	_, err := s.db.Pool.Exec(ctx, sql,
-		spec.ID, spec.Name, spec.Version, spec.Content, spec.Format, spec.CreatedAt, spec.UpdatedAt,
-	)
+	err := s.db.Pool.QueryRow(ctx, sql,
+		spec.Name, spec.Version, spec.Content, spec.Format, spec.CreatedAt, spec.UpdatedAt,
+	).Scan(&spec.ID)
 	if err != nil {
 		return fmt.Errorf("create spec: %w", err)
 	}
@@ -178,8 +178,21 @@ func (s *SpecStore) GetAnomalyMetrics(ctx context.Context, specID string) (any, 
 // ── Endpoints ──────────────────────────────────────────────────
 
 func (e *EndpointStore) Upsert(ctx context.Context, ep *models.Endpoint) error {
-	if ep.ID == "" {
-		ep.ID = uuid.New().String()
+	hasID := ep.ID != ""
+	if !hasID {
+		q := InsertInto("endpoints",
+			"spec_id", "method", "path", "summary", "operation_id",
+			"request_body", "responses", "parameters", "security", "tags").
+			Returning("id")
+		sql, _ := q.Build()
+		err := e.db.Pool.QueryRow(ctx, sql,
+			ep.SpecID, ep.Method, ep.Path, ep.Summary, ep.OperationID,
+			ep.RequestBody, ep.Responses, ep.Parameters, ep.Security, ep.Tags,
+		).Scan(&ep.ID)
+		if err != nil {
+			return fmt.Errorf("create endpoint: %w", err)
+		}
+		return nil
 	}
 
 	q := InsertInto("endpoints",
@@ -208,21 +221,30 @@ func (e *EndpointStore) UpsertBatch(ctx context.Context, endpoints []*models.End
 
 	for _, ep := range endpoints {
 		if ep.ID == "" {
-			ep.ID = uuid.New().String()
-		}
-		_, err := tx.Exec(ctx,
-			`INSERT INTO endpoints (id, spec_id, method, path, summary, operation_id, request_body, responses, parameters, security, tags)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-			 ON CONFLICT (id) DO UPDATE SET
-			   method=EXCLUDED.method, path=EXCLUDED.path, summary=EXCLUDED.summary,
-			   operation_id=EXCLUDED.operation_id, request_body=EXCLUDED.request_body,
-			   responses=EXCLUDED.responses, parameters=EXCLUDED.parameters,
-			   security=EXCLUDED.security, tags=EXCLUDED.tags`,
-			ep.ID, ep.SpecID, ep.Method, ep.Path, ep.Summary, ep.OperationID,
-			ep.RequestBody, ep.Responses, ep.Parameters, ep.Security, ep.Tags,
-		)
-		if err != nil {
-			return fmt.Errorf("upsert endpoint %s %s: %w", ep.Method, ep.Path, err)
+			_, err := tx.Exec(ctx,
+				`INSERT INTO endpoints (spec_id, method, path, summary, operation_id, request_body, responses, parameters, security, tags)
+				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+				ep.SpecID, ep.Method, ep.Path, ep.Summary, ep.OperationID,
+				ep.RequestBody, ep.Responses, ep.Parameters, ep.Security, ep.Tags,
+			)
+			if err != nil {
+				return fmt.Errorf("insert endpoint %s %s: %w", ep.Method, ep.Path, err)
+			}
+		} else {
+			_, err := tx.Exec(ctx,
+				`INSERT INTO endpoints (id, spec_id, method, path, summary, operation_id, request_body, responses, parameters, security, tags)
+				 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+				 ON CONFLICT (id) DO UPDATE SET
+				   method=EXCLUDED.method, path=EXCLUDED.path, summary=EXCLUDED.summary,
+				   operation_id=EXCLUDED.operation_id, request_body=EXCLUDED.request_body,
+				   responses=EXCLUDED.responses, parameters=EXCLUDED.parameters,
+				   security=EXCLUDED.security, tags=EXCLUDED.tags`,
+				ep.ID, ep.SpecID, ep.Method, ep.Path, ep.Summary, ep.OperationID,
+				ep.RequestBody, ep.Responses, ep.Parameters, ep.Security, ep.Tags,
+			)
+			if err != nil {
+				return fmt.Errorf("upsert endpoint %s %s: %w", ep.Method, ep.Path, err)
+			}
 		}
 	}
 	return tx.Commit(ctx)

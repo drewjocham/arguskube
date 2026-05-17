@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "argus-backend.fullname" . }}-test-connection"
+  labels:
+    {{- include "argus-backend.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  containers:
+    - name: wget
+      image: busybox:1.36
+      command:
+        - wget
+        - "--spider"
+        - "http://{{ include "argus-backend.fullname" . }}:{{ .Values.service.port | default 8080 }}/api/Ping"
+  restartPolicy: Never

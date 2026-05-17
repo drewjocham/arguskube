@@ -12,7 +12,6 @@ const (
 	processMessageBody          = "failed to process request"
 	logKeyDisposition           = "disposition"
 	logKeyHTTPStatus            = "http_status"
-	logKeyError                 = "error"
 	logMsgInternalServerFailure = "internal server failure"
 	logMsgRequestRejected       = "request rejected"
 	logMsgRequestAcknowledged   = "request acknowledged"
@@ -54,7 +53,7 @@ func WriteHTTPResponse(ctx context.Context, w http.ResponseWriter, logger *slog.
 	logAttr := []any{
 		slog.String(logKeyDisposition, fmt.Sprintf("%v", disp)),
 		slog.Int(logKeyHTTPStatus, status),
-		slog.Any(logKeyError, err),
+		slog.Any(LogKeyError, err),
 	}
 
 	switch {

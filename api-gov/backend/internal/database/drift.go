@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/argus/api-gov/internal/models"
 )
 
@@ -18,18 +17,18 @@ func NewDriftStore(db *DB) *DriftStore {
 }
 
 func (d *DriftStore) Create(ctx context.Context, r *models.DriftReport) error {
-	r.ID = uuid.New().String()
 	r.CreatedAt = time.Now()
 
 	q := InsertInto("drift_reports",
-		"id", "spec_id", "endpoint_id", "severity", "category", "score",
-		"source", "observed", "expected", "actual", "suggestion", "created_at")
+		"spec_id", "endpoint_id", "severity", "category", "score",
+		"source", "observed", "expected", "actual", "suggestion", "created_at").
+		Returning("id")
 
 	sql, _ := q.Build()
-	_, err := d.db.Pool.Exec(ctx, sql,
-		r.ID, r.SpecID, r.EndpointID, r.Severity, r.Category, r.Score,
+	err := d.db.Pool.QueryRow(ctx, sql,
+		r.SpecID, r.EndpointID, r.Severity, r.Category, r.Score,
 		r.Source, r.Observed, r.Expected, r.Actual, r.Suggestion, r.CreatedAt,
-	)
+	).Scan(&r.ID)
 	if err != nil {
 		return fmt.Errorf("create drift report: %w", err)
 	}
@@ -44,13 +43,12 @@ func (d *DriftStore) CreateBatch(ctx context.Context, reports []*models.DriftRep
 	defer tx.Rollback(ctx)
 
 	for _, r := range reports {
-		r.ID = uuid.New().String()
 		r.CreatedAt = time.Now()
 
 		_, err := tx.Exec(ctx,
-			`INSERT INTO drift_reports (id, spec_id, endpoint_id, severity, category, score, source, observed, expected, actual, suggestion, created_at)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-			r.ID, r.SpecID, r.EndpointID, r.Severity, r.Category, r.Score,
+			`INSERT INTO drift_reports (spec_id, endpoint_id, severity, category, score, source, observed, expected, actual, suggestion, created_at)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			r.SpecID, r.EndpointID, r.Severity, r.Category, r.Score,
 			r.Source, r.Observed, r.Expected, r.Actual, r.Suggestion, r.CreatedAt,
 		)
 		if err != nil {

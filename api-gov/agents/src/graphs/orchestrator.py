@@ -62,6 +62,10 @@ async def dispatch_subgraph(state: AgentState) -> dict:
         from src.graphs.hacker import generate
         endpoint_id = state.messages[0].get("endpoint_id", "") if state.messages else ""
         result["test_cases"] = await generate(state.spec_id, endpoint_id)
+    elif action == "investigate":
+        from src.graphs.investigator import investigate
+        drift_report = state.messages[0].get("drift_report", {}) if state.messages else {}
+        result["investigation"] = await investigate(state.spec_id, drift_report)
 
     return result
 
@@ -132,10 +136,10 @@ def build_orchestrator_graph(redis_url: str | None = None) -> StateGraph:
 orchestrator_graph = build_orchestrator_graph()
 
 
-async def orchestrate(spec_id: str, action: str = "analyze", endpoint_id: str | None = None) -> dict:
+async def orchestrate(spec_id: str, action: str = "analyze", endpoint_id: str | None = None, drift_report: dict | None = None) -> dict:
     initial = AgentState(
         spec_id=spec_id,
-        messages=[{"action": action, "endpoint_id": endpoint_id or ""}],
+        messages=[{"action": action, "endpoint_id": endpoint_id or "", "drift_report": drift_report or {}}],
     )
     result = await orchestrator_graph.ainvoke(
         initial,
@@ -145,5 +149,6 @@ async def orchestrate(spec_id: str, action: str = "analyze", endpoint_id: str | 
         "analysis": result.get("analysis"),
         "drift_reports": result.get("drift_reports"),
         "test_cases": result.get("test_cases"),
+        "investigation": result.get("investigation"),
         "spot_check_passed": result.get("spot_check_passed", True),
     }

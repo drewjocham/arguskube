@@ -20,6 +20,10 @@ resources:
     cpu: 500m
     memory: 256Mi
 
+serviceAccount:
+  create: true
+  name: ""
+
 nodeSelector: {}
 
 tolerations: []

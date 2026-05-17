@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "argus-frontend.fullname" . }}-test-connection"
+  labels:
+    {{- include "argus-frontend.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  containers:
+    - name: wget
+      image: busybox:1.36
+      command:
+        - wget
+        - "--spider"
+        - "http://{{ include "argus-frontend.fullname" . }}:{{ .Values.service.port | default 3000 }}/"
+  restartPolicy: Never

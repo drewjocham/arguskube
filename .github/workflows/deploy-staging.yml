@@ -1,0 +1,91 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    name: Deploy to staging
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ steps.smoke.outputs.url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Deployment
+        uses: bobheadxi/deployments@v1
+        id: deployment
+        with:
+          step: start
+          token: ${{ secrets.GITHUB_TOKEN }}
+          env: staging
+          ref: ${{ github.ref }}
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.STAGING_KUBECONFIG }}" > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Deploy Helm charts
+        run: |
+          kubectl create namespace argus 2>/dev/null || true
+          helm upgrade --install argus-backend deploy/helm/argus-backend \
+            --namespace argus --atomic --timeout 5m --history-max 3
+          helm upgrade --install argus-frontend deploy/helm/argus-frontend \
+            --namespace argus --atomic --timeout 5m --history-max 3
+          helm upgrade --install argus-alert-ingress deploy/helm/argus-alert-ingress \
+            --namespace argus --atomic --timeout 5m --history-max 3
+
+      - name: Wait for deployments to roll out
+        run: |
+          kubectl -n argus rollout status deployment/argus-backend --timeout=3m
+          kubectl -n argus rollout status deployment/argus-frontend --timeout=3m
+
+      - name: Smoke test
+        id: smoke
+        run: |
+          POD=$(kubectl -n argus get pod -l app.kubernetes.io/name=argus-backend -o jsonpath='{.items[0].metadata.name}')
+          kubectl -n argus port-forward "pod/$POD" 8080:8080 &
+          PF_PID=$!
+          sleep 3
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/Ping)
+          kill $PF_PID 2>/dev/null || true
+          if [ "$STATUS" != "200" ]; then
+            echo "Smoke test failed: /api/Ping returned $STATUS"
+            exit 1
+          fi
+          echo "url=http://staging.argus.dev" >> "$GITHUB_OUTPUT"
+          echo "Smoke test passed: /api/Ping returned $STATUS"
+
+      - name: Mark deployment as complete
+        uses: bobheadxi/deployments@v1
+        if: success()
+        with:
+          step: finish
+          token: ${{ secrets.GITHUB_TOKEN }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+          env: staging
+          status: success
+
+      - name: Mark deployment as failed
+        uses: bobheadxi/deployments@v1
+        if: failure()
+        with:
+          step: finish
+          token: ${{ secrets.GITHUB_TOKEN }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+          env: staging
+          status: failure
