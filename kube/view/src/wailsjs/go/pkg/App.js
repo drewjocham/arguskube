@@ -462,6 +462,10 @@ export function IsBiometricAvailable() {
   return window['go']['pkg']['App']['IsBiometricAvailable']();
 }
 
+export function LaunchPopOutTerminal() {
+  return window['go']['pkg']['App']['LaunchPopOutTerminal']();
+}
+
 export function ListAllNamespaces() {
   return window['go']['pkg']['App']['ListAllNamespaces']();
 }

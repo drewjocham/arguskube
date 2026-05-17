@@ -9,7 +9,7 @@
 
 import { registerFeature } from './registry'
 
-const manifests = import.meta.glob('./*/manifest.js', { eager: true })
+const manifests = import.meta.glob('./*/manifest.{js,ts}', { eager: true })
 for (const path in manifests) {
   const mod = manifests[path]
   const manifest = mod.default || mod.manifest

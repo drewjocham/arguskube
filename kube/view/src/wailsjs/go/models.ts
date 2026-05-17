@@ -1273,19 +1273,6 @@ export namespace http {
 		    return a;
 		}
 	}
-	
-	export class ServeMux {
-	
-	
-	    static createFrom(source: any = {}) {
-	        return new ServeMux(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	
-	    }
-	}
 
 }
 

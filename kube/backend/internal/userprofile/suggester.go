@@ -134,6 +134,7 @@ func (s *Suggester) NextFor(ctx context.Context, currentView string) (*Suggestio
 	candidates := []func(ctx context.Context, now time.Time, currentView string) (*Suggestion, error){
 		s.morningPlaybook,
 		s.nextViewFromHere,
+		s.profileWorkflowDetector,
 	}
 	for _, gen := range candidates {
 		sg, err := gen(ctx, now, currentView)
@@ -283,6 +284,40 @@ func (s *Suggester) nextViewFromHere(ctx context.Context, _ time.Time, currentVi
 		ActionID:    "userprofile.open-view:" + winner,
 		MuteKey:     fmt.Sprintf("userprofile.next:%s->%s", currentView, winner),
 	}, nil
+}
+
+// profileWorkflowDetector suggests creating a profile when the user
+// frequently switches between different views in a short period,
+// indicating they may benefit from saving workspace configurations.
+func (s *Suggester) profileWorkflowDetector(ctx context.Context, now time.Time, currentView string) (*Suggestion, error) {
+	activity, err := s.store.Recent(ctx, 200)
+	if err != nil {
+		return nil, err
+	}
+	if len(activity) < 10 {
+		return nil, nil
+	}
+
+	changes := 0
+	views := map[string]int{}
+	for i := 0; i+1 < len(activity); i++ {
+		if activity[i].ViewID != activity[i+1].ViewID {
+			changes++
+			views[activity[i].ViewID]++
+			views[activity[i+1].ViewID]++
+		}
+	}
+	if changes >= 10 && len(views) >= 3 && now.Sub(activity[0].Ts) <= 15*time.Minute {
+		return &Suggestion{
+			Kind:        "profiles",
+			Title:       "You switch between views frequently",
+			Body:        "Save your current workspace as a named profile — switch with one click instead of reconfiguring each time.",
+			ActionLabel: "Create profile",
+			ActionID:    "profiles.suggest:open-creator",
+			MuteKey:     "profiles.frequent-switcher",
+		}, nil
+	}
+	return nil, nil
 }
 
 // dominant returns the highest-count entry and its count. Ties resolve

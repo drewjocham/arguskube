@@ -1,15 +1,17 @@
-<script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick, reactive } from 'vue'
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, watch, nextTick, reactive, computed } from 'vue'
 import { useTerminal, useTerminalSession, useTerminalCopilot, usePods, useContexts } from '../../composables/useWails'
 import { bus } from '../../lib/bus'
 import { useTerminalDispatch } from '../../composables/useTerminalDispatch'
 import { useOutputCaptureStore } from '../../stores/outputCapture'
+import { TERMINAL_THEME, TERMINAL_FONT_FAMILY, TERMINAL_DOMAIN_ICONS, TERMINAL_DOMAIN_LABELS } from '../../features/terminal/theme'
+import type { TabState, PendingCommand } from '../../features/terminal/types'
 
-const props = defineProps({
-  visible: { type: Boolean, default: false },
-})
+const props = defineProps<{
+  visible: boolean
+}>()
 
-const termRefs = ref({})
+const termRefs = ref<Record<string, HTMLElement | null>>({})
 const activeSessionId = ref('default')
 const { startTerminal, sendInput, resizeTerminal } = useTerminal()
 const {
@@ -18,88 +20,98 @@ const {
   domainLabel, domainIcon,
 } = useTerminalSession()
 
-const tabs = reactive([
-  { sessionId: 'default', domain: 'default', label: 'Shell', initError: null, unavailable: false, started: false, term: null, fitAddon: null },
+const tabs = reactive<TabState[]>([
+  { sessionId: 'default', domain: 'default', label: 'Shell', initError: null, started: false, term: null, fitAddon: null },
 ])
 
-let busOff = null
+const _resizeTimer = { id: null as ReturnType<typeof setTimeout> | null }
 
-function getTab(sessionId) {
+function getTab(sessionId: string): TabState | undefined {
   return tabs.find(t => t.sessionId === sessionId)
 }
 
-async function addTab(domain) {
+async function addTab(domain: string) {
   const existing = tabs.find(t => t.domain === domain)
   if (existing) { activeSessionId.value = existing.sessionId; return }
   const sessionId = domain
-  tabs.push({ sessionId, domain, label: domainLabel(domain), initError: null, unavailable: false, started: false, term: null, fitAddon: null })
+  tabs.push({ sessionId, domain, label: domainLabel(domain), initError: null, started: false, term: null, fitAddon: null })
   activeSessionId.value = sessionId
   await nextTick()
   await initSessionTab(sessionId)
 }
 
-async function closeTab(sessionId) {
+async function closeTab(sessionId: string) {
   if (tabs.length <= 1) return
   const idx = tabs.findIndex(t => t.sessionId === sessionId)
   const tab = getTab(sessionId)
-  if (tab) { tab.term?.dispose(); await closeSession(sessionId) }
+  if (tab) {
+    tab.term?.dispose()
+    await closeSession(sessionId)
+  }
   tabs.splice(idx, 1)
   if (activeSessionId.value === sessionId) {
     activeSessionId.value = tabs[Math.min(idx, tabs.length - 1)].sessionId
   }
 }
 
-async function initSessionTab(sessionId) {
+function shellEscape(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'"
+}
+
+async function initSessionTab(sessionId: string) {
   const tab = getTab(sessionId)
   if (!tab || tab.started) return
   tab.initError = null
-  tab.unavailable = false
 
   const el = termRefs.value[sessionId]
   if (!el) return
 
-  const { Terminal } = await import('xterm')
-  const { FitAddon } = await import('xterm-addon-fit')
+  let Terminal: any
+  let FitAddon: any
+  try {
+    ({ Terminal } = await import('xterm'))
+    ;({ FitAddon } = await import('xterm-addon-fit'))
+  } catch (e: any) {
+    tab.initError = 'Failed to load terminal library: ' + (e?.message || 'network error')
+    return
+  }
 
   const term = new Terminal({
-    fontFamily: "'Cascadia Mono', 'Cascadia Code', 'SF Mono', Consolas, monospace",
-    fontSize: 12, lineHeight: 1.35, cursorBlink: true, cursorStyle: 'bar',
-    theme: {
-      background: '#1a1c1e', foreground: '#e8eaec', cursor: '#4f8ef7',
-      cursorAccent: '#1a1c1e', selectionBackground: 'rgba(79,142,247,0.25)',
-      black: '#1a1c1e', red: '#f05454', green: '#3ecf8e', yellow: '#f5a623',
-      blue: '#4f8ef7', magenta: '#a78bfa', cyan: '#2dd4bf', white: '#e8eaec',
-      brightBlack: '#5c6168', brightRed: '#ff7575', brightGreen: '#5edba6',
-      brightYellow: '#ffc04d', brightBlue: '#6ba3f9', brightMagenta: '#c4b3fd',
-      brightCyan: '#5ee8d4', brightWhite: '#ffffff',
-    },
+    fontFamily: TERMINAL_FONT_FAMILY,
+    fontSize: 12,
+    lineHeight: 1.35,
+    cursorBlink: true,
+    cursorStyle: 'bar',
+    theme: TERMINAL_THEME,
   })
 
   const fitAddon = new FitAddon()
   term.loadAddon(fitAddon)
   term.open(el)
   await nextTick()
-  fitAddon.fit()
+  try {
+    fitAddon.fit()
+  } catch (e) {
+    console.warn('[terminal] fitAddon.fit failed:', e)
+  }
 
-  term.onData((data) => { sendSessionInput(sessionId, data) })
+  term.onData((data: string) => { sendSessionInput(sessionId, data) })
 
   try {
     await createSession(sessionId, tab.domain, tab.label, term.rows, term.cols)
     tab.started = true
     tab.term = term
     tab.fitAddon = fitAddon
-  } catch (e) {
+  } catch (e: any) {
     tab.initError = e?.message || String(e)
-    // TerminalUnavailableError ⇒ render the "web mode" variant
-    // (no retry button — retrying solves nothing).
-    tab.unavailable = e?.code === 'TERMINAL_UNAVAILABLE'
     tab.started = false
     term.dispose()
-    tab.term = null; tab.fitAddon = null
+    tab.term = null
+    tab.fitAddon = null
   }
 }
 
-async function retryInit(sessionId) {
+async function retryInit(sessionId: string) {
   const tab = getTab(sessionId)
   if (!tab) return
   tab.initError = null
@@ -109,11 +121,18 @@ async function retryInit(sessionId) {
 const captureStore = useOutputCaptureStore()
 const recentOutput = ref('')
 
-function handleTerminalOutput(payload) {
+function handleTerminalOutput(payload: any) {
   if (!payload) return
-  let data
-  if (typeof payload === 'string') { data = payload; const tab = getTab('default'); if (tab?.term) tab.term.write(data) }
-  else { data = payload.data; const tab = getTab(payload.sessionId || 'default'); if (tab?.term) tab.term.write(data) }
+  let data: string
+  if (typeof payload === 'string') {
+    data = payload
+    const tab = getTab('default')
+    if (tab?.term) tab.term.write(data)
+  } else {
+    data = payload.data
+    const tab = getTab(payload.sessionId || 'default')
+    if (tab?.term) tab.term.write(data)
+  }
   captureStore.appendOutput(data)
   if (data) { recentOutput.value = (recentOutput.value + data).slice(-4096) }
 }
@@ -121,9 +140,19 @@ function handleTerminalOutput(payload) {
 function handleResize() {
   for (const tab of tabs) {
     if (tab.fitAddon && tab.term && props.visible && tab.sessionId === activeSessionId.value) {
-      tab.fitAddon.fit(); resizeSession(tab.sessionId, tab.term.rows, tab.term.cols)
+      try {
+        tab.fitAddon.fit()
+        resizeSession(tab.sessionId, tab.term.rows, tab.term.cols)
+      } catch (e) {
+        console.warn('[terminal] resize failed:', e)
+      }
     }
   }
+}
+
+function debouncedResize() {
+  if (_resizeTimer.id) clearTimeout(_resizeTimer.id)
+  _resizeTimer.id = setTimeout(handleResize, 100)
 }
 
 watch(() => props.visible, async (visible) => {
@@ -146,18 +175,18 @@ watch(activeSessionId, async () => {
 })
 
 const { pendingCommand, consumePendingCommand, peekPendingCommand } = useTerminalDispatch()
-let lastSessionId = null
+const lastSessionId = ref<string | null>(null)
 
 function flushPendingCommand() {
   const tab = getTab(activeSessionId.value)
   if (!tab?.term || !tab.started || !props.visible) return
   if (!peekPendingCommand()) return
-  const queued = consumePendingCommand()
+  const queued: PendingCommand | null = consumePendingCommand()
   if (!queued) return
-  if (queued.sessionId && queued.sessionId !== lastSessionId) {
+  if (queued.sessionId && queued.sessionId !== lastSessionId.value) {
     sendSessionInput(activeSessionId.value, `# session: ${queued.sectionLabel || queued.sessionId}\n`)
-    lastSessionId = queued.sessionId
-  } else if (!queued.sessionId) { lastSessionId = null }
+    lastSessionId.value = queued.sessionId
+  } else if (!queued.sessionId) { lastSessionId.value = null }
   sendSessionInput(activeSessionId.value, queued.text)
   tab.term.focus()
 }
@@ -168,14 +197,15 @@ watch(pendingCommand, (val) => { if (val) flushPendingCommand() })
 const copilot = useTerminalCopilot()
 const copilotInput = ref('')
 const copilotOpen = ref(false)
-const copilotMode = ref('ask')
+const copilotMode = ref<'ask' | 'explain'>('ask')
 
 async function handleCopilotSubmit() {
   const input = copilotInput.value.trim()
   if (!input) return
   const tab = getTab(activeSessionId.value)
   const domain = tab?.domain || 'default'
-  copilotOpen.value = true; copilotMode.value = 'ask'
+  copilotOpen.value = true
+  copilotMode.value = 'ask'
   await copilot.generateCommand(input, domain)
   copilotInput.value = ''
 }
@@ -183,43 +213,54 @@ async function handleCopilotSubmit() {
 async function handleExplain() {
   const tab = getTab(activeSessionId.value)
   const domain = tab?.domain || 'default'
-  copilotOpen.value = true; copilotMode.value = 'explain'
+  copilotOpen.value = true
+  copilotMode.value = 'explain'
   await copilot.explainOutput(recentOutput.value, domain)
 }
 
-function copilotResultText() {
+function copilotResultText(): string {
   if (copilot.loading.value) return 'Thinking...'
-  if (copilot.error.value) return copilot.error.value
-  if (copilot.result.value) return copilot.result.value
+  if (copilot.error.value) return String(copilot.error.value)
+  if (copilot.result.value) return String(copilot.result.value)
   return ''
 }
 
 function closeCopilot() { copilotOpen.value = false; copilot.clear() }
 
-// Pod exec (K8s tab)
+// Pod exec
 const podPickerOpen = ref(false)
-const { pods, loading: podsLoading, fetchPods } = usePods()
+const podsComposable = usePods() as any
+const pods = podsComposable.pods
+const podsLoading = podsComposable.loading
+const listPods = podsComposable.listPods
 
-async function togglePodPicker() {
+async function togglePodPicker(): Promise<void> {
   podPickerOpen.value = !podPickerOpen.value
-  if (podPickerOpen.value) await fetchPods()
+  if (podPickerOpen.value) await listPods()
 }
 
-function execIntoPod(podName, namespace) {
+function shellEsc(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'"
+}
+
+function execIntoPod(podName: string, namespace: string): void {
   const tab = getTab(activeSessionId.value)
   if (!tab?.term) return
   podPickerOpen.value = false
-  sendSessionInput(activeSessionId.value, `kubectl exec -it -n ${namespace} ${podName} -- sh\n`)
+  sendSessionInput(activeSessionId.value, `kubectl exec -it -n ${shellEsc(namespace)} ${shellEsc(podName)} -- sh\n`)
 }
 
 // Context switcher (K8s tab)
-const { contexts, fetchContexts } = useContexts()
+const ctxComposable = useContexts() as any
+const contexts = ctxComposable.contexts
+const listContexts = ctxComposable.listContexts
 const currentContext = ref('')
 const ctxSwitcherOpen = ref(false)
 
-async function refreshContext() {
-  await fetchContexts()
-  const active = contexts.value?.find(c => c.active)
+  async function refreshContext(): Promise<void> {
+  await listContexts()
+  const ctx = contexts.value as Array<{ active?: boolean; name?: string }> | undefined
+  const active = ctx?.find(c => c.active)
   currentContext.value = active?.name || ''
 }
 
@@ -228,7 +269,7 @@ async function toggleCtxSwitcher() {
   if (ctxSwitcherOpen.value) await refreshContext()
 }
 
-async function switchCtx(name) {
+async function switchCtx(name: string) {
   ctxSwitcherOpen.value = false
   const tab = getTab(activeSessionId.value)
   if (!tab?.term) return
@@ -237,8 +278,8 @@ async function switchCtx(name) {
 }
 
 onMounted(async () => {
-  window.addEventListener('resize', handleResize)
-  busOff = bus.useWailsEvent('terminal:output', handleTerminalOutput)
+  window.addEventListener('resize', debouncedResize)
+  bus.useWailsEvent('terminal:output', handleTerminalOutput)
   if (props.visible) {
     await nextTick()
     const tab = getTab(activeSessionId.value)
@@ -249,28 +290,33 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  busOff?.()
-  for (const tab of tabs) { tab.term?.dispose(); tab.term = null }
+  window.removeEventListener('resize', debouncedResize)
+  if (_resizeTimer.id) clearTimeout(_resizeTimer.id)
+  for (const tab of tabs) {
+    tab.term?.dispose()
+    tab.term = null
+  }
 })
 </script>
 
 <template>
   <div class="terminal-container" v-show="visible">
-    <div class="terminal-tabs">
+    <div class="terminal-tabs" role="tablist">
       <button v-for="tab in tabs" :key="tab.sessionId" class="tab"
         :class="{ active: tab.sessionId === activeSessionId }"
+        role="tab"
+        :aria-selected="tab.sessionId === activeSessionId"
         @click="activeSessionId = tab.sessionId">
-        <span class="tab-icon">{{ domainIcon(tab.domain) }}</span>
+        <span class="tab-icon">{{ TERMINAL_DOMAIN_ICONS[tab.domain] || '>' }}</span>
         <span class="tab-label">{{ tab.label }}</span>
-        <span v-if="tabs.length > 1" class="tab-close" @click.stop="closeTab(tab.sessionId)">&times;</span>
+        <span v-if="tabs.length > 1" class="tab-close" role="button" aria-label="Close session" @click.stop="closeTab(tab.sessionId)">&times;</span>
       </button>
       <div class="tab-add-wrapper">
-        <button class="tab-add" title="New session">+</button>
+        <button class="tab-add" title="New session" @click.stop>+</button>
         <div class="tab-add-menu">
           <button v-for="d in domains" :key="d.id" @click="addTab(d.id)"
             :disabled="tabs.some(t => t.domain === d.id)">
-            {{ domainIcon(d.id) }} {{ d.label }}
+            {{ TERMINAL_DOMAIN_ICONS[d.id] || '>' }} {{ d.label }}
           </button>
         </div>
       </div>
@@ -278,7 +324,7 @@ onUnmounted(() => {
 
     <!-- Pod picker -->
     <div v-if="podPickerOpen" class="overlay-panel" @click.stop>
-      <div class="overlay-header"><span>Select a pod to exec into:</span><button class="overlay-close" @click="podPickerOpen = false">&times;</button></div>
+      <div class="overlay-header"><span>Select a pod to exec into:</span><button class="overlay-close" aria-label="Close" @click="podPickerOpen = false">&times;</button></div>
       <div class="overlay-list">
         <div v-if="podsLoading" class="overlay-empty">Loading pods...</div>
         <div v-else-if="!pods?.length" class="overlay-empty">No pods found</div>
@@ -292,7 +338,7 @@ onUnmounted(() => {
 
     <!-- Context switcher -->
     <div v-if="ctxSwitcherOpen" class="overlay-panel" @click.stop>
-      <div class="overlay-header"><span>Switch Kubernetes context:</span><button class="overlay-close" @click="ctxSwitcherOpen = false">&times;</button></div>
+      <div class="overlay-header"><span>Switch Kubernetes context:</span><button class="overlay-close" aria-label="Close" @click="ctxSwitcherOpen = false">&times;</button></div>
       <div class="overlay-list">
         <div v-if="!contexts?.length" class="overlay-empty">No contexts found</div>
         <button v-for="ctx in contexts" :key="ctx.name" class="overlay-item" :class="{ 'ctx-active': ctx.active }" @click="switchCtx(ctx.name)">
@@ -304,20 +350,7 @@ onUnmounted(() => {
 
     <!-- Sessions -->
     <div v-for="tab in tabs" :key="tab.sessionId" v-show="tab.sessionId === activeSessionId" class="terminal-session">
-      <!-- Web/SaaS mode: terminal can't run here at all. Friendly
-           explanation + no retry (retrying solves nothing — the env
-           is structurally wrong). -->
-      <div v-if="tab.initError && tab.unavailable" class="terminal-error terminal-error-unavailable">
-        <div class="terminal-error-icon terminal-error-icon-info">i</div>
-        <div class="terminal-error-body">
-          <div class="terminal-error-title">Terminal not available in web mode</div>
-          <div class="terminal-error-msg">{{ tab.initError }}</div>
-        </div>
-      </div>
-
-      <!-- Real failure: shell exited, exec errored, etc. Surface the
-           message + retry button. -->
-      <div v-else-if="tab.initError" class="terminal-error">
+      <div v-if="tab.initError" class="terminal-error">
         <div class="terminal-error-icon">!</div>
         <div class="terminal-error-body">
           <div class="terminal-error-title">Terminal session failed to start</div>
@@ -325,14 +358,14 @@ onUnmounted(() => {
           <button class="terminal-error-retry" @click="retryInit(tab.sessionId)">Retry</button>
         </div>
       </div>
-      <div :ref="el => { if (el) termRefs[tab.sessionId] = el }" class="terminal-element" v-show="!tab.initError"></div>
+      <div :ref="el => { if (el) termRefs[tab.sessionId] = el as HTMLElement }" class="terminal-element" v-show="!tab.initError"></div>
     </div>
 
     <!-- Copilot response -->
-    <div v-if="copilotOpen" class="copilot-response" @click="closeCopilot">
+    <div v-if="copilotOpen" class="copilot-response" role="dialog" aria-label="Copilot response" @click="closeCopilot">
       <div class="copilot-response-header">
         <span class="copilot-response-label">{{ copilotMode === 'explain' ? 'Analysis' : 'Command' }}</span>
-        <button class="overlay-close" @click.stop="closeCopilot">&times;</button>
+        <button class="overlay-close" aria-label="Close" @click.stop="closeCopilot">&times;</button>
       </div>
       <pre class="copilot-response-text">{{ copilotResultText() }}</pre>
     </div>
@@ -360,7 +393,8 @@ onUnmounted(() => {
 .tab-add-wrapper { position: relative; margin-left: auto; }
 .tab-add { background: none; border: none; color: #5c6168; font-size: 16px; padding: 4px 8px; cursor: pointer; font-family: inherit; }
 .tab-add:hover { color: #e8eaec; }
-.tab-add-wrapper:hover .tab-add-menu { display: flex; }
+.tab-add-wrapper:hover .tab-add-menu,
+.tab-add-wrapper:focus-within .tab-add-menu { display: flex; }
 .tab-add-menu { display: none; position: absolute; top: 100%; right: 0; flex-direction: column; background: #1c1f22; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 4px; z-index: 50; min-width: 120px; }
 .tab-add-menu button { background: none; border: none; color: #e8eaec; padding: 6px 10px; font-size: 12px; text-align: left; cursor: pointer; border-radius: 4px; font-family: inherit; }
 .tab-add-menu button:hover { background: rgba(79,142,247,0.15); }
@@ -374,9 +408,6 @@ onUnmounted(() => {
 .terminal-error-msg { font-size: 12px; color: var(--text2); font-family: var(--mono); word-break: break-word; }
 .terminal-error-retry { align-self: flex-start; margin-top: 6px; background: rgba(79,142,247,0.15); border: 1px solid rgba(79,142,247,0.3); color: var(--accent2); padding: 5px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; }
 .terminal-error-retry:hover { background: rgba(79,142,247,0.25); color: #fff; }
-/* Unavailable variant: blue / informational, not red / alarming. */
-.terminal-error-unavailable { background: rgba(79,142,247,0.06); }
-.terminal-error-icon-info { background: rgba(79,142,247,0.18); color: var(--accent2); font-style: italic; }
 .terminal-element { width: 100%; height: 100%; padding: 4px 8px; }
 
 .overlay-panel { position: absolute; bottom: 100%; left: 8px; right: 8px; max-height: 220px; overflow-y: auto; background: #1c1f22; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; z-index: 10; }

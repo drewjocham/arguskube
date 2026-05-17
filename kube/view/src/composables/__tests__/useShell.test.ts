@@ -1,15 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useTerminal, usePodExec, classifyTerminalError, TerminalUnavailableError } from '../useShell'
 
-// stubWails / stripWails swap the "is this a Wails build?" signal
-// (isWails() in useBridge checks for window.go). Both code paths need
-// driving without touching production code.
-function stubWails() {
-  // Minimal shape: isWails() only checks !!window.go.
-  window.go = { pkg: { App: {} } }
+function stubWails(): void {
+  (window as unknown as Record<string, unknown>).go = { pkg: { App: {} } }
 }
-function stripWails() {
-  if (window.go) delete window.go
+
+function stripWails(): void {
+  if ((window as unknown as Record<string, unknown>).go) delete (window as unknown as Record<string, unknown>).go
 }
 
 describe('useTerminal', () => {
@@ -31,7 +28,7 @@ describe('useTerminal', () => {
   })
 
   it('startTerminal calls StartTerminal with rows and cols', async () => {
-    stubWails() // happy path runs against Wails (or its mock)
+    stubWails()
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({ result: null }),
@@ -48,9 +45,6 @@ describe('useTerminal', () => {
   })
 
   it('startTerminal RETHROWS errors so the UI can surface them', async () => {
-    // Previously startTerminal swallowed errors silently, leaving the user
-    // staring at an empty black box. Now it rethrows so TerminalView can
-    // show a visible "session failed to start" panel with a Retry button.
     stubWails()
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Terminal error')))
 
@@ -59,17 +53,13 @@ describe('useTerminal', () => {
   })
 
   it('startTerminal throws TerminalUnavailableError in SaaS/web mode (no Wails)', async () => {
-    // Browser mode: the call used to round-trip and surface as a
-    // scary "HTTP error! status: 403" banner. Now the guard
-    // short-circuits BEFORE the network call with a typed error
-    // (.code === 'TERMINAL_UNAVAILABLE') the UI branches on.
     stripWails()
     const mockFetch = vi.fn()
     vi.stubGlobal('fetch', mockFetch)
 
     const { startTerminal } = useTerminal()
     await expect(startTerminal(24, 80)).rejects.toBeInstanceOf(TerminalUnavailableError)
-    expect(mockFetch).not.toHaveBeenCalled() // no 403 round-trip
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('sendInput calls SendTerminalInput with data', async () => {
@@ -117,11 +107,10 @@ describe('classifyTerminalError', () => {
     const err = new Error('HTTP error! status: 403')
     const out = classifyTerminalError(err)
     expect(out).toBeInstanceOf(TerminalUnavailableError)
-    expect(out.code).toBe('TERMINAL_UNAVAILABLE')
+    expect((out as TerminalUnavailableError).code).toBe('TERMINAL_UNAVAILABLE')
   })
 
   it('reclassifies "method not exposed via HTTP" as TerminalUnavailableError', () => {
-    // The raw server body — passes through callGo wrapped in data.error.
     const err = new Error('method not exposed via HTTP API')
     expect(classifyTerminalError(err)).toBeInstanceOf(TerminalUnavailableError)
   })
@@ -140,7 +129,7 @@ describe('classifyTerminalError', () => {
 describe('usePodExec', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    if (window.go) delete window.go
+    stripWails()
   })
 
   afterEach(() => {

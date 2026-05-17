@@ -62,7 +62,7 @@ describe('outputCapture store', () => {
     expect(s.activeBlockId).toBe('block-B')
   })
 
-  it('startCapture twice on the same block resets the buffer (so each Run shows fresh output)', () => {
+  it('startCapture twice on the same block resets the buffer', () => {
     const s = useOutputCaptureStore()
     s.startCapture('block-1')
     s.appendOutput('first run\n')
@@ -76,7 +76,6 @@ describe('outputCapture store', () => {
     s.stopCapture('block-1')
     expect(s.activeBlockId).toBeNull()
 
-    // stopCapture for a non-active block is a no-op.
     s.startCapture('block-2')
     s.stopCapture('block-1')
     expect(s.activeBlockId).toBe('block-2')
@@ -93,7 +92,6 @@ describe('outputCapture store', () => {
   it('caps a single block buffer at the configured maximum', () => {
     const s = useOutputCaptureStore()
     s.startCapture('block-1')
-    // Push way more than 64KB — append in chunks to exercise the trim path.
     const chunk = 'x'.repeat(8192)
     for (let i = 0; i < 12; i++) s.appendOutput(chunk)
     expect(s.bufferFor('block-1').length).toBeLessThanOrEqual(64 * 1024)

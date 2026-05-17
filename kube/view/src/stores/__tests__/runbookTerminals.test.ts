@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useRunbookTerminalsStore, __test } from '../runbookTerminals'
 
-const memory = {}
+const memory: Record<string, string> = {}
 Object.defineProperty(window, 'localStorage', {
   value: {
-    getItem: (k) => (k in memory ? memory[k] : null),
-    setItem: (k, v) => { memory[k] = String(v) },
-    removeItem: (k) => { delete memory[k] },
+    getItem: (k: string) => (k in memory ? memory[k] : null),
+    setItem: (k: string, v: string) => { memory[k] = String(v) },
+    removeItem: (k: string) => { delete memory[k] },
   },
   writable: true, configurable: true,
 })
@@ -21,7 +21,7 @@ describe('runbookTerminals store', () => {
 
   async function fresh() {
     setActivePinia(createPinia())
-    const mod = await import('../runbookTerminals.js')
+    const mod = await import('../runbookTerminals')
     return mod.useRunbookTerminalsStore()
   }
 
@@ -39,7 +39,6 @@ describe('runbookTerminals store', () => {
   it('resolveTarget uses the pinned section after pinDocument', async () => {
     const s = await fresh()
     s.pinDocument('rb-1', 'verify-pods')
-    // Even when querying a different sectionId, the resolver returns the pin.
     expect(s.resolveTarget('rb-1', 'somewhere-else', 5)).toBe('rb-1::verify-pods')
     expect(s.isPinned('rb-1')).toBe(true)
   })
@@ -64,7 +63,6 @@ describe('runbookTerminals store', () => {
     s.pinDocument('rb-1', 'verify-pods')
     s.setBlockOverride('rb-1', 3, 'my-custom-session')
     expect(s.resolveTarget('rb-1', 'verify-pods', 3)).toBe('my-custom-session')
-    // A different block under the same doc still respects the pin.
     expect(s.resolveTarget('rb-1', 'verify-pods', 4)).toBe('rb-1::verify-pods')
   })
 

@@ -2,12 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
-// Mock xterm and xterm-addon-fit.
 const mockTerminalDispose = vi.fn()
 const mockTerminalWrite = vi.fn()
 const mockTerminalOpen = vi.fn()
 const mockTerminalFocus = vi.fn()
-let mockOnDataCallback = null
+let mockOnDataCallback: ((data: string) => void) | null = null
 let mockTerminalColumns = 80
 let mockTerminalRows = 24
 const mockFit = vi.fn()
@@ -19,7 +18,7 @@ vi.mock('xterm', () => ({
     write: mockTerminalWrite,
     focus: mockTerminalFocus,
     dispose: mockTerminalDispose,
-    onData: vi.fn((cb) => { mockOnDataCallback = cb }),
+    onData: vi.fn((cb: (data: string) => void) => { mockOnDataCallback = cb }),
     get rows() { return mockTerminalRows },
     get cols() { return mockTerminalColumns },
   })),
@@ -29,7 +28,6 @@ vi.mock('xterm-addon-fit', () => ({
   FitAddon: vi.fn(() => ({ fit: mockFit })),
 }))
 
-// Mocks for composables.
 const mockCreateSession = vi.fn()
 const mockSendSessionInput = vi.fn()
 const mockResizeSession = vi.fn()
@@ -38,15 +36,15 @@ const mockRefreshSessions = vi.fn()
 const mockExplainOutput = vi.fn()
 const mockGenerateCommand = vi.fn()
 const mockCopilotClear = vi.fn()
-const mockFetchPods = vi.fn()
-const mockFetchContexts = vi.fn()
+const mockListPods = vi.fn()
+const mockListContexts = vi.fn()
 
-function mockDomainIcon(d) {
-  const icons = { default: '>', k8s: '\u2388', kafka: 'K', cloud: '\u2601' }
+function mockDomainIcon(d: string) {
+  const icons: Record<string, string> = { default: '>', k8s: '\u2388', kafka: 'K', cloud: '\u2601' }
   return icons[d] || '>'
 }
-function mockDomainLabel(d) {
-  const labels = { default: 'Shell', k8s: 'K8s', kafka: 'Kafka', cloud: 'Cloud' }
+function mockDomainLabel(d: string) {
+  const labels: Record<string, string> = { default: 'Shell', k8s: 'K8s', kafka: 'Kafka', cloud: 'Cloud' }
   return labels[d] || d
 }
 
@@ -75,25 +73,24 @@ vi.mock('../../composables/useWails', () => ({
     explainOutput: mockExplainOutput, generateCommand: mockGenerateCommand, clear: mockCopilotClear,
   })),
   usePods: vi.fn(() => ({
-    pods: [], loading: false, fetchPods: mockFetchPods,
+    pods: [], loading: false, listPods: mockListPods,
   })),
   useContexts: vi.fn(() => ({
-    contexts: [], fetchContexts: mockFetchContexts,
+    contexts: [], listContexts: mockListContexts,
   })),
 }))
 
-// Mock bus.
-let terminalOutputCallback = null
+let terminalOutputCallback: ((payload: any) => void) | null = null
 vi.mock('../../lib/bus', () => ({
   bus: {
-    useWailsEvent: vi.fn((eventName, callback) => {
+    useWailsEvent: vi.fn((eventName: string, callback: (payload: any) => void) => {
       if (eventName === 'terminal:output') terminalOutputCallback = callback
     }),
     on: vi.fn(), off: vi.fn(), emit: vi.fn(), onWails: vi.fn(), useEvent: vi.fn(),
   },
 }))
 
-let TerminalView
+let TerminalView: any
 
 async function createWrapper(props = {}) {
   if (!TerminalView) TerminalView = (await import('../../components/terminal/TerminalView.vue')).default
@@ -158,6 +155,8 @@ describe('TerminalView.vue — Integration', () => {
     const wrapper = await createWrapper({ visible: true })
     await nextTick(); await flushPromises(); await nextTick()
     window.dispatchEvent(new Event('resize'))
+    // debounced — wait 200ms for the 100ms debounce + buffer
+    await new Promise(r => setTimeout(r, 200))
     expect(mockFit).toHaveBeenCalled()
   })
 
@@ -193,5 +192,11 @@ describe('TerminalView.vue — Integration', () => {
     const wrapper = await createWrapper({ visible: true })
     await nextTick()
     expect(wrapper.find('.terminal-tabs').exists()).toBe(true)
+  })
+
+  it('uses shared TERMINAL_FONT_FAMILY', async () => {
+    const { TERMINAL_FONT_FAMILY } = await import('../../features/terminal/theme')
+    expect(TERMINAL_FONT_FAMILY).toContain('ui-monospace')
+    expect(TERMINAL_FONT_FAMILY).toContain('SF Mono')
   })
 })

@@ -19,6 +19,7 @@ import SecretsToolProbeRow from './SecretsToolProbeRow.vue'
 import SetupChecklist from './SetupChecklist.vue'
 import PrivacyControls from './PrivacyControls.vue'
 import { useNavVisibilityStore } from '../../stores/navVisibility'
+import ProfilesManager from '../profiles/ProfilesManager.vue'
 
 const SECTION_GROUPS = [
   {
@@ -71,6 +72,12 @@ const SECTION_GROUPS = [
     sections: [
       { id: 'billing-usage', label: 'Billing' },
       { id: 'addons-jobs', label: 'Add-ons' },
+    ],
+  },
+  {
+    label: 'Profiles',
+    sections: [
+      { id: 'profile-groups', label: 'Profile Groups' },
     ],
   },
 ]
@@ -944,6 +951,9 @@ onMounted(async () => {
       // The form is the source of truth for the radio + the conditional
       // field-group that owns the token / owner / repo inputs.
       if (form.value) form.value.pipelinesProvider = 'github'
+    } else if (pending.anchor) {
+      // Generic fallback: any section with a matching id (profiles, etc.)
+      anchorEl = document.getElementById(pending.anchor)
     }
 
     if (anchorEl && typeof anchorEl.scrollIntoView === 'function') {
@@ -2256,6 +2266,14 @@ onMounted(async () => {
             </div>
           </div>
         </div>
+      </div>
+
+      <div class="section" id="profile-groups">
+        <div class="section-h">
+          <h2 class="section-title" style="margin-bottom: 0;">Profile Groups</h2>
+          <p class="hint">Save your workspace configurations as named profiles. Switch between them in one click from the titlebar.</p>
+        </div>
+        <ProfilesManager />
       </div>
     </div>
 

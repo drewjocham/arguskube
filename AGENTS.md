@@ -95,6 +95,10 @@ if a feature requires more than two clicks to achieve its primary goal, it is a 
 - Handlers should parse the incoming request/message, call a service or use-case interface, and format the response/error.
 - Keep handlers thin and delegate core logic to underlying services.
 
+### TODO
+- please follow the project guidelines of only using typescript files and not javascript.
+- Make sure you have a design pattern in mind that also follows the projects design and DRY is important. Pay attendion or features that have a similiar implementation is explore possible solutions of overriding and abstrastion that would reduce code and complexity while not tightly binding them.
+
 ### Strategy and Adapter Patterns
 - Use the **Strategy pattern** for interchangeable algorithms (e.g., different filtering or processing rules).
 - Use the **Adapter pattern** to integrate with external systems (like Solace or databases) ensuring the core domain remains decoupled from external dependencies.

@@ -3,7 +3,7 @@
 import {alertproc} from '../models';
 import {context} from '../models';
 import {k8s} from '../models';
-import {http} from '../models';
+import {chi} from '../models';
 import {setup} from '../models';
 import {oauthproviders} from '../models';
 import {pkg} from '../models';
@@ -18,6 +18,7 @@ import {anomaly} from '../models';
 import {argocd} from '../models';
 import {loadtest} from '../models';
 import {workflows} from '../models';
+import {http} from '../models';
 import {broker} from '../models';
 import {notebooks} from '../models';
 import {vulnscan} from '../models';
@@ -42,7 +43,7 @@ export function AppendGoogleDoc(arg1:string,arg2:string,arg3:string,arg4:string)
 
 export function ApplyYaml(arg1:string):Promise<string>;
 
-export function AuthRoutes(arg1:http.ServeMux):Promise<void>;
+export function AuthRoutes(arg1:chi.Router):Promise<void>;
 
 export function AuthenticateWithBiometrics(arg1:string):Promise<void>;
 
@@ -256,6 +257,8 @@ export function InstallArgusScan():Promise<setup.SetupResult>;
 
 export function IsBiometricAvailable():Promise<boolean>;
 
+export function LaunchPopOutTerminal():Promise<void>;
+
 export function ListAllNamespaces():Promise<Array<string>>;
 
 export function ListApplications(arg1:string):Promise<Array<k8s.Application>>;
@@ -460,6 +463,6 @@ export function UpsertDBConnection(arg1:context.Context,arg2:pkg.DBConnectionInp
 
 export function ValidateEnvFile(arg1:string,arg2:string,arg3:string):Promise<pkg.EnvValidationResult>;
 
-export function WorkspaceRoutes(arg1:http.ServeMux):Promise<void>;
+export function WorkspaceRoutes(arg1:chi.Router):Promise<void>;
 
 export function WriteGoogleSheetRange(arg1:string,arg2:string,arg3:string,arg4:string,arg5:Array<any>):Promise<void>;

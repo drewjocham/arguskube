@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useTerminalDispatch } from '../useTerminalDispatch'
 
 describe('useTerminalDispatch', () => {
-  // Drain any state left over from previous tests (the composable holds
-  // module-level shared refs by design).
   beforeEach(() => {
     const { consumePendingCommand } = useTerminalDispatch()
     consumePendingCommand()
@@ -14,7 +12,7 @@ describe('useTerminalDispatch', () => {
     const b = useTerminalDispatch()
     a.sendToTerminal('echo hi')
     expect(b.pendingCommand.value).not.toBeNull()
-    expect(b.pendingCommand.value.text).toBe('echo hi')
+    expect(b.pendingCommand.value!.text).toBe('echo hi')
     expect(b.requestOpen.value).toBe(a.requestOpen.value)
   })
 
@@ -25,7 +23,7 @@ describe('useTerminalDispatch', () => {
     dispatch.sendToTerminal('kubectl get pods')
 
     expect(dispatch.pendingCommand.value).not.toBeNull()
-    expect(dispatch.pendingCommand.value.text).toBe('kubectl get pods')
+    expect(dispatch.pendingCommand.value!.text).toBe('kubectl get pods')
     expect(dispatch.requestOpen.value).toBe(before + 1)
   })
 
@@ -34,9 +32,9 @@ describe('useTerminalDispatch', () => {
     const before = dispatch.requestOpen.value
 
     dispatch.sendToTerminal('')
-    dispatch.sendToTerminal(null)
-    dispatch.sendToTerminal(undefined)
-    dispatch.sendToTerminal(42)
+    dispatch.sendToTerminal(null as any)
+    dispatch.sendToTerminal(undefined as any)
+    dispatch.sendToTerminal(42 as any)
 
     expect(dispatch.pendingCommand.value).toBeNull()
     expect(dispatch.requestOpen.value).toBe(before)
@@ -46,10 +44,16 @@ describe('useTerminalDispatch', () => {
     const dispatch = useTerminalDispatch()
     dispatch.sendToTerminal('echo hi')
     const consumed = dispatch.consumePendingCommand()
-    expect(consumed.text).toBe('echo hi')
+    expect(consumed!.text).toBe('echo hi')
     expect(dispatch.pendingCommand.value).toBeNull()
-
-    // A second consume returns null (already drained).
     expect(dispatch.consumePendingCommand()).toBeNull()
+  })
+
+  it('sendToTerminal accepts optional meta (sessionId, sectionLabel)', () => {
+    const dispatch = useTerminalDispatch()
+    dispatch.sendToTerminal('kubectl get pods', { sessionId: 'rb-1::verify', sectionLabel: 'Verify pods' })
+    expect(dispatch.pendingCommand.value!.text).toBe('kubectl get pods')
+    expect(dispatch.pendingCommand.value!.sessionId).toBe('rb-1::verify')
+    expect(dispatch.pendingCommand.value!.sectionLabel).toBe('Verify pods')
   })
 })
