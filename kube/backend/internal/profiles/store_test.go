@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -388,6 +389,107 @@ func TestSetActiveTenantIsolation(t *testing.T) {
 	a2, _ := s.GetActive(ctx, "u2")
 	if a1.GroupID != "g1" || a2.GroupID != "g2" {
 		t.Errorf("tenant isolation broken: u1=%+v u2=%+v", a1, a2)
+	}
+}
+
+func TestQuotaMaxGroupsPerUser(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	// Fill to the cap.
+	for i := 0; i < MaxGroupsPerUser; i++ {
+		id := fmt.Sprintf("g%d", i)
+		if _, err := s.SaveGroup(ctx, "u1", Group{ID: id, Name: id}); err != nil {
+			t.Fatalf("save %s: %v", id, err)
+		}
+	}
+
+	// One past the cap must fail with ErrQuotaExceeded.
+	_, err := s.SaveGroup(ctx, "u1", Group{ID: "g-overflow", Name: "overflow"})
+	if !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("expected ErrQuotaExceeded at cap+1, got %v", err)
+	}
+
+	// Updating an existing group at the cap must still succeed —
+	// upserts don't consume quota.
+	if _, err := s.SaveGroup(ctx, "u1", Group{ID: "g0", Name: "renamed"}); err != nil {
+		t.Errorf("upsert at cap should succeed, got %v", err)
+	}
+
+	// Quota is per-user, not per-DB. u2 starts with their own quota.
+	if _, err := s.SaveGroup(ctx, "u2", Group{ID: "g-u2", Name: "g-u2"}); err != nil {
+		t.Errorf("u2 should be unaffected by u1 quota, got %v", err)
+	}
+}
+
+func TestQuotaMaxVariantsPerGroup(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := s.SaveGroup(ctx, "u1", Group{ID: "g1", Name: "g1"}); err != nil {
+		t.Fatalf("save group: %v", err)
+	}
+
+	for i := 0; i < MaxVariantsPerGroup; i++ {
+		id := fmt.Sprintf("v%d", i)
+		if _, err := s.SaveVariant(ctx, "u1", "g1", Variant{ID: id, Name: id}); err != nil {
+			t.Fatalf("save %s: %v", id, err)
+		}
+	}
+
+	_, err := s.SaveVariant(ctx, "u1", "g1", Variant{ID: "v-overflow", Name: "overflow"})
+	if !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("expected ErrQuotaExceeded at cap+1, got %v", err)
+	}
+
+	// Upsert at cap is fine.
+	if _, err := s.SaveVariant(ctx, "u1", "g1", Variant{ID: "v0", Name: "renamed"}); err != nil {
+		t.Errorf("upsert at cap should succeed, got %v", err)
+	}
+}
+
+func TestQuotaMaxSnapshotBytes(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := s.SaveGroup(ctx, "u1", Group{ID: "g1", Name: "g1"}); err != nil {
+		t.Fatalf("save group: %v", err)
+	}
+
+	// Sized one byte over the cap; the exact JSON shape doesn't matter
+	// because the store treats snapshot_json as opaque text.
+	huge := strings.Repeat("a", MaxSnapshotBytes+1)
+	_, err := s.SaveVariant(ctx, "u1", "g1", Variant{
+		ID: "v1", Name: "v1", Snapshot: json.RawMessage(huge),
+	})
+	if !errors.Is(err, ErrQuotaExceeded) {
+		t.Fatalf("expected ErrQuotaExceeded for oversized snapshot, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "snapshot") {
+		t.Errorf("error message should mention snapshot: %v", err)
+	}
+}
+
+func TestHashUserIDStable(t *testing.T) {
+	// The log helper must produce a stable, non-empty short hash so
+	// production aggregators can correlate a user's activity. Any
+	// future change to the algorithm risks orphaning historical log
+	// queries — pin the behaviour here.
+	a := hashUserID("user-123")
+	b := hashUserID("user-123")
+	c := hashUserID("user-456")
+	if a == "" || len(a) != 12 {
+		t.Errorf("expected 12-char hash, got %q", a)
+	}
+	if a != b {
+		t.Errorf("hash not stable: %q vs %q", a, b)
+	}
+	if a == c {
+		t.Errorf("collision between different inputs: both produced %q", a)
+	}
+	// Most importantly: it must not contain the original ID.
+	if strings.Contains(a, "user-123") {
+		t.Errorf("hash leaked input: %q", a)
 	}
 }
 

@@ -19,7 +19,9 @@ package profiles
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,10 +30,39 @@ import (
 	"time"
 )
 
+// hashUserID returns the first 12 hex chars of SHA-256(userID). Used
+// in structured logs so production grep/aggregation can correlate a
+// user's profile activity without putting the raw ID in log files
+// (which often end up in less-secure aggregators).
+func hashUserID(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(sum[:6])
+}
+
 // ErrNotFound is returned when a row is requested that does not exist
 // for the given user. Callers use errors.Is so they can map it to a
 // 404 / friendly empty response without parsing string messages.
 var ErrNotFound = errors.New("profiles: not found")
+
+// ErrQuotaExceeded is returned when a save would push the user past
+// one of the per-user / per-group caps. Frontend surfaces the error
+// message verbatim — keep it readable for end users.
+var ErrQuotaExceeded = errors.New("profiles: quota exceeded")
+
+// Per-user caps. Sized for the 50k-user production target where any
+// one user's profile set is bounded so a buggy or hostile client
+// can't fill the shared SQLite database.
+//
+// 100 groups × 50 variants × 64 KiB snapshot = ~320 MiB worst case
+// per user. At 50k users that's 16 TiB worst-case — but the realistic
+// median is two or three groups with a handful of variants and a
+// snapshot under 4 KiB, putting the actual median per-user footprint
+// in the single-MB range.
+const (
+	MaxGroupsPerUser    = 100
+	MaxVariantsPerGroup = 50
+	MaxSnapshotBytes    = 64 * 1024
+)
 
 // Group is a named collection of related variants. The frontend
 // surfaces this as the top-level "Profile Groups" list — every
@@ -185,6 +216,30 @@ func (s *Store) SaveGroup(ctx context.Context, userID string, g Group) (Group, e
 		return Group{}, errors.New("profiles: group name required")
 	}
 
+	// Quota check — only count rows the user doesn't already own.
+	// An upsert of an existing row isn't a new row, so it must not
+	// be rejected when the user is right at the cap.
+	var (
+		exists int
+		count  int
+	)
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM profile_groups WHERE user_id = ? AND id = ?`,
+		userID, g.ID,
+	).Scan(&exists); err != nil {
+		return Group{}, fmt.Errorf("profiles: check existing: %w", err)
+	}
+	if exists == 0 {
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM profile_groups WHERE user_id = ?`, userID,
+		).Scan(&count); err != nil {
+			return Group{}, fmt.Errorf("profiles: count groups: %w", err)
+		}
+		if count >= MaxGroupsPerUser {
+			return Group{}, fmt.Errorf("%w: max %d profile groups per user", ErrQuotaExceeded, MaxGroupsPerUser)
+		}
+	}
+
 	now := time.Now().UTC()
 	nowUnix := now.Unix()
 
@@ -203,6 +258,12 @@ func (s *Store) SaveGroup(ctx context.Context, userID string, g Group) (Group, e
 	if err != nil {
 		return Group{}, fmt.Errorf("profiles: save group: %w", err)
 	}
+
+	s.logger.Info("profiles: save group",
+		slog.String("user", hashUserID(userID)),
+		slog.String("group", g.ID),
+		slog.Bool("upsert", exists > 0),
+	)
 
 	// Re-read so the returned struct has the correct created_at when
 	// this was an update (we asked SQLite to preserve it, but the
@@ -277,6 +338,10 @@ func (s *Store) DeleteGroup(ctx context.Context, userID, groupID string) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("profiles: commit delete: %w", err)
 	}
+	s.logger.Info("profiles: delete group",
+		slog.String("user", hashUserID(userID)),
+		slog.String("group", groupID),
+	)
 	return nil
 }
 
@@ -316,10 +381,43 @@ func (s *Store) SaveVariant(ctx context.Context, userID, groupID string, v Varia
 	if snapshot == "" {
 		snapshot = "{}"
 	}
+	// Cap snapshot size — a 64 KiB payload covers every realistic UI
+	// snapshot (the largest field, savedFilters, is a list of small
+	// JSON entries the SavedFiltersStore itself caps at 50). The
+	// limit protects the shared DB from a buggy client persisting
+	// megabytes per variant.
+	if len(snapshot) > MaxSnapshotBytes {
+		return Variant{}, fmt.Errorf("%w: snapshot %d bytes exceeds %d-byte cap",
+			ErrQuotaExceeded, len(snapshot), MaxSnapshotBytes)
+	}
 	version := strings.TrimSpace(v.Version)
 	if version == "" {
 		version = "1.0"
 	}
+
+	// Per-group variant quota check — only applies to net-new rows.
+	var (
+		variantExists int
+		variantCount  int
+	)
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM profile_variants WHERE id = ? AND group_id = ?`,
+		v.ID, groupID,
+	).Scan(&variantExists); err != nil {
+		return Variant{}, fmt.Errorf("profiles: check existing variant: %w", err)
+	}
+	if variantExists == 0 {
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM profile_variants WHERE group_id = ?`, groupID,
+		).Scan(&variantCount); err != nil {
+			return Variant{}, fmt.Errorf("profiles: count variants: %w", err)
+		}
+		if variantCount >= MaxVariantsPerGroup {
+			return Variant{}, fmt.Errorf("%w: max %d variants per group",
+				ErrQuotaExceeded, MaxVariantsPerGroup)
+		}
+	}
+
 	now := time.Now().UTC()
 	nowUnix := now.Unix()
 
@@ -339,6 +437,14 @@ func (s *Store) SaveVariant(ctx context.Context, userID, groupID string, v Varia
 	if err != nil {
 		return Variant{}, fmt.Errorf("profiles: save variant: %w", err)
 	}
+
+	s.logger.Info("profiles: save variant",
+		slog.String("user", hashUserID(userID)),
+		slog.String("group", groupID),
+		slog.String("variant", v.ID),
+		slog.Int("snapshot_bytes", len(snapshot)),
+		slog.Bool("upsert", variantExists > 0),
+	)
 
 	var (
 		created, updated   int64
@@ -384,6 +490,11 @@ func (s *Store) DeleteVariant(ctx context.Context, userID, groupID, variantID st
 	// If this variant was the active one, clear the pointer.
 	_, _ = s.db.ExecContext(ctx,
 		`DELETE FROM profile_active WHERE user_id = ? AND variant_id = ?`, userID, variantID)
+	s.logger.Info("profiles: delete variant",
+		slog.String("user", hashUserID(userID)),
+		slog.String("group", groupID),
+		slog.String("variant", variantID),
+	)
 	return nil
 }
 

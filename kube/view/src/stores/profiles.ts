@@ -247,26 +247,80 @@ export const useProfilesStore = defineStore('profiles', () => {
     return out
   })
 
-  // syncGroup fires the backend upsert for a group. Best-effort —
-  // failures are swallowed by pushGroup, so the local state stays
-  // authoritative when the backend isn't around.
-  function syncGroup(g: ProfileGroup): void {
+  // Per-target debounce timers. Rapid mutations (drag a slider while
+  // a variant is open; rename a group letter-by-letter) coalesce to
+  // one backend write 300ms after the last edit. Each timer is keyed
+  // by the row it targets so two parallel edits don't trample each
+  // other.
+  //
+  // Production motivation: at 50k users, frontend bursts that fire
+  // 60 writes/sec per user would multiply into noticeable DB write
+  // contention even with WAL. The debounce keeps the write rate at
+  // most ~3/sec per user per row, which the existing SQLite handle
+  // (single-writer) absorbs comfortably.
+  const SYNC_DEBOUNCE_MS = 300
+  const groupSyncTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+  const variantSyncTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+
+  function debounceSyncGroup(g: ProfileGroup): void {
     if (!backendAvailable.value) return
-    void pushGroup(getSessionTokenSync, g)
+    const existing = groupSyncTimers[g.id]
+    if (existing) clearTimeout(existing)
+    groupSyncTimers[g.id] = setTimeout(() => {
+      delete groupSyncTimers[g.id]
+      void pushGroup(getSessionTokenSync, g)
+    }, SYNC_DEBOUNCE_MS)
+  }
+
+  function debounceSyncVariant(groupId: string, v: ProfileVariant): void {
+    if (!backendAvailable.value) return
+    const key = `${groupId}:${v.id}`
+    const existing = variantSyncTimers[key]
+    if (existing) clearTimeout(existing)
+    variantSyncTimers[key] = setTimeout(() => {
+      delete variantSyncTimers[key]
+      void pushVariant(getSessionTokenSync, groupId, v)
+    }, SYNC_DEBOUNCE_MS)
+  }
+
+  // syncGroup / syncVariant are the existing names callers use. We
+  // keep them as the public hooks and have them dispatch to the
+  // debounced versions — callers stay simple, behaviour stays fast.
+  function syncGroup(g: ProfileGroup): void {
+    debounceSyncGroup(g)
   }
 
   function syncVariant(groupId: string, v: ProfileVariant): void {
-    if (!backendAvailable.value) return
-    void pushVariant(getSessionTokenSync, groupId, v)
+    debounceSyncVariant(groupId, v)
   }
 
   function syncDeleteGroup(id: string): void {
     if (!backendAvailable.value) return
+    // Cancel any pending upsert for this group so we don't write a
+    // gone row right after deleting it. Same for every variant
+    // pending under it — variant timers are keyed "${groupId}:".
+    const pending = groupSyncTimers[id]
+    if (pending) {
+      clearTimeout(pending)
+      delete groupSyncTimers[id]
+    }
+    for (const key of Object.keys(variantSyncTimers)) {
+      if (key.startsWith(`${id}:`)) {
+        clearTimeout(variantSyncTimers[key])
+        delete variantSyncTimers[key]
+      }
+    }
     void pushDeleteGroup(getSessionTokenSync, id)
   }
 
   function syncDeleteVariant(groupId: string, variantId: string): void {
     if (!backendAvailable.value) return
+    const key = `${groupId}:${variantId}`
+    const pending = variantSyncTimers[key]
+    if (pending) {
+      clearTimeout(pending)
+      delete variantSyncTimers[key]
+    }
     void pushDeleteVariant(getSessionTokenSync, groupId, variantId)
   }
 

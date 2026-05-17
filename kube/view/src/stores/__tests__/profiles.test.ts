@@ -7,7 +7,7 @@
  * boundary (useBridge.callGo) so the tests exercise real Pinia state
  * + real localStorage semantics without touching the network.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
 const mockCallGo = vi.fn()
@@ -164,13 +164,29 @@ describe('profiles store — hydrate', () => {
 })
 
 describe('profiles store — write-through after hydrate', () => {
+  // Write-through goes through a 300ms debounce. Tests use fake
+  // timers and advance past the debounce window before asserting on
+  // the bridge calls so we can also confirm the COALESCED behaviour:
+  // 3 rapid edits → 1 backend call.
   beforeEach(() => {
     mockCallGo.mockImplementation((method: string) => {
       if (method === 'ListProfileGroups') return Promise.resolve([])
       if (method === 'GetActiveProfile') return Promise.resolve({ groupId: '', variantId: '' })
       return Promise.resolve(null)
     })
+    vi.useFakeTimers()
   })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // flushSyncs advances past the debounce window and lets the
+  // microtask queue drain so the pushX promises resolve before
+  // assertions run.
+  async function flushSyncs() {
+    vi.advanceTimersByTime(400)
+    await Promise.resolve()
+  }
 
   it('createGroup fires SaveProfileGroup', async () => {
     const store = await freshStore()
@@ -178,8 +194,8 @@ describe('profiles store — write-through after hydrate', () => {
     mockCallGo.mockClear()
 
     const g = store.createGroup('Daily', 'morning rotation')
+    await flushSyncs()
 
-    // Two calls expected: SetActiveProfile (because first group) + SaveProfileGroup.
     const methods = mockCallGo.mock.calls.map(c => c[0])
     expect(methods).toContain('SaveProfileGroup')
 
@@ -196,8 +212,11 @@ describe('profiles store — write-through after hydrate', () => {
     mockCallGo.mockClear()
 
     store.createGroup('Daily')
+    await flushSyncs()
 
     const methods = mockCallGo.mock.calls.map(c => c[0])
+    // SetActiveProfile fires immediately (no debounce on the active
+    // pointer — it's a pure pointer write, not user-typed input).
     expect(methods).toContain('SetActiveProfile')
   })
 
@@ -205,9 +224,11 @@ describe('profiles store — write-through after hydrate', () => {
     const store = await freshStore()
     await store.hydrate()
     const g = store.createGroup('G')
+    await flushSyncs()
     mockCallGo.mockClear()
 
     const v = store.createVariant(g.id, 'v1', '', '1.0')
+    await flushSyncs()
 
     const saveCall = mockCallGo.mock.calls.find(c => c[0] === 'SaveProfileVariant')!
     expect(saveCall).toBeTruthy()
@@ -219,9 +240,11 @@ describe('profiles store — write-through after hydrate', () => {
     const store = await freshStore()
     await store.hydrate()
     const g = store.createGroup('G')
+    await flushSyncs()
     mockCallGo.mockClear()
 
     store.deleteGroup(g.id)
+    await flushSyncs()
 
     const deleteCall = mockCallGo.mock.calls.find(c => c[0] === 'DeleteProfileGroup')
     expect(deleteCall).toBeTruthy()
@@ -233,9 +256,11 @@ describe('profiles store — write-through after hydrate', () => {
     await store.hydrate()
     const g = store.createGroup('G')
     const v = store.createVariant(g.id, 'v1')!
+    await flushSyncs()
     mockCallGo.mockClear()
 
     store.applyVariant(v.id)
+    await flushSyncs()
 
     const activeCall = mockCallGo.mock.calls.find(c => c[0] === 'SetActiveProfile')
     expect(activeCall).toBeTruthy()
@@ -248,23 +273,21 @@ describe('profiles store — write-through after hydrate', () => {
     await store.hydrate()
     const g = store.createGroup('G')
     const v = store.createVariant(g.id, 'v1')!
+    await flushSyncs()
     mockCallGo.mockClear()
 
-    // Mutate one of the captured stores to prove the snapshot picks
-    // up live state, not stale defaults.
     const appearance = useAppearanceStore()
     if (typeof (appearance as { setTheme?: (t: string) => void }).setTheme === 'function') {
       ;(appearance as unknown as { setTheme: (t: string) => void }).setTheme('dark')
     }
 
     store.captureToVariant(g.id, v.id)
+    await flushSyncs()
 
     const saveCall = mockCallGo.mock.calls.find(c => c[0] === 'SaveProfileVariant')!
     expect(saveCall).toBeTruthy()
     const sent = saveCall[3] as { snapshot: { appearance: Record<string, unknown> } }
     expect(sent.snapshot).toBeTruthy()
-    // The snapshot must include all five sub-shapes — that's what
-    // applyVariant relies on.
     expect(sent.snapshot.appearance).toBeDefined()
   })
 })
@@ -284,6 +307,62 @@ describe('profiles store — write-through skipped when backend is unreachable',
 
     // No bridge calls fired — backendAvailable is false.
     expect(mockCallGo.mock.calls.length).toBe(0)
+  })
+})
+
+describe('profiles store — debounce', () => {
+  beforeEach(() => {
+    mockCallGo.mockImplementation((method: string) => {
+      if (method === 'ListProfileGroups') return Promise.resolve([])
+      if (method === 'GetActiveProfile') return Promise.resolve({ groupId: '', variantId: '' })
+      return Promise.resolve(null)
+    })
+    vi.useFakeTimers()
+  })
+
+  it('coalesces rapid edits to a single backend write', async () => {
+    const store = await freshStore()
+    await store.hydrate()
+    const g = store.createGroup('initial')
+    mockCallGo.mockClear()
+
+    // Three rapid renames before the debounce fires.
+    store.updateGroup(g.id, { name: 'one' })
+    store.updateGroup(g.id, { name: 'two' })
+    store.updateGroup(g.id, { name: 'three' })
+
+    // Nothing fired yet — the timer hasn't expired.
+    expect(mockCallGo.mock.calls.filter(c => c[0] === 'SaveProfileGroup')).toHaveLength(0)
+
+    vi.advanceTimersByTime(400)
+    await Promise.resolve()
+
+    const saves = mockCallGo.mock.calls.filter(c => c[0] === 'SaveProfileGroup')
+    expect(saves).toHaveLength(1)
+    expect((saves[0][2] as { name: string }).name).toBe('three')
+  })
+
+  it('cancels a pending write when the group is deleted', async () => {
+    const store = await freshStore()
+    await store.hydrate()
+    const g = store.createGroup('about-to-die')
+    mockCallGo.mockClear()
+
+    store.updateGroup(g.id, { name: 'renamed-then-deleted' })
+    store.deleteGroup(g.id)
+    vi.advanceTimersByTime(400)
+    await Promise.resolve()
+
+    // No SaveProfileGroup must have fired — the delete cancelled it.
+    const saves = mockCallGo.mock.calls.filter(c => c[0] === 'SaveProfileGroup')
+    expect(saves).toHaveLength(0)
+    // Delete itself should have gone through.
+    const deletes = mockCallGo.mock.calls.filter(c => c[0] === 'DeleteProfileGroup')
+    expect(deletes).toHaveLength(1)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 })
 
