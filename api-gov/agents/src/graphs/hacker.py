@@ -93,7 +93,7 @@ def build_hacker_graph(redis_url: str | None = None) -> StateGraph:
     return workflow.compile(checkpointer=checkpointer)
 
 
-hacker_graph = build_hacker_graph()
+hacker_graph = build_hacker_graph(redis_url=config.redis_url)
 
 
 async def generate(spec_id: str, endpoint_id: str | None = None, count: int = 5) -> list[dict]:

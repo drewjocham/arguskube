@@ -83,7 +83,7 @@ def build_healer_graph(redis_url: str | None = None) -> StateGraph:
     return workflow.compile(checkpointer=checkpointer)
 
 
-healer_graph = build_healer_graph()
+healer_graph = build_healer_graph(redis_url=config.redis_url)
 
 
 async def heal(report: dict) -> dict:

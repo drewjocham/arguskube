@@ -165,7 +165,7 @@ def build_sentinel_graph(redis_url: str | None = None) -> StateGraph:
     return workflow.compile(checkpointer=checkpointer)
 
 
-sentinel_graph = build_sentinel_graph()
+sentinel_graph = build_sentinel_graph(redis_url=config.redis_url)
 
 
 async def ingest(event: dict) -> None:

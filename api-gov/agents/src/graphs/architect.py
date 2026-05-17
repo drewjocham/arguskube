@@ -90,7 +90,7 @@ def build_architect_graph(redis_url: str | None = None) -> StateGraph:
     return workflow.compile(checkpointer=checkpointer)
 
 
-architect_graph = build_architect_graph()
+architect_graph = build_architect_graph(redis_url=config.redis_url)
 
 
 async def analyze(spec_id: str) -> dict:
