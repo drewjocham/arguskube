@@ -525,26 +525,56 @@ var httpExposedMethods = map[string]struct{}{
 	"ListDBConnections": {},
 	"GetDBConnection":   {},
 	"AnalyzeDB":         {},
-	// Workspace: list-only is HTTP-callable so a SaaS-mode dashboard
-	// can render the user's connections. Start/Complete/Delete remain
-	// Wails-only — they mutate stored credentials and the OAuth flow
-	// shouldn't be reachable from arbitrary HTTP callers. Per-service
-	// read endpoints (ListSlackChannels) are HTTP-safe; the
-	// destructive ones (SendSlackMessage) stay Wails-only to keep
-	// the message-firehose authority on the local operator.
-	"ListWorkspaceServices":    {},
-	"ListWorkspaceConnections": {},
-	"ListSlackChannels":        {},
-	// Google (read-only): document/sheet/task reads are HTTP-safe so a
-	// SaaS-mode dashboard can show context to the user. Mutating
-	// methods (Create/Append/Write/Update/Delete) stay Wails-only — same
-	// posture as Slack's Send.
-	"ReadGoogleDoc":        {},
-	"GetGoogleSheet":       {},
-	"ReadGoogleSheetRange": {},
-	"ListGoogleTaskLists":  {},
-	"ListGoogleTasks":      {},
-	"ListGoogleChatSpaces": {},
+	// Workspace: SaaS-mode users expect their connected accounts to be
+	// fully usable from the browser, not just visible. The earlier
+	// posture kept every mutation (Start/Complete/Delete connection,
+	// Send*, Create/Update/Delete*) Wails-only on the theory that
+	// HTTP exposure would let a hostile caller turn the backend into
+	// a message-firehose. That argument doesn't survive scrutiny:
+	//   1. Every mutation routes through resolveX-Connection helpers
+	//      that scope the action to the *authenticated* user's own
+	//      connection — see resolveGoogleConnection / resolveSlack.
+	//   2. The HTTP dispatcher calls a.authorizeAPIRequest(r) before
+	//      any method lookup, so a caller without a valid session
+	//      can't reach this code at all.
+	//   3. A SaaS user creating a Google Doc on their own Drive, or
+	//      sending a Slack message to a channel they're already
+	//      authorized for, is exactly the use case the feature was
+	//      built for. Forcing them into the desktop app to do it
+	//      breaks the SaaS promise.
+	// Bug report that drove the change: "workspace is still not doing
+	// anything when auth is configured" — list endpoints worked,
+	// every Create/Send/Update returned 403, and the UI couldn't
+	// distinguish "not allowed" from "backend hiccup".
+	"ListWorkspaceServices":     {},
+	"ListWorkspaceConnections":  {},
+	"StartWorkspaceConnect":     {},
+	"CompleteWorkspaceConnect":  {},
+	"DeleteWorkspaceConnection": {},
+	// Slack: list channels (read) + post message (write). Both per-
+	// user-scoped via the connection token resolution.
+	"ListSlackChannels": {},
+	"SendSlackMessage":  {},
+	// Google Chat: list spaces (read) + post message (write).
+	"ListGoogleChatSpaces":  {},
+	"SendGoogleChatMessage": {},
+	// Google Docs / Sheets / Tasks: full CRUD on the user's own
+	// Drive items. All routed through resolveGoogleConnection so a
+	// caller can only touch the connection they're authenticated
+	// against. The "destructive on Wails only" exception that used
+	// to live here was reverted — see block comment above.
+	"ReadGoogleDoc":         {},
+	"CreateGoogleDoc":       {},
+	"AppendGoogleDoc":       {},
+	"GetGoogleSheet":        {},
+	"CreateGoogleSheet":     {},
+	"ReadGoogleSheetRange":  {},
+	"WriteGoogleSheetRange": {},
+	"ListGoogleTaskLists":   {},
+	"ListGoogleTasks":       {},
+	"CreateGoogleTask":      {},
+	"UpdateGoogleTask":      {},
+	"DeleteGoogleTask":      {},
 }
 
 func methodAllowedOverHTTP(name string) bool {
