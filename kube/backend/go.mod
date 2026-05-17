@@ -2,6 +2,15 @@ module github.com/argues/argus
 
 go 1.25.0
 
+require github.com/argues/argus-pty v0.0.0-00010101000000-000000000000
+
+// Local replace — the argus-pty module lives in this repo at
+// ../../pkg/pty/. go.work at the repo root makes this transparent
+// for normal `go build`, but the replace keeps `go test` /
+// `goimports` happy when invoked without workspace mode (e.g.
+// in CI with GOFLAGS=-mod=mod).
+replace github.com/argues/argus-pty => ../../pkg/pty
+
 require (
 	cloud.google.com/go/pubsub v1.50.2
 	github.com/Azure/go-amqp v1.6.0
@@ -12,7 +21,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.100.0
 	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/coreos/go-oidc/v3 v3.18.0
-	github.com/creack/pty v1.1.21
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-webauthn/webauthn v0.17.3
 	github.com/google/uuid v1.6.0
@@ -66,6 +74,7 @@ require (
 	github.com/aws/smithy-go v1.25.0 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/creack/pty v1.1.24 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect

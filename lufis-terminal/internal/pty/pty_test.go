@@ -1,475 +1,206 @@
+// Lufis-side pty wrapper tests. The shared PTY core
+// (github.com/argues/argus-pty) carries the comprehensive lifecycle /
+// env / concurrency coverage; the tests here only exercise the
+// adapter contract — that Terminal correctly forwards its public API
+// to the embedded *sharedpty.PTY and that the OnOutput field-style
+// callback is wired through correctly.
+//
+// White-box assertions on private fields (term.cmd, term.ptmx,
+// term.closed, term.logger) that lived here before the extraction
+// moved up into the shared package as black-box equivalents — see
+// pkg/pty/pty_test.go.
 package pty
 
 import (
+	"io"
 	"log/slog"
-	"os"
-	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+// startTerminalOrSkip mirrors the shared module's helper. PTY-less
+// CI envs skip cleanly.
+func startTerminalOrSkip(t *testing.T, shell string, rows, cols uint16) *Terminal {
+	t.Helper()
+	term := New(discardLogger())
+	if err := term.Start(shell, rows, cols); err != nil {
+		t.Skipf("cannot start PTY: %v", err)
+	}
+	t.Cleanup(func() { _ = term.Close() })
+	return term
+}
+
 func TestNew(t *testing.T) {
-	tests := []struct {
-		name        string
-		logger      *slog.Logger
-		wantNil     bool
-		wantDiscard bool
+	t.Parallel()
+	cases := []struct {
+		name   string
+		logger *slog.Logger
 	}{
-		{
-			name:    "creates terminal with logger",
-			logger:  slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})),
-			wantNil: false,
-		},
-		{
-			name:    "creates terminal with nil logger (discards)",
-			logger:  nil,
-			wantNil: false,
-		},
+		{"with logger", discardLogger()},
+		{"nil logger accepted", nil},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			term := New(tt.logger)
-			require.NotNil(t, term)
-			assert.NotNil(t, term.logger)
-			assert.False(t, term.closed)
-			assert.Nil(t, term.cmd)
-			assert.Nil(t, term.ptmx)
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if term := New(tc.logger); term == nil {
+				t.Fatal("New returned nil")
+			}
 		})
 	}
 }
 
-func TestStart(t *testing.T) {
-	tests := []struct {
-		name       string
-		shell      string
-		rows       uint16
-		cols       uint16
-		wantErr    bool
-		setupEnvFn func()
+func TestPreStartPublicAPIIsNoOp(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		do   func(t *testing.T, term *Terminal)
 	}{
-		{
-			name:    "starts with echo command",
-			shell:   "/bin/echo",
-			rows:    24,
-			cols:    80,
-			wantErr: false,
-		},
-		{
-			name:    "starts with /usr/bin/true",
-			shell:   "/usr/bin/true",
-			rows:    24,
-			cols:    80,
-			wantErr: false,
-		},
-		{
-			name:    "starts with different dimensions",
-			shell:   "/bin/echo",
-			rows:    40,
-			cols:    120,
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			term := New(slog.Default())
-			defer term.Close()
-
-			err := term.Start(tt.shell, tt.rows, tt.cols)
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
+		{"IsRunning false", func(t *testing.T, term *Terminal) {
+			if term.IsRunning() {
+				t.Error("expected IsRunning false before Start")
 			}
-			require.NoError(t, err)
-
-			// Verify the terminal was started
-			assert.True(t, term.IsRunning())
-			assert.NotNil(t, term.cmd)
-			assert.NotNil(t, term.ptmx)
-
-			// Verify env vars were set
-			require.NotNil(t, term.cmd)
-			env := strings.Join(term.cmd.Env, " ")
-			assert.Contains(t, env, "TERM=xterm-256color")
-			assert.Contains(t, env, "COLORTERM=truecolor")
+		}},
+		{"Close is no-op", func(t *testing.T, term *Terminal) {
+			if err := term.Close(); err != nil {
+				t.Errorf("Close: %v", err)
+			}
+		}},
+		{"Write is no-op", func(t *testing.T, term *Terminal) {
+			if err := term.Write("x"); err != nil {
+				t.Errorf("Write: %v", err)
+			}
+		}},
+		{"Resize is no-op", func(t *testing.T, term *Terminal) {
+			if err := term.Resize(80, 160); err != nil {
+				t.Errorf("Resize: %v", err)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tc.do(t, New(discardLogger()))
 		})
 	}
 }
 
-func TestStartSetsEnvVars(t *testing.T) {
-	term := New(slog.Default())
-	defer term.Close()
-
-	err := term.Start("/bin/echo", 24, 80)
-	require.NoError(t, err)
-
-	require.NotNil(t, term.cmd)
-
-	foundTerm := false
-	foundColorTerm := false
-	for _, env := range term.cmd.Env {
-		if env == "TERM=xterm-256color" {
-			foundTerm = true
-		}
-		if env == "COLORTERM=truecolor" {
-			foundColorTerm = true
-		}
-	}
-	assert.True(t, foundTerm, "TERM=xterm-256color should be in env")
-	assert.True(t, foundColorTerm, "COLORTERM=truecolor should be in env")
-}
-
-func TestStartNonexistentShell(t *testing.T) {
-	term := New(slog.Default())
-	defer term.Close()
-
-	err := term.Start("/nonexistent/shell", 24, 80)
-	assert.Error(t, err)
-	assert.False(t, term.IsRunning())
-}
-
-func TestWrite(t *testing.T) {
-	tests := []struct {
-		name    string
-		setupFn func(t *testing.T) *Terminal
-		data    string
-		wantErr bool
+func TestStartedAPIDelegatesToSharedCore(t *testing.T) {
+	cases := []struct {
+		name string
+		do   func(t *testing.T, term *Terminal)
 	}{
-		{
-			name: "writes data to PTY after start",
-			setupFn: func(t *testing.T) *Terminal {
-				term := New(slog.Default())
-				err := term.Start("/bin/cat", 24, 80)
-				require.NoError(t, err)
-				return term
-			},
-			data:    "hello world",
-			wantErr: false,
-		},
-		{
-			name: "Write is no-op when PTY is not started",
-			setupFn: func(t *testing.T) *Terminal {
-				return New(slog.Default())
-			},
-			data:    "test data",
-			wantErr: false,
-		},
-		{
-			name: "Write is no-op after close",
-			setupFn: func(t *testing.T) *Terminal {
-				term := New(slog.Default())
-				err := term.Start("/bin/cat", 24, 80)
-				require.NoError(t, err)
-				term.Close()
-				return term
-			},
-			data:    "test after close",
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			term := tt.setupFn(t)
-			if term.closed == false && term.ptmx == nil {
-				// Started case - clean up
-				defer term.Close()
+		{"IsRunning true after Start", func(t *testing.T, term *Terminal) {
+			if !term.IsRunning() {
+				t.Error("expected IsRunning after Start")
 			}
-
-			err := term.Write(tt.data)
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
+		}},
+		{"Resize succeeds", func(t *testing.T, term *Terminal) {
+			if err := term.Resize(80, 160); err != nil {
+				t.Errorf("Resize: %v", err)
 			}
-			assert.NoError(t, err)
-		})
-	}
-}
-
-func TestResize(t *testing.T) {
-	tests := []struct {
-		name    string
-		setupFn func(t *testing.T) *Terminal
-		rows    uint16
-		cols    uint16
-		wantErr bool
-	}{
-		{
-			name: "resize PTY to larger dimensions",
-			setupFn: func(t *testing.T) *Terminal {
-				term := New(slog.Default())
-				err := term.Start("/bin/cat", 24, 80)
-				require.NoError(t, err)
-				return term
-			},
-			rows:    50,
-			cols:    160,
-			wantErr: false,
-		},
-		{
-			name: "resize PTY to smaller dimensions",
-			setupFn: func(t *testing.T) *Terminal {
-				term := New(slog.Default())
-				err := term.Start("/bin/cat", 24, 80)
-				require.NoError(t, err)
-				return term
-			},
-			rows:    10,
-			cols:    40,
-			wantErr: false,
-		},
-		{
-			name: "Resize is no-op when PTY not started",
-			setupFn: func(t *testing.T) *Terminal {
-				return New(slog.Default())
-			},
-			rows:    24,
-			cols:    80,
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			term := tt.setupFn(t)
-			if !term.closed && term.ptmx != nil {
-				defer term.Close()
-			}
-
-			err := term.Resize(tt.rows, tt.cols)
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
-			}
-			assert.NoError(t, err)
-		})
-	}
-}
-
-func TestClose(t *testing.T) {
-	tests := []struct {
-		name    string
-		setupFn func(t *testing.T) *Terminal
-	}{
-		{
-			name: "closes running terminal marks it as closed",
-			setupFn: func(t *testing.T) *Terminal {
-				term := New(slog.Default())
-				err := term.Start("/bin/cat", 24, 80)
-				require.NoError(t, err)
-				return term
-			},
-		},
-		{
-			name: "closes terminal with echo (quick exit)",
-			setupFn: func(t *testing.T) *Terminal {
-				term := New(slog.Default())
-				err := term.Start("/bin/echo", 24, 80)
-				require.NoError(t, err)
-				return term
-			},
-		},
-		{
-			name: "closes unstarted terminal is safe",
-			setupFn: func(t *testing.T) *Terminal {
-				return New(slog.Default())
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			term := tt.setupFn(t)
+		}},
+		{"Close + IsRunning flip", func(t *testing.T, term *Terminal) {
 			_ = term.Close()
-
-			// Regardless of whether Close returns an error (Wait() after Kill()
-			// may return signal exit status), the terminal must be marked closed.
-			assert.True(t, term.closed)
-			assert.False(t, term.IsRunning())
+			if term.IsRunning() {
+				t.Error("expected IsRunning false after Close")
+			}
+		}},
+		{"Double Close is safe", func(t *testing.T, term *Terminal) {
+			_ = term.Close()
+			if err := term.Close(); err != nil {
+				t.Errorf("second Close: %v", err)
+			}
+		}},
+		{"Start twice replaces previous PTY", func(t *testing.T, term *Terminal) {
+			if err := term.Start("sh", 80, 160); err != nil {
+				t.Errorf("second Start: %v", err)
+			}
+			if !term.IsRunning() {
+				t.Error("expected IsRunning after second Start")
+			}
+		}},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			tc.do(t, startTerminalOrSkip(t, "sh", 40, 120))
 		})
 	}
 }
 
-func TestDoubleCloseIsSafe(t *testing.T) {
-	term := New(slog.Default())
-	err := term.Start("/bin/cat", 24, 80)
-	require.NoError(t, err)
+// TestOnOutputFieldFiresWhenShellWrites is the one assertion that
+// genuinely belongs at this layer: the adapter assigns its own
+// OnOutput field, and a closure inside New routes the shared PTY's
+// callback to it. Verifies the wiring.
+func TestOnOutputFieldFiresWhenShellWrites(t *testing.T) {
+	term := New(discardLogger())
+	var calls atomic.Int64
+	term.OnOutput = func(string) { calls.Add(1) }
 
-	// First close
-	_ = term.Close()
-	assert.True(t, term.closed)
+	if err := term.Start("sh", 40, 120); err != nil {
+		t.Skipf("cannot start PTY: %v", err)
+	}
+	t.Cleanup(func() { _ = term.Close() })
 
-	// Second close - should be idempotent (no panic)
-	_ = term.Close()
-	assert.True(t, term.closed)
-}
-
-func TestIsRunning(t *testing.T) {
-	tests := []struct {
-		name       string
-		setupFn    func(t *testing.T) *Terminal
-		wantBefore bool
-		wantAfter  bool
-	}{
-		{
-			name: "returns false before start",
-			setupFn: func(t *testing.T) *Terminal {
-				return New(slog.Default())
-			},
-			wantBefore: false,
-			wantAfter:  false,
-		},
-		{
-			name: "returns true after start",
-			setupFn: func(t *testing.T) *Terminal {
-				term := New(slog.Default())
-				err := term.Start("/bin/cat", 24, 80)
-				require.NoError(t, err)
-				return term
-			},
-			wantBefore: true,
-			wantAfter:  false,
-		},
+	if err := term.Write("echo hi\n"); err != nil {
+		t.Fatalf("Write: %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			term := tt.setupFn(t)
-			assert.Equal(t, tt.wantBefore, term.IsRunning())
-
-			if tt.wantBefore {
-				term.Close()
-				assert.Equal(t, tt.wantAfter, term.IsRunning())
-			}
-		})
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && calls.Load() == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if calls.Load() == 0 {
+		t.Error("OnOutput field never fired — adapter wiring is broken")
 	}
 }
 
-func TestStartAfterCloseIsSafe(t *testing.T) {
-	term := New(slog.Default())
+// TestOnOutputUnassignedDoesNotPanic ensures the nil-callback
+// branch on the embedded PTY is still reachable through the
+// adapter: leaving OnOutput unset must not crash when output
+// arrives.
+func TestOnOutputUnassignedDoesNotPanic(t *testing.T) {
+	term := New(discardLogger())
+	// Explicitly do NOT assign OnOutput.
+	if err := term.Start("sh", 40, 120); err != nil {
+		t.Skipf("cannot start PTY: %v", err)
+	}
+	t.Cleanup(func() { _ = term.Close() })
 
-	// Start and close (ignore close error signal: hangup)
-	err := term.Start("/bin/cat", 24, 80)
-	require.NoError(t, err)
-	_ = term.Close()
-
-	// Start after close should be a no-op (returns nil)
-	err = term.Start("/bin/echo", 24, 80)
-	assert.NoError(t, err)
-	// IsRunning should return false because closed is still true
-	assert.False(t, term.IsRunning())
+	if err := term.Write("echo hi\n"); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	// Wait a beat for output to arrive without a callback wired.
+	time.Sleep(200 * time.Millisecond)
+	// No panic = success.
 }
 
-func TestOnOutputCallback(t *testing.T) {
-	term := New(slog.Default())
-	defer term.Close()
-
-	var mu sync.Mutex
-	var receivedData string
-
-	term.OnOutput = func(data string) {
-		mu.Lock()
-		defer mu.Unlock()
-		receivedData += data
-	}
-
-	err := term.Start("/bin/echo", 24, 80)
-	require.NoError(t, err)
-
-	// Give the process time to execute and read loop to process output
-	time.Sleep(100 * time.Millisecond)
-
-	mu.Lock()
-	// The echo command should produce some output (the newline at minimum)
-	// We can't guarantee the exact content, but we know there should be output
-	t.Logf("received data from echo: %q", receivedData)
-	mu.Unlock()
-}
-
-func TestOnOutputCallbackReceivesWriteData(t *testing.T) {
-	term := New(slog.Default())
-
-	var mu sync.Mutex
-	var receivedData string
-	done := make(chan struct{})
-
-	term.OnOutput = func(data string) {
-		mu.Lock()
-		defer mu.Unlock()
-		receivedData += data
-		// Signal when we've received enough data
-		if len(receivedData) > 0 {
-			select {
-			case <-done:
-			default:
-				close(done)
-			}
-		}
-	}
-
-	err := term.Start("/bin/cat", 24, 80)
-	require.NoError(t, err)
-	defer term.Close()
-
-	// Write data to the PTY
-	err = term.Write("hello from pty\n")
-	require.NoError(t, err)
-
-	// Wait for the output callback to fire (cat echoes input)
-	select {
-	case <-done:
-		// Success
-	case <-time.After(2 * time.Second):
-		t.Log("timed out waiting for output callback")
-	}
-
-	mu.Lock()
-	assert.Contains(t, receivedData, "hello from pty")
-	mu.Unlock()
-}
-
-func TestConcurrentOperations(t *testing.T) {
-	term := New(slog.Default())
-	err := term.Start("/bin/cat", 24, 80)
-	require.NoError(t, err)
-	defer term.Close()
+// TestConcurrentPublicCallsAreSafe re-checks the lock semantics at
+// the adapter layer. The shared module covers this too; the
+// duplicate here is cheap insurance that the adapter doesn't
+// introduce an unsynchronized path of its own.
+func TestConcurrentPublicCallsAreSafe(t *testing.T) {
+	term := startTerminalOrSkip(t, "sh", 40, 120)
 
 	var wg sync.WaitGroup
-
-	// Concurrent writes
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func(n int) {
-			defer wg.Done()
-			err := term.Write("test data\n")
-			assert.NoError(t, err)
-		}(i)
-	}
-
-	// Concurrent resize
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 4; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := term.Resize(30, 100)
-			assert.NoError(t, err)
+			for j := 0; j < 20; j++ {
+				_ = term.Write("x")
+				_ = term.Resize(uint16(40+j), uint16(120+j))
+				_ = term.IsRunning()
+			}
 		}()
 	}
-
 	wg.Wait()
-}
-
-func TestLoggerDiscardedOnNil(t *testing.T) {
-	term := New(nil)
-	require.NotNil(t, term)
-	require.NotNil(t, term.logger)
-
-	// The discard handler should not panic
-	term.logger.Debug("this should not panic")
-	term.logger.Info("this should not panic")
 }

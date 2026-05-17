@@ -2,6 +2,13 @@ module github.com/argus/terminal
 
 go 1.26.2
 
+require github.com/argues/argus-pty v0.0.0-00010101000000-000000000000
+
+// See docs/lufis-terminal-audit-plan.md PR-3: argus-pty is the
+// shared PTY core; go.work at the repo root resolves it locally,
+// but the replace keeps non-workspace tooling happy.
+replace github.com/argues/argus-pty => ../pkg/pty
+
 require (
 	github.com/creack/pty v1.1.24
 	github.com/go-gl/gl v0.0.0-20260331235117-4566fea9a276

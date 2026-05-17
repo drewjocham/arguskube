@@ -101,9 +101,12 @@ test/
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
-# Go workspace file
-go.work
-go.work.sum
+# Go workspace file — DELIBERATELY committed since lufis-terminal
+# and kube/backend share github.com/argues/argus-pty via the local
+# pkg/pty/ module. Without go.work checked in, a fresh clone can't
+# resolve the shared module without manual `go work init`.
+# go.work
+# go.work.sum
 
 # env file
 .env
