@@ -3,9 +3,6 @@ package terminal
 import (
 	"fmt"
 	"log/slog"
-	"os"
-	"os/exec"
-	"strings"
 	"sync"
 )
 
@@ -23,6 +20,13 @@ type Session struct {
 	Domain   Domain
 	Label    string
 	Terminal *Terminal
+}
+
+type SessionInfo struct {
+	ID     string `json:"id"`
+	Domain string `json:"domain"`
+	Label  string `json:"label"`
+	Alive  bool   `json:"alive"`
 }
 
 type SessionManager struct {
@@ -130,171 +134,4 @@ func (sm *SessionManager) ListSessions() []SessionInfo {
 		})
 	}
 	return infos
-}
-
-type SessionInfo struct {
-	ID     string `json:"id"`
-	Domain string `json:"domain"`
-	Label  string `json:"label"`
-	Alive  bool   `json:"alive"`
-}
-
-// WriteWelcome writes a welcome banner with tool detection into the PTY.
-func WriteWelcome(term *Terminal, domain Domain, env []string) {
-	var tools []string
-	for _, name := range domainTools(domain) {
-		if _, err := exec.LookPath(name); err == nil {
-			tools = append(tools, name)
-		}
-	}
-
-	var banner strings.Builder
-	banner.WriteString("\n")
-
-	switch domain {
-	case DomainK8s:
-		banner.WriteString("\x1b[36m┌─ Argus K8s Session ──────────────────────────────┐\x1b[0m\n")
-	case DomainKafka:
-		banner.WriteString("\x1b[35m┌─ Argus Kafka Session ────────────────────────────┐\x1b[0m\n")
-	case DomainCloud:
-		banner.WriteString("\x1b[33m┌─ Argus Cloud Session ─────────────────────────────┐\x1b[0m\n")
-	default:
-		banner.WriteString("\x1b[32m┌─ Argus Terminal ──────────────────────────────────┐\x1b[0m\n")
-	}
-
-	if len(tools) > 0 {
-		banner.WriteString("│ Tools: \x1b[32m" + strings.Join(tools, ", ") + "\x1b[0m\n")
-	} else {
-		banner.WriteString("│ \x1b[33mNo domain-specific tools detected\x1b[0m\n")
-	}
-
-	for _, line := range strings.Split(filterKwEnv(env), "\n") {
-		if line != "" {
-			parts := strings.SplitN(line, "=", 2)
-			if len(parts) == 2 && parts[1] != "" {
-				banner.WriteString("│ " + parts[0] + "=" + parts[1] + "\n")
-			}
-		}
-	}
-
-	banner.WriteString("\x1b[90m└────────────────────────────────────────────────┘\x1b[0m\n")
-	banner.WriteString("\x1b[90m  Type \x1b[32mkw help\x1b[90m for quick commands\x1b[0m\n\n")
-
-	_ = term.Write(banner.String())
-
-	if src := kwSourceCmd(); src != "" {
-		_ = term.Write(src)
-	}
-}
-
-func domainTools(d Domain) []string {
-	switch d {
-	case DomainK8s:
-		return []string{"kubectl", "helm", "kubectx", "kubens", "k9s", "stern", "popeye", "trivy"}
-	case DomainKafka:
-		return []string{"kcat", "kafka-console-consumer", "kafka-console-producer", "kafka-topics", "kafka-consumer-groups", "kafka-avro-console-consumer"}
-	case DomainCloud:
-		return []string{"gcloud", "aws", "az", "terraform", "tofu", "pulumi"}
-	default:
-		return nil
-	}
-}
-
-func kwDomainEnv(domain Domain) []string {
-	switch domain {
-	case DomainK8s:
-		return []string{"KW_DOMAIN=k8s"}
-	case DomainKafka:
-		return []string{"KW_DOMAIN=kafka"}
-	case DomainCloud:
-		return []string{"KW_DOMAIN=cloud"}
-	default:
-		return []string{"KW_DOMAIN=default"}
-	}
-}
-
-func filterKwEnv(env []string) string {
-	var lines []string
-	for _, e := range env {
-		if strings.HasPrefix(e, "ARGUS_") || strings.HasPrefix(e, "KUBECONFIG") ||
-			strings.HasPrefix(e, "CLOUDSDK_") || strings.HasPrefix(e, "AWS_") ||
-			strings.HasPrefix(e, "KW_") {
-			lines = append(lines, e)
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-// ── kw shell helper ─────────────────────────────────────────────
-
-func initKwScript() string {
-	dir := os.TempDir()
-	path := dir + "/.argus_kw.sh"
-	if _, err := os.Stat(path); err == nil {
-		return path
-	}
-	script := `# Argus kw — quick domain operations
-kw() {
-  local cmd="$1"; shift
-  case "$cmd" in
-    pods|po) kubectl get pods "$@" ;;
-    deploy|deployments) kubectl get deployments "$@" ;;
-    svc|services) kubectl get services "$@" ;;
-    events|ev) kubectl get events --sort-by='.lastTimestamp' "$@" ;;
-    logs) kubectl logs "$@" ;;
-    ctx)
-      if [ $# -eq 0 ]; then kubectl config current-context 2>/dev/null || echo "no context"
-      else kubectl config use-context "$1"; fi ;;
-    ns|namespace)
-      if [ $# -eq 0 ]; then kubectl config view --minify -o jsonpath='{..namespace}'
-      else kubectl config set-context --current --namespace "$1"; fi ;;
-    desc|describe) kubectl describe "$@" ;;
-    top) kubectl top "$@" ;;
-    exec)
-      if [ $# -lt 1 ]; then echo "Usage: kw exec <pod> [command]"; return 1; fi
-      kubectl exec -it "$@" ;;
-    kafka|kfk)
-      local kcmd="$1"; shift
-      case "$kcmd" in
-        topics) kafka-topics --bootstrap-server "${KAFKA_BROKERS:-localhost:9092}" --list "$@" ;;
-        consume) kcat -b "${KAFKA_BROKERS:-localhost:9092}" -t "$1" -o -10 -e ;;
-        produce) kcat -b "${KAFKA_BROKERS:-localhost:9092}" -t "$1" -P ;;
-        groups) kafka-consumer-groups --bootstrap-server "${KAFKA_BROKERS:-localhost:9092}" --list "$@" ;;
-        *) kcat "$@" ;;
-      esac ;;
-    gcloud|gcp)
-      if [ $# -eq 0 ]; then gcloud config list project 2>/dev/null || echo "gcloud not configured"
-      else gcloud "$@"; fi ;;
-    aws)
-      if [ $# -eq 0 ]; then aws sts get-caller-identity 2>/dev/null || echo "AWS not configured"
-      else aws "$@"; fi ;;
-    help|--help|-h)
-      echo "Argus kw — quick domain operations"
-      echo ""
-      echo "  Kubernetes:"
-      echo "    kw pods, kw deploy, kw svc, kw events, kw logs <pod>"
-      echo "    kw ctx [name], kw ns [name], kw exec <pod> [cmd]"
-      echo "    kw top, kw desc <resource>"
-      echo ""
-      echo "  Kafka:"
-      echo "    kw kafka topics, kw kafka consume <topic>"
-      echo "    kw kafka produce <topic>, kw kafka groups"
-      echo ""
-      echo "  Cloud:"
-      echo "    kw gcloud [args], kw aws [args]"
-      ;;
-    *) echo "kw: unknown command '$cmd'. Try: kw help" ;;
-  esac
-}
-`
-	_ = os.WriteFile(path, []byte(script), 0644)
-	return path
-}
-
-func kwSourceCmd() string {
-	path := initKwScript()
-	if path == "" {
-		return ""
-	}
-	return "source " + path + " 2>/dev/null\n"
 }
