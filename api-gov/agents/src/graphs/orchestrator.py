@@ -133,7 +133,7 @@ def build_orchestrator_graph(redis_url: str | None = None) -> StateGraph:
     return workflow.compile(checkpointer=checkpointer)
 
 
-orchestrator_graph = build_orchestrator_graph()
+orchestrator_graph = build_orchestrator_graph(redis_url=config.redis_url)
 
 
 async def orchestrate(spec_id: str, action: str = "analyze", endpoint_id: str | None = None, drift_report: dict | None = None) -> dict:

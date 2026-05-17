@@ -460,7 +460,9 @@ func (a *API) handleAgentGenerateTests(w http.ResponseWriter, r *http.Request) {
 			EndpointID string `json:"endpoint_id,omitempty"`
 			Count      int    `json:"count,omitempty"`
 		}
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			return apperrors.Mark(apperrors.ErrBadRequest, apperrors.BadRequest)
+		}
 		if req.Count <= 0 {
 			req.Count = 5
 		}

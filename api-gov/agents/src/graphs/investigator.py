@@ -105,7 +105,7 @@ def build_investigator_graph(redis_url: str | None = None) -> StateGraph:
     return workflow.compile(checkpointer=checkpointer)
 
 
-investigator_graph = build_investigator_graph()
+investigator_graph = build_investigator_graph(redis_url=config.redis_url)
 
 
 async def investigate(spec_id: str, drift_report: dict) -> dict:
