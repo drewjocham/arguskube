@@ -26,6 +26,8 @@ var (
 	gsheetsAdapter     *workspace.GSheetsAdapter
 	gtasksAdapterOnce  sync.Once
 	gtasksAdapter      *workspace.GTasksAdapter
+	gcalAdapterOnce    sync.Once
+	gcalAdapter        *workspace.GCalAdapter
 )
 
 func getGDocsAdapter() *workspace.GDocsAdapter {
@@ -39,6 +41,10 @@ func getGSheetsAdapter() *workspace.GSheetsAdapter {
 func getGTasksAdapter() *workspace.GTasksAdapter {
 	gtasksAdapterOnce.Do(func() { gtasksAdapter = workspace.NewGTasksAdapter() })
 	return gtasksAdapter
+}
+func getGCalAdapter() *workspace.GCalAdapter {
+	gcalAdapterOnce.Do(func() { gcalAdapter = workspace.NewGCalAdapter() })
+	return gcalAdapter
 }
 
 // resolveGoogleConnection finds + validates the caller's google

@@ -13,6 +13,7 @@ import {incidents} from '../models';
 import {runbooks} from '../models';
 import {alerts} from '../models';
 import {saasapi} from '../models';
+import {profiles} from '../models';
 import {ai} from '../models';
 import {anomaly} from '../models';
 import {argocd} from '../models';
@@ -71,6 +72,8 @@ export function CompleteOAuthFlow(arg1:string,arg2:string):Promise<oauthprovider
 
 export function CompleteWorkspaceConnect(arg1:string,arg2:string,arg3:string):Promise<pkg.WorkspaceConnectionView>;
 
+export function ConnectICloud(arg1:string,arg2:string,arg3:string):Promise<pkg.WorkspaceConnectionView>;
+
 export function ConnectToAgent(arg1:string):Promise<Array<agentconn.Anomaly>>;
 
 export function CorrelatePodEvents(arg1:string,arg2:string,arg3:number):Promise<k8s.CorrelationResult>;
@@ -78,6 +81,8 @@ export function CorrelatePodEvents(arg1:string,arg2:string,arg3:number):Promise<
 export function CreateCodeReviewReport(arg1:string,arg2:string,arg3:string,arg4:string):Promise<pkg.CodeReviewReport>;
 
 export function CreateExternalBridge(arg1:k8s.ExternalBridgeSpec):Promise<k8s.BridgeResult>;
+
+export function CreateGoogleCalendarEvent(arg1:string,arg2:string,arg3:workspace.Event):Promise<workspace.Event>;
 
 export function CreateGoogleDoc(arg1:string,arg2:string,arg3:string,arg4:string):Promise<workspace.Doc>;
 
@@ -99,6 +104,8 @@ export function DeleteCodeReviewReport(arg1:string,arg2:string):Promise<void>;
 
 export function DeleteDBConnection(arg1:context.Context,arg2:string):Promise<void>;
 
+export function DeleteGoogleCalendarEvent(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function DeleteGoogleTask(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function DeleteIncident(arg1:string):Promise<void>;
@@ -106,6 +113,10 @@ export function DeleteIncident(arg1:string):Promise<void>;
 export function DeleteNotebook(arg1:string):Promise<void>;
 
 export function DeletePod(arg1:string,arg2:string):Promise<void>;
+
+export function DeleteProfileGroup(arg1:string,arg2:string):Promise<void>;
+
+export function DeleteProfileVariant(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function DeleteResource(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -144,6 +155,8 @@ export function GenerateLoadTestPayload(arg1:string,arg2:number):Promise<string>
 export function GenerateTrafficSplitHTTPRoute(arg1:string,arg2:string,arg3:string,arg4:string,arg5:Array<k8s.BackendRefWeight>):Promise<string>;
 
 export function GenerateWorkloadYAML(arg1:k8s.WorkloadSpec):Promise<k8s.WorkloadYAML>;
+
+export function GetActiveProfile(arg1:string):Promise<profiles.Active>;
 
 export function GetAgentEventLog():Promise<Array<ai.AgentEvent>>;
 
@@ -291,6 +304,8 @@ export function ListGitHubBranches():Promise<Array<pkg.GitHubBranch>>;
 
 export function ListGitHubPullRequests():Promise<Array<pkg.GitHubPullRequest>>;
 
+export function ListGoogleCalendarEvents(arg1:string,arg2:string,arg3:string,arg4:string):Promise<Array<workspace.Event>>;
+
 export function ListGoogleChatSpaces(arg1:string,arg2:string):Promise<Array<pkg.GChatSpaceView>>;
 
 export function ListGoogleTaskLists(arg1:string,arg2:string):Promise<Array<workspace.TaskList>>;
@@ -299,6 +314,12 @@ export function ListGoogleTasks(arg1:string,arg2:string,arg3:string):Promise<Arr
 
 export function ListHTTPRoutes(arg1:string):Promise<Array<k8s.HTTPRouteSummary>>;
 
+export function ListICloudEvents(arg1:string,arg2:string,arg3:string,arg4:string):Promise<Array<workspace.Event>>;
+
+export function ListICloudNotes(arg1:string):Promise<Array<Record<string, string>>>;
+
+export function ListICloudReminders(arg1:string):Promise<Array<Record<string, string>>>;
+
 export function ListIncidents():Promise<Array<incidents.Incident>>;
 
 export function ListNamespaces():Promise<Array<string>>;
@@ -306,6 +327,8 @@ export function ListNamespaces():Promise<Array<string>>;
 export function ListNotebooks():Promise<Array<notebooks.FileEntry>>;
 
 export function ListOAuthProviders():Promise<Array<oauthproviders.ProviderInfo>>;
+
+export function ListProfileGroups(arg1:string):Promise<Array<profiles.Group>>;
 
 export function ListRegistryTags(arg1:string):Promise<Array<k8s.RegistryTag>>;
 
@@ -385,6 +408,10 @@ export function SaveNotebook(arg1:string,arg2:string):Promise<void>;
 
 export function SavePRGuidelines(arg1:string,arg2:string):Promise<void>;
 
+export function SaveProfileGroup(arg1:string,arg2:profiles.Group):Promise<profiles.Group>;
+
+export function SaveProfileVariant(arg1:string,arg2:string,arg3:profiles.Variant):Promise<profiles.Variant>;
+
 export function SaveRunbook(arg1:string,arg2:string):Promise<void>;
 
 export function SaveWorkflow(arg1:workflows.Workflow):Promise<workflows.Workflow>;
@@ -402,6 +429,8 @@ export function SendGoogleChatMessage(arg1:string,arg2:string,arg3:string,arg4:s
 export function SendSlackMessage(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function ServeHTTP(arg1:http.ResponseWriter,arg2:http.Request):Promise<void>;
+
+export function SetActiveProfile(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function SetAgentProfile(arg1:alertproc.AgentProfile):Promise<void>;
 
@@ -452,6 +481,8 @@ export function TranslateIngressToGateway(arg1:string):Promise<k8s.MigrationResu
 export function UndeployAgent(arg1:string):Promise<setup.SetupResult>;
 
 export function UpdateBillingRates(arg1:number,arg2:number,arg3:number):Promise<void>;
+
+export function UpdateGoogleCalendarEvent(arg1:string,arg2:string,arg3:string,arg4:workspace.Event):Promise<workspace.Event>;
 
 export function UpdateGoogleTask(arg1:string,arg2:string,arg3:string,arg4:string,arg5:workspace.Task):Promise<workspace.Task>;
 

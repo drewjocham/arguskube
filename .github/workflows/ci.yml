@@ -39,8 +39,7 @@ jobs:
       # the built Vue frontend into the binary. The dist files are
       # gitignored — they only exist after `npm run build` — so the
       # Go side fails to vet/build/test on a fresh checkout unless we
-      # produce the frontend first. (Was already broken on main; CI
-      # for every recent run shows this same failure.)
+      # produce the frontend first.
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -65,25 +64,9 @@ jobs:
         run: go build ./...
 
       - name: Test
-        # -short skips tests that shell out to kubectl or download
-        # binaries (kube/backend/internal/setup). Those still run on
-        # developer machines without -short — they have a real
-        # environment. Without this, the setup package consistently
-        # stalls the 2-minute test budget on CI runners.
-        #
-        # -coverprofile/-covermode=atomic add a coverage capture; the
-        # next step parses the profile and asserts a floor. atomic
-        # mode is required alongside -race.
         run: go test -short -race -count=1 -timeout 180s -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Coverage threshold
-        # Compute the total coverage and assert it stays above the
-        # floor below. Treat the threshold as a regression guard, not
-        # a quality target — the value is intended to ratchet up over
-        # time as the untested packages from CR P1.6 land more tests.
-        # Setting `continue-on-error: true` for the first cycle so the
-        # baseline can be observed in CI output before the gate flips
-        # to enforcing.
         continue-on-error: true
         env:
           MIN_COVERAGE: '25.0'
@@ -112,30 +95,6 @@ jobs:
           path: kube/backend/coverage.out
           if-no-files-found: warn
 
-      # Lint is non-blocking on the consolidation PR: the kube/backend/
-      # restructure makes every pre-existing issue appear "new" because the
-      # merge base (main) has no files at this path. Track cleanup
-      # separately rather than blocking the merge.
-      - name: Lint
-        continue-on-error: true
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: latest
-          working-directory: kube/backend
-          args: --timeout 3m
-          only-new-issues: true
-
-      # BLOCKING lint gate, scoped to NEW findings only. The action's
-      # `only-new-issues: true` flag uses the PR's merge base to filter
-      # — issues that already existed on `main` are ignored, but a new
-      # issue introduced by this PR fails the build. Differs from the
-      # non-blocking Lint step above (`continue-on-error: true`) in
-      # that this one MUST stay green.
-      #
-      # This is how we enforce the profiles-package lint baseline
-      # without making historical findings everyone else's problem:
-      # by the time profiles ships, every line it adds is lint-clean,
-      # and this gate stops drift on every future PR.
       - name: Lint (new issues blocking)
         uses: golangci/golangci-lint-action@v8
         with:
@@ -144,13 +103,66 @@ jobs:
           args: --timeout 3m
           only-new-issues: true
 
+  # --- Go Agent (agent/) ---
+  agent:
+    name: Agent (Go)
+    runs-on: ubuntu-latest
+    env:
+      GOWORK: "off"
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test -race -count=1 -timeout 120s ./...
+
+  # --- Terminal (lufis-terminal) ---
+  terminal:
+    name: Terminal (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lufis-terminal
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: lufis-terminal/go.mod
+          cache-dependency-path: lufis-terminal/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test -race -count=1 -timeout 120s ./...
+
   # --- Go Alert Ingress (kube/alert-ingress) ---
   alert-ingress:
     name: Alert Ingress (Go)
     runs-on: ubuntu-latest
-    # See note on `backend` job — GOWORK=off keeps this build
-    # standalone so the workspace's higher Go version requirement
-    # (driven by lufis-terminal at 1.26.2) does not bleed in.
     env:
       GOWORK: "off"
     defaults:
@@ -196,18 +208,11 @@ jobs:
         run: npm ci
 
       - name: Type check
-        run: npx vue-tsc --noEmit || true  # Non-blocking until types stabilize
+        run: npx vue-tsc --noEmit || true
 
       - name: Lint
-        run: npx eslint src/ --max-warnings 100 || true  # Non-blocking until rules stabilize
+        run: npx eslint src/ --max-warnings 100 || true
 
-      # BLOCKING TypeScript lint, scoped to the profiles surface.
-      # The eslint.config.js registers typescript-eslint rules
-      # against these three files specifically; the gate fails the
-      # build if any future change introduces an issue in them.
-      # Same pattern as the Go `Lint (new issues blocking)` step
-      # in the backend job — opt-in expansion, not a repo-wide
-      # rule flip that would surface pre-existing findings.
       - name: Lint (profiles TS — blocking)
         run: |
           npx eslint --max-warnings 0 \

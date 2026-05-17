@@ -239,6 +239,24 @@ func (m *Manager) Delete(ctx context.Context, id string) error {
 	return m.store.Delete(ctx, id)
 }
 
+// DirectConnect stores a connection + token without going through the
+// OAuth Start/Complete dance. Used by providers that don't use OAuth
+// (iCloud app-specific passwords, API-key-based integrations, etc.).
+// The caller is responsible for validating credentials before calling
+// this method.
+func (m *Manager) DirectConnect(ctx context.Context, c Connection, tok Token) (Connection, error) {
+	saved, err := m.store.Upsert(ctx, c, tok)
+	if err != nil {
+		return Connection{}, err
+	}
+	m.logger.InfoContext(ctx, "workspace: direct connection saved",
+		slog.String("service", string(c.Service)),
+		slog.String("user_id", c.UserID),
+		slog.String("connection_id", saved.ID),
+	)
+	return saved, nil
+}
+
 // Token decrypts the token for a connection, transparently refreshing
 // it when expired and the provider implements Refresher. Reserved for
 // adapter use; callers MUST NOT log or serialize the returned value.

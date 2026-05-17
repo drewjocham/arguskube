@@ -159,6 +159,8 @@ export const SECTIONS = Object.freeze({
       { id: 'gsheets', label: 'Sheets' },
       { id: 'gtasks', label: 'Tasks' },
       { id: 'gchat', label: 'Google Chat' },
+      { id: 'gcal', label: 'Calendar' },
+      { id: 'icloud', label: 'iCloud' },
     ],
   },
   admin: {
