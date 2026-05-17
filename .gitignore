@@ -126,3 +126,13 @@ infra/gcp/.terraform/
 infra/gcp/.terraform.lock.hcl
 infra/gcp/terraform.tfstate
 infra/gcp/terraform.tfstate.backup
+
+# macOS Finder duplicates. When you cmd-D a file in Finder it creates
+# a sibling like "foo 2.txt" / "foo 3.txt"; some IDE plugins do the
+# same trick. These slip into commits silently and break builds in
+# packages where the language compiles every matching file in a dir
+# (Go on *_test.go, Vue/TS on *.vue, etc.). Block them at the source.
+*[[:space:]][0-9].*
+*[[:space:]][0-9][0-9].*
+*[[:space:]][0-9]
+*[[:space:]][0-9][0-9]
