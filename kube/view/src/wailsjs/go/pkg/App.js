@@ -162,6 +162,14 @@ export function DeletePod(arg1, arg2) {
   return window['go']['pkg']['App']['DeletePod'](arg1, arg2);
 }
 
+export function DeleteProfileGroup(arg1, arg2) {
+  return window['go']['pkg']['App']['DeleteProfileGroup'](arg1, arg2);
+}
+
+export function DeleteProfileVariant(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['DeleteProfileVariant'](arg1, arg2, arg3);
+}
+
 export function DeleteResource(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['DeleteResource'](arg1, arg2, arg3);
 }
@@ -236,6 +244,10 @@ export function GenerateTrafficSplitHTTPRoute(arg1, arg2, arg3, arg4, arg5) {
 
 export function GenerateWorkloadYAML(arg1) {
   return window['go']['pkg']['App']['GenerateWorkloadYAML'](arg1);
+}
+
+export function GetActiveProfile(arg1) {
+  return window['go']['pkg']['App']['GetActiveProfile'](arg1);
 }
 
 export function GetAgentEventLog() {
@@ -562,6 +574,10 @@ export function ListOAuthProviders() {
   return window['go']['pkg']['App']['ListOAuthProviders']();
 }
 
+export function ListProfileGroups(arg1) {
+  return window['go']['pkg']['App']['ListProfileGroups'](arg1);
+}
+
 export function ListRegistryTags(arg1) {
   return window['go']['pkg']['App']['ListRegistryTags'](arg1);
 }
@@ -718,6 +734,14 @@ export function SavePRGuidelines(arg1, arg2) {
   return window['go']['pkg']['App']['SavePRGuidelines'](arg1, arg2);
 }
 
+export function SaveProfileGroup(arg1, arg2) {
+  return window['go']['pkg']['App']['SaveProfileGroup'](arg1, arg2);
+}
+
+export function SaveProfileVariant(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['SaveProfileVariant'](arg1, arg2, arg3);
+}
+
 export function SaveRunbook(arg1, arg2) {
   return window['go']['pkg']['App']['SaveRunbook'](arg1, arg2);
 }
@@ -752,6 +776,10 @@ export function SendSlackMessage(arg1, arg2, arg3, arg4) {
 
 export function ServeHTTP(arg1, arg2) {
   return window['go']['pkg']['App']['ServeHTTP'](arg1, arg2);
+}
+
+export function SetActiveProfile(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['SetActiveProfile'](arg1, arg2, arg3);
 }
 
 export function SetAgentProfile(arg1) {
