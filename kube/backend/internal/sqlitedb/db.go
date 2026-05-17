@@ -380,4 +380,52 @@ var migrations = []migration{
 		name: "create_passkey_sessions_exp_index",
 		sql:  `CREATE INDEX IF NOT EXISTS idx_passkey_sessions_exp ON passkey_sessions(expires_at)`,
 	},
+	{
+		// Per-user workspace profiles (UI snapshots: appearance, nav,
+		// section tabs, saved filters). Composite PRIMARY KEY scopes
+		// rows by user so multi-tenant SaaS instances share one DB.
+		name: "create_profile_groups",
+		sql: `CREATE TABLE IF NOT EXISTS profile_groups (
+			user_id     TEXT    NOT NULL,
+			id          TEXT    NOT NULL,
+			name        TEXT    NOT NULL,
+			description TEXT    NOT NULL DEFAULT '',
+			created_at  INTEGER NOT NULL,
+			updated_at  INTEGER NOT NULL,
+			PRIMARY KEY (user_id, id)
+		)`,
+	},
+	{
+		// Variants reference profile_groups.id. Cascade on delete so a
+		// group removal takes its variants with it; the Go store also
+		// scrubs the profile_active pointer separately to avoid stale
+		// frontend reads.
+		name: "create_profile_variants",
+		sql: `CREATE TABLE IF NOT EXISTS profile_variants (
+			id            TEXT    PRIMARY KEY,
+			group_id      TEXT    NOT NULL,
+			name          TEXT    NOT NULL,
+			description   TEXT    NOT NULL DEFAULT '',
+			version       TEXT    NOT NULL DEFAULT '1.0',
+			snapshot_json TEXT    NOT NULL DEFAULT '{}',
+			created_at    INTEGER NOT NULL,
+			updated_at    INTEGER NOT NULL
+		)`,
+	},
+	{
+		name: "create_profile_variants_group_index",
+		sql:  `CREATE INDEX IF NOT EXISTS idx_profile_variants_group ON profile_variants(group_id)`,
+	},
+	{
+		// One row per user — records which (group, variant) the user
+		// has currently applied. Restored on app start so the chosen
+		// profile survives reloads and reinstalls.
+		name: "create_profile_active",
+		sql: `CREATE TABLE IF NOT EXISTS profile_active (
+			user_id    TEXT    PRIMARY KEY,
+			group_id   TEXT    NOT NULL DEFAULT '',
+			variant_id TEXT    NOT NULL DEFAULT '',
+			updated_at INTEGER NOT NULL
+		)`,
+	},
 }

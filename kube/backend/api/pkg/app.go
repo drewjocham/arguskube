@@ -25,6 +25,7 @@ import (
 	"github.com/argues/argus/internal/notebooks"
 	"github.com/argues/argus/internal/oauthproviders"
 	"github.com/argues/argus/internal/popeye"
+	profilespkg "github.com/argues/argus/internal/profiles"
 	"github.com/argues/argus/internal/runbooks"
 	"github.com/argues/argus/internal/saasapi"
 	"github.com/argues/argus/internal/secretref"
@@ -133,6 +134,13 @@ type App struct {
 	// any future per-app stores can persist without re-opening.
 	db *sql.DB
 
+	// profiles is the per-user workspace-profile store (UI snapshots:
+	// appearance, nav visibility, section tabs, saved filters). Built
+	// lazily in NewApp from the shared DB handle. nil when the build
+	// has no DB (some test fixtures); the app_profiles methods short-
+	// circuit on nil so callers get a clear error instead of a panic.
+	profiles *profilespkg.Store
+
 	// dbConfigs/dbPool are the DBAgent stack — user-registered DB
 	// connections + their cached pools. Both are nil in build modes
 	// where the feature is disabled (e.g. SaaS); the app_dbagent
@@ -198,6 +206,13 @@ func NewApp(ac AppConfig) *App {
 		saasClient:      ac.SaaSClient,
 		appMode:         ac.AppMode,
 		hub:             NewHub(ac.Logger.With("component", "saas-hub")),
+	}
+
+	// Build the profiles store on the shared DB. Nil DB is honored —
+	// some test fixtures construct App without one; the profile
+	// methods then return a "not configured" error.
+	if ac.DB != nil {
+		app.profiles = profilespkg.NewStore(ac.DB, ac.Logger.With("component", "profiles"))
 	}
 
 	// Initialize agent connector if k8s client is available.

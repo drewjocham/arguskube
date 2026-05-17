@@ -6,8 +6,73 @@ import { useSectionTabsStore } from './sectionTabs'
 import { useUIPrefsStore } from './uiPrefs'
 import { useSavedFiltersStore } from './savedFilters'
 import type { ProfileGroup, ProfileVariant, FlattenedVariant, ProfileSnapshot, SavedFilterEntry } from '../types/profiles'
+import {
+  loadFromBackend,
+  loadActiveFromBackend,
+  pushGroup,
+  pushVariant,
+  pushDeleteGroup,
+  pushDeleteVariant,
+  pushActive,
+  type BackendGroup,
+  type BackendVariant,
+} from './profilesSync'
 
 const STORAGE_KEY = 'argus.profiles.v1'
+
+// getSessionTokenSync mirrors the workspace store's reader — Wails
+// mode ignores the arg, SaaS mode passes "" and the bridge layers
+// the Authorization header in from localStorage. Kept inline here so
+// the store stays self-contained and the test fakes don't have to
+// stand up the auth store.
+function getSessionTokenSync(): string {
+  try {
+    if (typeof localStorage === 'undefined') return ''
+    const raw = localStorage.getItem('argus.auth.session')
+    if (!raw) return ''
+    const parsed = JSON.parse(raw)
+    return parsed?.token || ''
+  } catch {
+    return ''
+  }
+}
+
+// mapBackendGroup turns a wire-format BackendGroup into the local
+// ProfileGroup shape. Wire shape carries timestamps + an unknown-
+// typed snapshot; the local shape is strictly typed.
+function mapBackendGroup(bg: BackendGroup): ProfileGroup {
+  return {
+    id: bg.id,
+    name: bg.name,
+    description: bg.description,
+    variants: (bg.variants || []).map(mapBackendVariant),
+  }
+}
+
+function mapBackendVariant(bv: BackendVariant): ProfileVariant {
+  return {
+    id: bv.id,
+    parentId: bv.parentId,
+    name: bv.name,
+    description: bv.description,
+    version: bv.version,
+    snapshot: normalizeSnapshot(bv.snapshot),
+  }
+}
+
+// normalizeSnapshot guards against missing fields so the apply path
+// doesn't have to special-case undefineds (the original
+// localStorage-only version trusted the persisted shape).
+function normalizeSnapshot(raw: unknown): ProfileSnapshot {
+  const s = (raw && typeof raw === 'object' ? raw : {}) as Partial<ProfileSnapshot>
+  return {
+    appearance: s.appearance && typeof s.appearance === 'object' ? s.appearance : {},
+    navVisibility: { visible: s.navVisibility?.visible || {} },
+    sectionTabs: { tabs: s.sectionTabs?.tabs || {} },
+    uiPrefs: { rightPanelWidth: s.uiPrefs?.rightPanelWidth ?? 340 },
+    savedFilters: Array.isArray(s.savedFilters) ? s.savedFilters : [],
+  }
+}
 
 function newId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
@@ -123,6 +188,8 @@ export const useProfilesStore = defineStore('profiles', () => {
   const groups = ref<ProfileGroup[]>(persisted?.groups || [])
   const activeGroupId = ref(persisted?.activeGroupId || '')
   const activeVariantId = ref(persisted?.activeVariantId || '')
+  const hydrated = ref(false)
+  const backendAvailable = ref(false)
 
   function persist(): void {
     saveToStorage({
@@ -130,6 +197,34 @@ export const useProfilesStore = defineStore('profiles', () => {
       activeGroupId: activeGroupId.value,
       activeVariantId: activeVariantId.value,
     })
+  }
+
+  // hydrate replaces the in-memory state from the backend if it's
+  // reachable. Idempotent — call once on app boot. Failures leave
+  // the localStorage-loaded state untouched (offline / web mode
+  // without auth keep working).
+  //
+  // Returns true when the backend served the data, false when the
+  // localStorage fallback is what's in memory. Tests assert on this.
+  async function hydrate(): Promise<boolean> {
+    if (hydrated.value) return backendAvailable.value
+    hydrated.value = true
+
+    const remote = await loadFromBackend(getSessionTokenSync)
+    if (remote === null) {
+      // Backend not reachable — keep whatever loadFromStorage gave us.
+      return false
+    }
+    backendAvailable.value = true
+    groups.value = remote.map(mapBackendGroup)
+
+    const active = await loadActiveFromBackend(getSessionTokenSync)
+    if (active) {
+      activeGroupId.value = active.groupId
+      activeVariantId.value = active.variantId
+    }
+    persist()
+    return true
   }
 
   const activeGroup = computed<ProfileGroup | null>(() =>
@@ -152,6 +247,88 @@ export const useProfilesStore = defineStore('profiles', () => {
     return out
   })
 
+  // Per-target debounce timers. Rapid mutations (drag a slider while
+  // a variant is open; rename a group letter-by-letter) coalesce to
+  // one backend write 300ms after the last edit. Each timer is keyed
+  // by the row it targets so two parallel edits don't trample each
+  // other.
+  //
+  // Production motivation: at 50k users, frontend bursts that fire
+  // 60 writes/sec per user would multiply into noticeable DB write
+  // contention even with WAL. The debounce keeps the write rate at
+  // most ~3/sec per user per row, which the existing SQLite handle
+  // (single-writer) absorbs comfortably.
+  const SYNC_DEBOUNCE_MS = 300
+  const groupSyncTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+  const variantSyncTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+
+  function debounceSyncGroup(g: ProfileGroup): void {
+    if (!backendAvailable.value) return
+    const existing = groupSyncTimers[g.id]
+    if (existing) clearTimeout(existing)
+    groupSyncTimers[g.id] = setTimeout(() => {
+      delete groupSyncTimers[g.id]
+      void pushGroup(getSessionTokenSync, g)
+    }, SYNC_DEBOUNCE_MS)
+  }
+
+  function debounceSyncVariant(groupId: string, v: ProfileVariant): void {
+    if (!backendAvailable.value) return
+    const key = `${groupId}:${v.id}`
+    const existing = variantSyncTimers[key]
+    if (existing) clearTimeout(existing)
+    variantSyncTimers[key] = setTimeout(() => {
+      delete variantSyncTimers[key]
+      void pushVariant(getSessionTokenSync, groupId, v)
+    }, SYNC_DEBOUNCE_MS)
+  }
+
+  // syncGroup / syncVariant are the existing names callers use. We
+  // keep them as the public hooks and have them dispatch to the
+  // debounced versions — callers stay simple, behaviour stays fast.
+  function syncGroup(g: ProfileGroup): void {
+    debounceSyncGroup(g)
+  }
+
+  function syncVariant(groupId: string, v: ProfileVariant): void {
+    debounceSyncVariant(groupId, v)
+  }
+
+  function syncDeleteGroup(id: string): void {
+    if (!backendAvailable.value) return
+    // Cancel any pending upsert for this group so we don't write a
+    // gone row right after deleting it. Same for every variant
+    // pending under it — variant timers are keyed "${groupId}:".
+    const pending = groupSyncTimers[id]
+    if (pending) {
+      clearTimeout(pending)
+      delete groupSyncTimers[id]
+    }
+    for (const key of Object.keys(variantSyncTimers)) {
+      if (key.startsWith(`${id}:`)) {
+        clearTimeout(variantSyncTimers[key])
+        delete variantSyncTimers[key]
+      }
+    }
+    void pushDeleteGroup(getSessionTokenSync, id)
+  }
+
+  function syncDeleteVariant(groupId: string, variantId: string): void {
+    if (!backendAvailable.value) return
+    const key = `${groupId}:${variantId}`
+    const pending = variantSyncTimers[key]
+    if (pending) {
+      clearTimeout(pending)
+      delete variantSyncTimers[key]
+    }
+    void pushDeleteVariant(getSessionTokenSync, groupId, variantId)
+  }
+
+  function syncActive(groupId: string, variantId: string): void {
+    if (!backendAvailable.value) return
+    void pushActive(getSessionTokenSync, groupId, variantId)
+  }
+
   function createGroup(name: string, description = ''): ProfileGroup {
     const group: ProfileGroup = {
       id: newId(),
@@ -162,8 +339,10 @@ export const useProfilesStore = defineStore('profiles', () => {
     groups.value.push(group)
     if (groups.value.length === 1) {
       activeGroupId.value = group.id
+      syncActive(group.id, '')
     }
     persist()
+    syncGroup(group)
     return group
   }
 
@@ -173,6 +352,7 @@ export const useProfilesStore = defineStore('profiles', () => {
     if (patch.name != null) g.name = patch.name.trim() || g.name
     if (patch.description != null) g.description = patch.description.trim()
     persist()
+    syncGroup(g)
   }
 
   function deleteGroup(id: string): void {
@@ -182,8 +362,10 @@ export const useProfilesStore = defineStore('profiles', () => {
     if (activeGroupId.value === id) {
       activeGroupId.value = groups.value[0]?.id || ''
       if (!activeGroupId.value) activeVariantId.value = ''
+      syncActive(activeGroupId.value, activeVariantId.value)
     }
     persist()
+    syncDeleteGroup(id)
   }
 
   function createVariant(groupId: string, name: string, description = '', version = '1.0'): ProfileVariant | null {
@@ -207,8 +389,10 @@ export const useProfilesStore = defineStore('profiles', () => {
     if (!activeVariantId.value) {
       activeVariantId.value = variant.id
       activeGroupId.value = groupId
+      syncActive(groupId, variant.id)
     }
     persist()
+    syncVariant(groupId, variant)
     return variant
   }
 
@@ -221,6 +405,7 @@ export const useProfilesStore = defineStore('profiles', () => {
     if (patch.description != null) v.description = patch.description.trim()
     if (patch.version != null) v.version = patch.version.trim()
     persist()
+    syncVariant(groupId, v)
   }
 
   function deleteVariant(groupId: string, variantId: string): void {
@@ -240,8 +425,10 @@ export const useProfilesStore = defineStore('profiles', () => {
           activeGroupId.value = groups.value[0]?.id || ''
         }
       }
+      syncActive(activeGroupId.value, activeVariantId.value)
     }
     persist()
+    syncDeleteVariant(groupId, variantId)
   }
 
   function captureToVariant(groupId: string, variantId: string): void {
@@ -257,6 +444,7 @@ export const useProfilesStore = defineStore('profiles', () => {
       savedFilters: captureSavedFilters(),
     }
     persist()
+    syncVariant(groupId, v)
   }
 
   function applyVariant(variantId: string): void {
@@ -284,12 +472,14 @@ export const useProfilesStore = defineStore('profiles', () => {
     activeVariantId.value = target.id
     activeGroupId.value = target.groupId || target.parentId
     persist()
+    syncActive(activeGroupId.value, activeVariantId.value)
   }
 
   function setActive(groupId: string, variantId: string): void {
     activeGroupId.value = groupId
     activeVariantId.value = variantId
     persist()
+    syncActive(groupId, variantId)
   }
 
   function duplicateVariant(groupId: string, variantId: string): ProfileVariant | null {
@@ -304,6 +494,7 @@ export const useProfilesStore = defineStore('profiles', () => {
     }
     g.variants.push(copy)
     persist()
+    syncVariant(groupId, copy)
     return copy
   }
 
@@ -311,9 +502,12 @@ export const useProfilesStore = defineStore('profiles', () => {
     groups,
     activeGroupId,
     activeVariantId,
+    hydrated,
+    backendAvailable,
     activeGroup,
     activeVariant,
     allVariants,
+    hydrate,
     createGroup,
     updateGroup,
     deleteGroup,

@@ -9,6 +9,7 @@ import { useUIPrefsStore } from './stores/uiPrefs'
 import { useNotificationsStore } from './stores/notifications'
 import { useAuthStore } from './stores/auth'
 import { useAppNavStore } from './stores/appNav'
+import { useProfilesStore } from './stores/profiles'
 import { useSectionTabsStore } from './stores/sectionTabs'
 import { SECTIONS, sectionForTab } from './lib/sectionTabs'
 import { useNavVisibilityProbes } from './composables/useNavVisibilityProbes'
@@ -106,6 +107,11 @@ onMounted(async () => {
   // Kick off the probes after auth has settled so they don't fight
   // for the bridge with the auth restore call.
   navProbes.run()
+  // Hydrate profiles from backend (best-effort — falls back silently
+  // to the localStorage-loaded state when the backend isn't around,
+  // e.g. anonymous web mode or offline tab). Fire-and-forget; the
+  // UI doesn't need to block on this.
+  void useProfilesStore().hydrate()
 })
 
 // /api/* fetches dispatch this when they get a 401 — the bridge clears
