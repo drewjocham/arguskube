@@ -15,6 +15,15 @@ jobs:
   backend:
     name: Backend (Go)
     runs-on: ubuntu-latest
+    # The repo's go.work pulls lufis-terminal (go 1.26.2) into every
+    # module build at the workspace root. CI installs the version from
+    # kube/backend/go.mod (1.25.0), so workspace-active builds fail with
+    # "compile: version 1.26.2 does not match go tool version 1.25.0".
+    # GOWORK=off makes kube/backend build standalone; the replace
+    # directive to ../../pkg/pty still resolves locally without the
+    # workspace.
+    env:
+      GOWORK: "off"
     defaults:
       run:
         working-directory: kube/backend
@@ -120,6 +129,11 @@ jobs:
   alert-ingress:
     name: Alert Ingress (Go)
     runs-on: ubuntu-latest
+    # See note on `backend` job — GOWORK=off keeps this build
+    # standalone so the workspace's higher Go version requirement
+    # (driven by lufis-terminal at 1.26.2) does not bleed in.
+    env:
+      GOWORK: "off"
     defaults:
       run:
         working-directory: kube/alert-ingress
