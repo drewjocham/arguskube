@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/argus/api-gov/internal/config"
 	"github.com/argus/api-gov/internal/service"
 )
 
@@ -21,6 +22,7 @@ func newTrafficAPI(t *testing.T) *API {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return &API{
+		Config:   config.New(),
 		Logger:   logger,
 		agentCli: service.NewAgentClient("http://127.0.0.1:1/no-such-agent", 0.5, logger),
 	}

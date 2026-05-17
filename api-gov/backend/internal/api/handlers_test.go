@@ -6,11 +6,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/argus/api-gov/internal/config"
 )
 
 func newTestAPI() *API {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a := &API{Logger: logger}
+	a := &API{
+		Logger: logger,
+		Config: config.New(),
+	}
 	// safe zero-value execute — handles nil services gracefully
 	a.histogramLatency = nil
 	return a

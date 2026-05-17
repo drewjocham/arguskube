@@ -25,12 +25,12 @@ const (
 	logMsgAnalysisDone     = "agent analysis done"
 	logMsgTestsGenerated   = "tests generated"
 
-	logKeySpecID     = "spec_id"
-	logKeyReportID   = "report_id"
-	logKeyMethod     = "method"
-	logKeyPath       = "path"
-	logKeyCount      = "count"
-	logKeyEndpoints  = "endpoints"
+	logKeySpecID    = "spec_id"
+	logKeyReportID  = "report_id"
+	logKeyMethod    = "method"
+	logKeyPath      = "path"
+	logKeyCount     = "count"
+	logKeyEndpoints = "endpoints"
 
 	defaultPageSize = 50
 	maxPageSize     = 500
@@ -289,7 +289,7 @@ func (a *API) handleRequestDriftScan(w http.ResponseWriter, r *http.Request) {
 				if err := a.agentCli.TriggerDriftScan(ctx, specID); err != nil {
 					a.Logger.LogAttrs(ctx, slog.LevelError, "drift scan failed",
 						slog.String(logKeySpecID, specID),
-						slog.Any(logKeyError, err),
+						slog.Any(apperrors.LogKeyError, err),
 					)
 				}
 			}()

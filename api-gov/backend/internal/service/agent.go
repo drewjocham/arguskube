@@ -24,9 +24,12 @@ type AgentClient struct {
 }
 
 const (
-	defaultAgentTimeout = 120 * time.Second
-	logKeyAgentStatus   = "agent_status"
-	logKeyAgentEndpoint = "agent_endpoint"
+	defaultAgentTimeout   = 120 * time.Second
+	defaultMaxRetries     = 3
+	defaultRetryBaseDelay = 50 * time.Millisecond
+	logKeyAgentStatus     = "agent_status"
+	logKeyAgentEndpoint   = "agent_endpoint"
+	logKeyRetryAttempt    = "retry_attempt"
 )
 
 var errAgentResponse = fmt.Errorf("agent service error")
@@ -82,47 +85,79 @@ func (c *AgentClient) post(ctx context.Context, path string, reqBody any, respBo
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	c.logger.LogAttrs(ctx, slog.LevelDebug, "agent request",
-		slog.String(logKeyAgentEndpoint, path),
-	)
-
-	resp, err := c.client.Do(httpReq)
-	if err != nil {
-		c.logger.LogAttrs(ctx, slog.LevelError, "agent request failed",
-			slog.String(logKeyAgentEndpoint, path),
-			slog.Any(apperrors.LogKeyError, err),
-		)
-		return fmt.Errorf("agent request to %s: %w", path, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read agent response: %w", err)
-	}
-
-	if resp.StatusCode >= 400 {
-		c.logger.LogAttrs(ctx, slog.LevelError, "agent error response",
-			slog.Int(logKeyAgentStatus, resp.StatusCode),
-			slog.String(logKeyAgentEndpoint, path),
-			slog.String("response_body", string(body)),
-		)
-		return fmt.Errorf("%w: agent returned %d", errAgentResponse, resp.StatusCode)
-	}
-
-	if respBody != nil && len(body) > 0 {
-		if err := json.Unmarshal(body, respBody); err != nil {
-			return fmt.Errorf("unmarshal agent response: %w", err)
+	var lastErr error
+	for attempt := range defaultMaxRetries {
+		if attempt > 0 {
+			delay := defaultRetryBaseDelay << (attempt - 1)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
+
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
+		if err != nil {
+			return fmt.Errorf("create request: %w", err)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+
+		c.logger.LogAttrs(ctx, slog.LevelDebug, "agent request",
+			slog.String(logKeyAgentEndpoint, path),
+			slog.Int(logKeyRetryAttempt, attempt+1),
+		)
+
+		resp, err := c.client.Do(httpReq)
+		if err != nil {
+			lastErr = fmt.Errorf("agent request to %s: %w", path, err)
+			c.logger.LogAttrs(ctx, slog.LevelWarn, "agent request failed, retrying",
+				slog.String(logKeyAgentEndpoint, path),
+				slog.Int(logKeyRetryAttempt, attempt+1),
+				slog.Any(apperrors.LogKeyError, err),
+			)
+			continue
+		}
+
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			lastErr = fmt.Errorf("read agent response: %w", readErr)
+			continue
+		}
+
+		if resp.StatusCode >= 500 {
+			lastErr = fmt.Errorf("%w: agent returned %d", errAgentResponse, resp.StatusCode)
+			c.logger.LogAttrs(ctx, slog.LevelWarn, "agent transient error, retrying",
+				slog.Int(logKeyAgentStatus, resp.StatusCode),
+				slog.String(logKeyAgentEndpoint, path),
+				slog.Int(logKeyRetryAttempt, attempt+1),
+			)
+			continue
+		}
+
+		if resp.StatusCode >= 400 {
+			c.logger.LogAttrs(ctx, slog.LevelError, "agent error response",
+				slog.Int(logKeyAgentStatus, resp.StatusCode),
+				slog.String(logKeyAgentEndpoint, path),
+				slog.String("response_body", string(body)),
+			)
+			return fmt.Errorf("%w: agent returned %d", errAgentResponse, resp.StatusCode)
+		}
+
+		if respBody != nil && len(body) > 0 {
+			if err := json.Unmarshal(body, respBody); err != nil {
+				return fmt.Errorf("unmarshal agent response: %w", err)
+			}
+		}
+
+		return nil
 	}
 
-	return nil
+	c.logger.LogAttrs(ctx, slog.LevelError, "agent request exhausted retries",
+		slog.String(logKeyAgentEndpoint, path),
+		slog.Any(apperrors.LogKeyError, lastErr),
+	)
+	return lastErr
 }
 
 func (c *AgentClient) AnalyzeSpec(ctx context.Context, specID string) (*analyzeResponse, error) {

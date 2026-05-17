@@ -24,6 +24,7 @@ APP_NAME    := argus
 BACKEND_DIR := kube/backend
 VIEW_DIR    := kube/view
 AGENT_DIR   := agent/python_agents
+FLINK_DIR   := kube/flink
 BUILD_BIN   := $(BACKEND_DIR)/build/bin/$(APP_NAME)
 
 .PHONY: help dev build sign-app build-terminal-app build-nopackage run frontend frontend-dev deps deps-go deps-vue \
@@ -119,12 +120,13 @@ vector-docker: ## Build Vector-based alert-ingress Docker image
 
 # ── Dependencies ─────────────────────────────────────────────────
 
-deps: deps-go deps-vue agent-deps ## Install all dependencies
+deps: deps-go bindings deps-vue agent-deps helm-deps ## Install all dependencies
 
 deps-go: ## Go module tidy
 	cd $(BACKEND_DIR) && go mod tidy
 	cd $(ALERT_INGRESS_DIR) && go mod tidy
 	cd agent && go mod tidy
+	cd $(FLINK_DIR)/gateway && go mod tidy
 
 deps-vue: ## npm install for Vue frontend
 	cd $(VIEW_DIR) && npm install
@@ -201,8 +203,6 @@ runner-test: ## Run runner Go tests
 
 # ── Flink ────────────────────────────────────────────────────────
 
-FLINK_DIR := kube/flink
-
 .PHONY: flink-build-gateway flink-build-job flink-test flink-lint
 
 flink-build-gateway: ## Build Flink gateway binary
@@ -254,7 +254,7 @@ DEPLOY_DIR   := deploy
 HELM_DIR     := $(DEPLOY_DIR)/helm
 TERRAFORM_DIR := $(DEPLOY_DIR)/terraform
 
-.PHONY: helm-lint helm-package helm-install helm-install-dev helm-uninstall helm-clean \
+.PHONY: helm-deps helm-lint helm-package helm-install helm-install-dev helm-uninstall helm-clean \
         tf-init tf-plan tf-apply tf-destroy tf-fmt
 
 helm-deps: ## Update Helm chart dependencies
