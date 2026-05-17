@@ -251,4 +251,39 @@ describe('Sidebar.vue — section navigation model', () => {
     await wrapper.find('.collapse-toggle').trigger('click')
     expect(wrapper.find('[data-testid="sidebar-footer"]').exists()).toBe(false)
   })
+
+  // --- Theme quick-pick (light / dark / auto) — same footer ---
+
+  it('theme footer renders three buttons with the current selection marked active', () => {
+    const wrapper = createWrapper()
+    const light = wrapper.find('[data-testid="theme-light"]')
+    const dark  = wrapper.find('[data-testid="theme-dark"]')
+    const auto  = wrapper.find('[data-testid="theme-auto"]')
+    expect(light.exists()).toBe(true)
+    expect(dark.exists()).toBe(true)
+    expect(auto.exists()).toBe(true)
+    // Default theme is 'dark' (see appearance store DEFAULTS).
+    expect(dark.classes()).toContain('active')
+    expect(light.classes()).not.toContain('active')
+    expect(auto.classes()).not.toContain('active')
+  })
+
+  it('clicking a theme button updates the appearance store', async () => {
+    const wrapper = createWrapper()
+    const { useAppearanceStore } = await import('../../stores/appearance')
+    const app = useAppearanceStore()
+    await wrapper.find('[data-testid="theme-light"]').trigger('click')
+    expect(app.theme).toBe('light')
+    await wrapper.find('[data-testid="theme-auto"]').trigger('click')
+    expect(app.theme).toBe('auto')
+  })
+
+  it('theme buttons expose aria-pressed for screen readers', () => {
+    const wrapper = createWrapper()
+    const dark = wrapper.find('[data-testid="theme-dark"]')
+    const light = wrapper.find('[data-testid="theme-light"]')
+    // Default theme is dark.
+    expect(dark.attributes('aria-pressed')).toBe('true')
+    expect(light.attributes('aria-pressed')).toBe('false')
+  })
 })
