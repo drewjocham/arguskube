@@ -18,15 +18,11 @@ vi.mock('../../composables/useBridge', () => ({
   FAST_TTL: 5_000,
 }))
 
-// All five "captured" stores accessed by profiles must exist before
-// captureToVariant runs. The real stores work fine inside Pinia, so
-// we only need to make sure the imports succeed and each store is
-// initialized at least once per test.
+// Only the appearance store is used by name (in the captureToVariant
+// test). The other four captured stores are wired up via dynamic
+// import inside `freshStore()` — they need to be loaded against the
+// freshly-created Pinia instance, so a top-level import wouldn't help.
 import { useAppearanceStore } from '../appearance'
-import { useNavVisibilityStore } from '../navVisibility'
-import { useSectionTabsStore } from '../sectionTabs'
-import { useUIPrefsStore } from '../uiPrefs'
-import { useSavedFiltersStore } from '../savedFilters'
 
 // In-memory localStorage shim. Lets the store's persist() actually
 // store something we can assert on across re-imports.

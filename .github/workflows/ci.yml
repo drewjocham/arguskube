@@ -125,6 +125,25 @@ jobs:
           args: --timeout 3m
           only-new-issues: true
 
+      # BLOCKING lint gate, scoped to NEW findings only. The action's
+      # `only-new-issues: true` flag uses the PR's merge base to filter
+      # — issues that already existed on `main` are ignored, but a new
+      # issue introduced by this PR fails the build. Differs from the
+      # non-blocking Lint step above (`continue-on-error: true`) in
+      # that this one MUST stay green.
+      #
+      # This is how we enforce the profiles-package lint baseline
+      # without making historical findings everyone else's problem:
+      # by the time profiles ships, every line it adds is lint-clean,
+      # and this gate stops drift on every future PR.
+      - name: Lint (new issues blocking)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          working-directory: kube/backend
+          args: --timeout 3m
+          only-new-issues: true
+
   # --- Go Alert Ingress (kube/alert-ingress) ---
   alert-ingress:
     name: Alert Ingress (Go)
@@ -181,6 +200,20 @@ jobs:
 
       - name: Lint
         run: npx eslint src/ --max-warnings 100 || true  # Non-blocking until rules stabilize
+
+      # BLOCKING TypeScript lint, scoped to the profiles surface.
+      # The eslint.config.js registers typescript-eslint rules
+      # against these three files specifically; the gate fails the
+      # build if any future change introduces an issue in them.
+      # Same pattern as the Go `Lint (new issues blocking)` step
+      # in the backend job — opt-in expansion, not a repo-wide
+      # rule flip that would surface pre-existing findings.
+      - name: Lint (profiles TS — blocking)
+        run: |
+          npx eslint --max-warnings 0 \
+            src/stores/profiles.ts \
+            src/stores/profilesSync.ts \
+            src/stores/__tests__/profiles.test.ts
 
       - name: Test
         run: npm run test:run

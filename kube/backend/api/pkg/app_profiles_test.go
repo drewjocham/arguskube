@@ -49,6 +49,7 @@ func newProfilesTestApp(t *testing.T) *App {
 }
 
 func TestListProfileGroupsEmpty(t *testing.T) {
+	t.Parallel()
 	a := newProfilesTestApp(t)
 
 	got, err := a.ListProfileGroups(devAuthBypass)
@@ -64,6 +65,7 @@ func TestListProfileGroupsEmpty(t *testing.T) {
 }
 
 func TestProfileGroupCRUDRoundTrip(t *testing.T) {
+	t.Parallel()
 	a := newProfilesTestApp(t)
 
 	// Create
@@ -116,6 +118,7 @@ func TestProfileGroupCRUDRoundTrip(t *testing.T) {
 }
 
 func TestProfileVariantCRUDRoundTrip(t *testing.T) {
+	t.Parallel()
 	a := newProfilesTestApp(t)
 
 	if _, err := a.SaveProfileGroup(devAuthBypass, profilespkg.Group{ID: "g1", Name: "G1"}); err != nil {
@@ -152,6 +155,7 @@ func TestProfileVariantCRUDRoundTrip(t *testing.T) {
 }
 
 func TestActiveProfileRoundTrip(t *testing.T) {
+	t.Parallel()
 	a := newProfilesTestApp(t)
 
 	// Default: zero-value Active, no error.
@@ -182,6 +186,7 @@ func TestActiveProfileRoundTrip(t *testing.T) {
 }
 
 func TestDeleteGroupCascadesViaWailsLayer(t *testing.T) {
+	t.Parallel()
 	a := newProfilesTestApp(t)
 
 	if _, err := a.SaveProfileGroup(devAuthBypass, profilespkg.Group{ID: "g1", Name: "G1"}); err != nil {
@@ -212,6 +217,7 @@ func TestDeleteGroupCascadesViaWailsLayer(t *testing.T) {
 }
 
 func TestDeleteVariantNotFound(t *testing.T) {
+	t.Parallel()
 	a := newProfilesTestApp(t)
 
 	if _, err := a.SaveProfileGroup(devAuthBypass, profilespkg.Group{ID: "g1", Name: "G1"}); err != nil {
@@ -225,6 +231,7 @@ func TestDeleteVariantNotFound(t *testing.T) {
 }
 
 func TestSaveVariantRejectsUnknownGroup(t *testing.T) {
+	t.Parallel()
 	a := newProfilesTestApp(t)
 
 	// Group doesn't exist for this user → the bindings must surface
@@ -236,6 +243,7 @@ func TestSaveVariantRejectsUnknownGroup(t *testing.T) {
 }
 
 func TestNilStoreSurfacesUsableError(t *testing.T) {
+	t.Parallel()
 	// Some test fixtures build App without a DB; the methods must
 	// not panic and the error text should tell the human what's up.
 	logger := slog.New(slog.DiscardHandler)
@@ -252,6 +260,7 @@ func TestNilStoreSurfacesUsableError(t *testing.T) {
 }
 
 func TestAuthGateRejectsWhenNotConfigured(t *testing.T) {
+	t.Parallel()
 	// App with profiles store but no auth — auth resolution must
 	// fail before the store is touched.
 	logger := slog.New(slog.DiscardHandler)

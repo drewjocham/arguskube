@@ -28,6 +28,7 @@ func newTestStore(t *testing.T) *Store {
 }
 
 func TestNewStore(t *testing.T) {
+	t.Parallel()
 	t.Run("nil logger does not panic", func(t *testing.T) {
 		logger := slog.New(slog.DiscardHandler)
 		db, err := sqlitedb.Open(t.TempDir(), logger)
@@ -48,6 +49,7 @@ func TestNewStore(t *testing.T) {
 }
 
 func TestListGroupsEmpty(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	got, err := s.ListGroups(context.Background(), "u1")
 	if err != nil {
@@ -64,6 +66,7 @@ func TestListGroupsEmpty(t *testing.T) {
 }
 
 func TestSaveGroupValidation(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -92,6 +95,7 @@ func TestSaveGroupValidation(t *testing.T) {
 }
 
 func TestSaveAndListGroups(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -132,6 +136,7 @@ func TestSaveAndListGroups(t *testing.T) {
 }
 
 func TestSaveGroupUpsertPreservesCreatedAt(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -155,6 +160,7 @@ func TestSaveGroupUpsertPreservesCreatedAt(t *testing.T) {
 }
 
 func TestSaveAndListVariants(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -192,6 +198,7 @@ func TestSaveAndListVariants(t *testing.T) {
 }
 
 func TestSaveVariantDefaults(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -212,6 +219,7 @@ func TestSaveVariantDefaults(t *testing.T) {
 }
 
 func TestSaveVariantRejectsCrossUserGroup(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -227,6 +235,7 @@ func TestSaveVariantRejectsCrossUserGroup(t *testing.T) {
 }
 
 func TestDeleteGroupCascadesVariants(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -263,6 +272,7 @@ func TestDeleteGroupCascadesVariants(t *testing.T) {
 }
 
 func TestDeleteGroupRejectsCrossUser(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -281,6 +291,7 @@ func TestDeleteGroupRejectsCrossUser(t *testing.T) {
 }
 
 func TestDeleteGroupClearsActivePointer(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -307,6 +318,7 @@ func TestDeleteGroupClearsActivePointer(t *testing.T) {
 }
 
 func TestDeleteVariant(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -328,6 +340,7 @@ func TestDeleteVariant(t *testing.T) {
 }
 
 func TestDeleteVariantRejectsCrossUser(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -345,6 +358,7 @@ func TestDeleteVariantRejectsCrossUser(t *testing.T) {
 }
 
 func TestSetGetActive(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -376,6 +390,7 @@ func TestSetGetActive(t *testing.T) {
 }
 
 func TestSetActiveTenantIsolation(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -393,6 +408,7 @@ func TestSetActiveTenantIsolation(t *testing.T) {
 }
 
 func TestQuotaMaxGroupsPerUser(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -423,6 +439,7 @@ func TestQuotaMaxGroupsPerUser(t *testing.T) {
 }
 
 func TestQuotaMaxVariantsPerGroup(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -449,6 +466,7 @@ func TestQuotaMaxVariantsPerGroup(t *testing.T) {
 }
 
 func TestQuotaMaxSnapshotBytes(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
@@ -471,10 +489,11 @@ func TestQuotaMaxSnapshotBytes(t *testing.T) {
 }
 
 func TestHashUserIDStable(t *testing.T) {
+	t.Parallel()
 	// The log helper must produce a stable, non-empty short hash so
 	// production aggregators can correlate a user's activity. Any
 	// future change to the algorithm risks orphaning historical log
-	// queries — pin the behaviour here.
+	// queries — pin the behavior here.
 	a := hashUserID("user-123")
 	b := hashUserID("user-123")
 	c := hashUserID("user-456")
@@ -494,6 +513,7 @@ func TestHashUserIDStable(t *testing.T) {
 }
 
 func TestSnapshotJSONRoundTrip(t *testing.T) {
+	t.Parallel()
 	s := newTestStore(t)
 	ctx := context.Background()
 
