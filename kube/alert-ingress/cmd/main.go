@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,10 +19,12 @@ import (
 const ingressPathWebhookAnomstack = "/webhooks/anomstack"
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	publisher := initPublisher(ctx)
+	publisher := initPublisher(ctx, logger)
 	defer publisher.Close()
 
 	r := gochi.NewRouter()
@@ -30,7 +32,7 @@ func main() {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
-	r.Mount(ingressPathWebhookAnomstack, webhook.New(publisher))
+	r.Mount(ingressPathWebhookAnomstack, webhook.New(publisher, logger))
 
 	port := os.Getenv("ALERT_INGRESS_PORT")
 	if port == "" {
@@ -39,16 +41,17 @@ func main() {
 
 	server := &http.Server{
 		Addr:         ":" + port,
-		Handler:      withLogging(r),
+		Handler:      withLogging(r, logger),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  30 * time.Second,
 	}
 
 	go func() {
-		log.Printf("alert-ingress listening on :%s", port)
+		logger.Info("alert-ingress listening", "port", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			logger.Error("server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -56,34 +59,36 @@ func main() {
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 
-	log.Println("shutting down...")
+	logger.Info("shutting down...")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("shutdown error: %v", err)
+		logger.Error("shutdown error", "error", err)
+		os.Exit(1)
 	}
 }
 
-func initPublisher(ctx context.Context) pubsub.Publisher {
+func initPublisher(ctx context.Context, logger *slog.Logger) pubsub.Publisher {
 	mode := os.Getenv("ALERT_INGRESS_MODE")
 	switch mode {
 	case "gcp":
-		p, err := pubsub.NewGCP(ctx, "", "")
+		p, err := pubsub.NewGCP(ctx, logger, "", "")
 		if err != nil {
-			log.Fatalf("gcp pubsub: %v", err)
+			logger.Error("gcp pubsub init failed", "error", err)
+			os.Exit(1)
 		}
 		return p
 	default:
-		log.Println("alert-ingress running in stdout mode (set ALERT_INGRESS_MODE=gcp for PubSub)")
-		return pubsub.NewStdout()
+		logger.Info("alert-ingress running in stdout mode (set ALERT_INGRESS_MODE=gcp for PubSub)")
+		return pubsub.NewStdout(logger)
 	}
 }
 
-func withLogging(next http.Handler) http.Handler {
+func withLogging(next http.Handler, logger *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
-		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
+		logger.Info("request", "method", r.Method, "path", r.URL.Path, "duration", time.Since(start))
 	})
 }

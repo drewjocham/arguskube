@@ -147,6 +147,18 @@ jobs:
           go-version-file: lufis-terminal/go.mod
           cache-dependency-path: lufis-terminal/go.sum
 
+      # lufis-terminal cgo-depends on github.com/go-gl/glfw and
+      # github.com/go-gl/gl, which need X11 and OpenGL development
+      # headers at build time. ubuntu-latest images don't ship them.
+      - name: Install GLFW/GL system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            xorg-dev \
+            libxcursor-dev libxinerama-dev libxi-dev libxrandr-dev libxxf86vm-dev \
+            pkg-config
+
       - name: Download dependencies
         run: go mod download
 

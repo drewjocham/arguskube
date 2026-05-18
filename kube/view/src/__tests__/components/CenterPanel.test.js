@@ -29,7 +29,7 @@ function stub(klass) {
 }
 vi.mock('../../components/center/MetricsRow.vue', () => stub('metrics-row'))
 vi.mock('../../components/center/AlertList.vue', () => stub('alert-list'))
-vi.mock('../../components/center/LogStream.vue', () => stub('log-stream'))
+vi.mock('../../components/center/MonitoringDashboard.vue', () => stub('monitoring-dashboard'))
 vi.mock('../../components/center/MetricsExplorer.vue', () => stub('metrics-explorer'))
 vi.mock('../../components/center/VulnerabilityList.vue', () => stub('vulnerability-list'))
 vi.mock('../../components/center/LogExplorer.vue', () => stub('log-explorer'))
@@ -87,7 +87,6 @@ function mountSection(sectionId, tabId, extraProps = {}) {
       metrics: null,
       alerts: [],
       selectedAlert: null,
-      logLines: [],
       activeNav: sectionId,
       ...extraProps,
     },

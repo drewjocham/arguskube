@@ -18,7 +18,6 @@ import (
 	"github.com/argues/argus/mcp/server"
 	"github.com/argues/argus/pkg/kube"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 
 	kwatch "github.com/argues/argus/pkg/kube/watch"
@@ -58,9 +57,6 @@ func (s *stubK8sClient) GetResourceQuotas(_ context.Context, _ string) ([]kube.R
 }
 func (s *stubK8sClient) GetClusterInfo(_ context.Context) (*kube.ClusterInfo, error) {
 	return &kube.ClusterInfo{Version: "v1.28"}, nil
-}
-func (s *stubK8sClient) GetResource(_ context.Context, _, _ string) ([]runtime.Object, error) {
-	return nil, nil
 }
 func (s *stubK8sClient) HealthCheck(_ context.Context) error  { return nil }
 func (s *stubK8sClient) GetRawInterface() clientset.Interface { return nil }

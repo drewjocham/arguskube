@@ -12,7 +12,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -35,7 +34,6 @@ type ClientInterface interface {
 	GetNamespaces(ctx context.Context) ([]string, error)
 	GetResourceQuotas(ctx context.Context, namespace string) ([]ResourceQuotaInfo, error)
 	GetClusterInfo(ctx context.Context) (*ClusterInfo, error)
-	GetResource(ctx context.Context, kind, name string) ([]runtime.Object, error)
 	HealthCheck(ctx context.Context) error
 	GetRawInterface() kubernetes.Interface
 }
@@ -284,12 +282,6 @@ func (c *Client) GetResourceQuotas(ctx context.Context, namespace string) ([]Res
 	return out, nil
 }
 
-// GetResource is a generic resource getter. Currently returns nil (placeholder).
-func (c *Client) GetResource(ctx context.Context, kind, name string) ([]runtime.Object, error) {
-	return nil, nil
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -318,10 +310,10 @@ func mapNode(n *corev1.Node) NodeInfo {
 }
 
 func mapPod(p *corev1.Pod) PodInfo {
-	var totalRestarts int32
+	var totalRestarts int64
 	var containers []ContainerInfo
 	for _, cs := range p.Status.ContainerStatuses {
-		totalRestarts += cs.RestartCount
+		totalRestarts += int64(cs.RestartCount)
 		state := "unknown"
 		if cs.State.Running != nil {
 			state = "running"
@@ -422,10 +414,6 @@ func (a *auditClient) GetResourceQuotas(ctx context.Context, ns string) ([]Resou
 func (a *auditClient) GetClusterInfo(ctx context.Context) (*ClusterInfo, error) {
 	a.audit.Log("get", "clusterinfo", "", "")
 	return a.inner.GetClusterInfo(ctx)
-}
-func (a *auditClient) GetResource(ctx context.Context, kind, name string) ([]runtime.Object, error) {
-	a.audit.Log("get", kind, "", name)
-	return a.inner.GetResource(ctx, kind, name)
 }
 func (a *auditClient) HealthCheck(ctx context.Context) error {
 	return a.inner.HealthCheck(ctx)
