@@ -20,10 +20,12 @@ import { onMounted, ref, computed } from 'vue'
 import { callGo } from '../../composables/useBridge'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useAppNavStore } from '../../stores/appNav'
+import { useSectionTabsStore } from '../../stores/sectionTabs'
 import LockableField from '../common/LockableField.vue'
 
 const store = useWorkspaceStore()
 const appNav = useAppNavStore()
+const sectionTabsStore = useSectionTabsStore()
 const connecting = ref({})  // service -> bool
 
 // OAuth-credential form state, loaded lazily from GetSettings the
@@ -122,6 +124,8 @@ const SERVICE_META = {
   gdocs:   { label: 'Google Docs',   color: '#4285F4', letter: 'D' },
   gsheets: { label: 'Google Sheets', color: '#0F9D58', letter: 'S' },
   gtasks:  { label: 'Google Tasks',  color: '#4285F4', letter: 'T' },
+  gcal:    { label: 'Google Calendar', color: '#4285F4', letter: 'E' },
+  icloud:  { label: 'iCloud',        color: '#007AFF', letter: 'i' },
 }
 
 onMounted(async () => {
@@ -132,6 +136,13 @@ onMounted(async () => {
 const visibleServices = computed(() => store.services.filter(s => SERVICE_META[s]))
 
 async function onConnect(service) {
+  // iCloud uses app-specific passwords, not OAuth. Navigate to the
+  // iCloud panel tab where the credential form lives.
+  if (service === 'icloud') {
+    appNav.requestNav({ navId: 'workspace' })
+    sectionTabsStore.setTab('workspace', 'icloud')
+    return
+  }
   connecting.value = { ...connecting.value, [service]: true }
   try {
     await store.startConnect(service)
