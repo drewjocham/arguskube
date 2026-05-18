@@ -108,10 +108,14 @@ func TestEnvVarOverride(t *testing.T) {
 			want:     "/bin/zsh",
 		},
 		{
+			// want is computed inside the subtest after t.Setenv clears
+			// SHELL — evaluating defaultShell() at table-construction
+			// time would capture the runner's real $SHELL (e.g. /bin/bash
+			// on ubuntu-latest) and mismatch the empty-env fallback.
 			name:     "neither set uses default",
 			shellEnv: "",
 			argusEnv: "",
-			want:     defaultShell(),
+			want:     "",
 		},
 	}
 
@@ -120,9 +124,14 @@ func TestEnvVarOverride(t *testing.T) {
 			t.Setenv("SHELL", tt.shellEnv)
 			t.Setenv("ARGUS_SHELL", tt.argusEnv)
 
+			want := tt.want
+			if want == "" {
+				want = defaultShell()
+			}
+
 			cfg, err := Load()
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, cfg.Terminal.Shell)
+			assert.Equal(t, want, cfg.Terminal.Shell)
 		})
 	}
 }
