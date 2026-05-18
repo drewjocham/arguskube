@@ -42,6 +42,32 @@ const settingsSavedAt = ref(0)
 // service so multiple tiles can be open simultaneously.
 const credsExpanded = ref({})
 
+// iCloud inline connect state — shown when user clicks Connect on the icloud tile.
+const icloudAppleID = ref('')
+const icloudAppPassword = ref('')
+const icloudConnecting = ref(false)
+const icloudConnectError = ref('')
+
+function startICloudFlow() {
+  credsExpanded.value = { ...credsExpanded.value, icloud: true }
+}
+
+async function doICloudConnect() {
+  if (!icloudAppleID.value.trim() || !icloudAppPassword.value.trim()) return
+  icloudConnecting.value = true
+  icloudConnectError.value = ''
+  try {
+    await store.connectICloud(icloudAppleID.value.trim(), icloudAppPassword.value)
+    icloudAppleID.value = ''
+    icloudAppPassword.value = ''
+    credsExpanded.value = { ...credsExpanded.value, icloud: false }
+  } catch (e) {
+    icloudConnectError.value = e?.message || String(e)
+  } finally {
+    icloudConnecting.value = false
+  }
+}
+
 async function loadSettingsOnce() {
   if (settingsLoaded.value) return
   try {
@@ -79,9 +105,8 @@ async function saveCredentials() {
   }
 }
 
-// Per-service field map. Only google + slack have OAuth credentials
-// the user can configure inline today; the other tiles fall back to
-// the "open Settings" link.
+// Per-service field map. Fields saved here are the same ones the
+// Settings panel reads/writes — changing them in either place updates both.
 const CRED_FIELDS = {
   google: [
     { key: 'workspaceGoogleClientId',     label: 'Google client ID' },
@@ -91,16 +116,73 @@ const CRED_FIELDS = {
     { key: 'workspaceGoogleClientId',     label: 'Google client ID' },
     { key: 'workspaceGoogleClientSecret', label: 'Google client secret' },
   ],
-  gdocs:   null,  // share the google entry above; no separate tile creds
+  gcal: [
+    { key: 'workspaceGoogleClientId',     label: 'Google client ID' },
+    { key: 'workspaceGoogleClientSecret', label: 'Google client secret' },
+  ],
+  gdocs:   null,
   gsheets: null,
   gtasks:  null,
+  microsoft: [
+    { key: 'workspaceMicrosoftClientId',     label: 'Microsoft client ID' },
+    { key: 'workspaceMicrosoftClientSecret', label: 'Microsoft client secret' },
+  ],
   slack: [
     { key: 'slackClientId',     label: 'Slack client ID' },
     { key: 'slackClientSecret', label: 'Slack client secret' },
   ],
 }
+
+// Setup guides — shown when the user expands a tile's credentials section
+// or on first connect attempt for unconfigured providers.
+const SETUP_GUIDES = {
+  google: {
+    title: 'Google Cloud Console',
+    url: 'https://console.cloud.google.com/apis/credentials',
+    steps: [
+      '1. Go to APIs & Services → Credentials',
+      '2. Create OAuth 2.0 Client ID → Desktop app',
+      '3. Add redirect URI: http://127.0.0.1:8080/workspace/oauth/callback',
+      '4. Copy the Client ID and Client Secret below',
+    ],
+    scopes: 'APIs needed: Google Docs, Google Sheets, Google Calendar, Google Tasks',
+  },
+  microsoft: {
+    title: 'Azure Portal',
+    url: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
+    steps: [
+      '1. App registrations → New registration',
+      '2. Redirect URI: Web → http://127.0.0.1:8080/workspace/oauth/callback',
+      '3. Certificates & secrets → New client secret',
+      '4. API permissions → Microsoft Graph → Calendars.ReadWrite, Files.ReadWrite, Tasks.ReadWrite, User.Read',
+      '5. Copy the Application (client) ID and secret value below',
+    ],
+  },
+  slack: {
+    title: 'Slack API',
+    url: 'https://api.slack.com/apps',
+    steps: [
+      '1. Create New App → From scratch',
+      '2. OAuth & Permissions → Add redirect URL: http://127.0.0.1:8080/workspace/oauth/callback',
+      '3. Bot Token Scopes: chat:write, channels:read',
+      '4. Install to workspace, copy Client ID and Client Secret',
+    ],
+  },
+  icloud: {
+    title: 'Apple ID',
+    url: 'https://appleid.apple.com/account/manage',
+    steps: [
+      '1. Sign in → Sign-In and Security → App-Specific Passwords',
+      '2. Generate a password named "Argus"',
+      '3. Enter your Apple ID and the generated password in the iCloud panel',
+    ],
+  },
+}
 function credFieldsFor(service) {
   return CRED_FIELDS[service] || null
+}
+function setupGuideFor(service) {
+  return SETUP_GUIDES[service] || null
 }
 
 // Empty-state CTA: jump to the new "Sign-in & integrations" section in
@@ -138,11 +220,9 @@ onMounted(async () => {
 const visibleServices = computed(() => store.services.filter(s => SERVICE_META[s]))
 
 async function onConnect(service) {
-  // iCloud uses app-specific passwords, not OAuth. Navigate to the
-  // iCloud panel tab where the credential form lives.
+  // iCloud uses app-specific passwords. Open inline form on the tile.
   if (service === 'icloud') {
-    appNav.requestNav({ navId: 'workspace' })
-    sectionTabsStore.setTab('workspace', 'icloud')
+    startICloudFlow()
     return
   }
   // Custom/manual connection — prompt for a display name.
@@ -267,6 +347,31 @@ function avatarStyle(meta) {
           </template>
         </div>
 
+        <!-- iCloud inline connect form — shown when user clicks Connect on the tile -->
+        <div v-if="svc === 'icloud' && credsExpanded['icloud']" class="creds-editor">
+          <div v-if="icloudConnectError" class="error" style="margin:0 0 10px">{{ icloudConnectError }}</div>
+          <div class="form-row">
+            <input v-model="icloudAppleID" placeholder="Apple ID (email)" class="input" type="email" autocomplete="username" />
+          </div>
+          <div class="form-row">
+            <input v-model="icloudAppPassword" placeholder="App-specific password" class="input" type="password" autocomplete="off" />
+          </div>
+          <button :disabled="icloudConnecting || !icloudAppleID.trim() || !icloudAppPassword.trim()" @click="doICloudConnect" class="save-btn">
+            {{ icloudConnecting ? 'Validating…' : 'Connect iCloud' }}
+          </button>
+        </div>
+
+        <!-- Setup guide — shown below the credentials editor -->
+        <div v-if="setupGuideFor(svc) && credsExpanded[svc]" class="setup-guide">
+          <a :href="setupGuideFor(svc).url" target="_blank" class="guide-title">
+            📋 {{ setupGuideFor(svc).title }} →
+          </a>
+          <ol class="guide-steps">
+            <li v-for="s in setupGuideFor(svc).steps" :key="s">{{ s.replace(/^\d+\.\s*/, '') }}</li>
+          </ol>
+          <p v-if="setupGuideFor(svc).scopes" class="guide-scopes">{{ setupGuideFor(svc).scopes }}</p>
+        </div>
+
         <ul v-if="store.connectionsByService[svc]?.length" class="conns">
           <li
             v-for="c in store.connectionsByService[svc]"
@@ -302,6 +407,8 @@ header h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--tex
   border-radius: 6px;
   color: var(--text);
   font-size: 12.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .empty {
@@ -454,4 +561,22 @@ header h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--tex
   cursor: pointer;
 }
 .disconnect-btn:hover { background: var(--bg4); color: var(--text); border-color: rgba(220, 80, 80, 0.5); }
+
+.setup-guide {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--bg1);
+}
+.guide-title {
+  font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none;
+}
+.guide-title:hover { text-decoration: underline; }
+.guide-steps {
+  margin: 6px 0 0; padding-left: 18px; font-size: 11.5px; color: var(--text2); line-height: 1.6;
+}
+.guide-scopes {
+  margin: 6px 0 0; font-size: 11px; color: var(--text3); font-style: italic;
+}
 </style>

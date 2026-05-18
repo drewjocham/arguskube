@@ -38,6 +38,25 @@ function getSessionTokenSync() {
   } catch { return '' }
 }
 
+function detectBrowser() {
+  const ua = navigator.userAgent
+  if (ua.includes('Firefox')) return 'Firefox'
+  if (ua.includes('Edg')) return 'Edge'
+  if (ua.includes('Chrome')) return 'Chrome'
+  if (ua.includes('Safari')) return 'Safari'
+  return 'Your browser'
+}
+
+function browserSteps(browser) {
+  const steps = {
+    Firefox: 'Click the popup-blocked icon in the address bar (🛡️) → "Allow pop-ups for this site".',
+    Chrome: 'Click the popup-blocked icon in the address bar (⊘) → "Always allow pop-ups" → Done.',
+    Edge: 'Click the popup-blocked icon in the address bar → "Always allow" → Done.',
+    Safari: 'Safari → Settings → Websites → Pop-up Windows → Allow for this site.',
+  }
+  return steps[browser] || 'Allow pop-ups for Argus in your browser settings, then try again.'
+}
+
 export const useWorkspaceStore = defineStore('workspace', () => {
   const services = ref([])
   const connections = ref([])
@@ -159,12 +178,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
     // STAGE 2 — open the popup. Browsers will block window.open
     // when it isn't synchronous with a user gesture, or when the
-    // user has a popup blocker. Previously a null popup meant the
-    // promise waited 5 minutes then rejected with "Connection timed
-    // out" — leaving the user clueless. Fail loud and fast.
+    // user has a popup blocker.
+    // Fallback: if blocked, show the URL so the user can open it manually.
     const popup = window.open(auth.url, '_blank', 'noopener,noreferrer,width=520,height=720')
     if (!popup) {
-      error.value = 'The browser blocked the sign-in pop-up. Allow pop-ups for Argus, then click Connect again.'
+      const browser = detectBrowser()
+      const steps = browserSteps(browser)
+      error.value =
+        `${browser} blocked the sign-in pop-up. ${steps}\n\n` +
+        `Or copy this URL and open it manually:\n${auth.url}`
+      // Save auth URL + state so the ConnectionPanel can show a fallback link.
+      window.__argusOAuthFallback = { service, url: auth.url, state: auth.state }
       throw new Error(error.value)
     }
 

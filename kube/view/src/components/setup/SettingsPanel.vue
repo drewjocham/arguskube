@@ -569,6 +569,8 @@ const form = ref({
   slackClientId: '',
   slackClientSecret: '',
   slackSigningSecret: '',
+  workspaceMicrosoftClientId: '',
+  workspaceMicrosoftClientSecret: '',
 })
 
 const PIPELINE_PROVIDERS = [
@@ -774,6 +776,8 @@ async function loadSettings() {
         slackClientId: result.slackClientId || '',
         slackClientSecret: result.slackClientSecret || '',
         slackSigningSecret: result.slackSigningSecret || '',
+        workspaceMicrosoftClientId: result.workspaceMicrosoftClientId || '',
+        workspaceMicrosoftClientSecret: result.workspaceMicrosoftClientSecret || '',
       }
     }
   } catch (e) {
@@ -878,6 +882,8 @@ async function saveSettings() {
       slackClientId: form.value.slackClientId,
       slackClientSecret: form.value.slackClientSecret,
       slackSigningSecret: form.value.slackSigningSecret,
+      workspaceMicrosoftClientId: form.value.workspaceMicrosoftClientId,
+      workspaceMicrosoftClientSecret: form.value.workspaceMicrosoftClientSecret,
     })
     saveMessage.value = 'Sign-in providers reloaded — no restart needed.'
     await loadSettings()
@@ -1528,6 +1534,20 @@ onMounted(async () => {
           <div class="field">
             <label class="label">Slack signing secret (Events API)</label>
             <LockableField v-model="form.slackSigningSecret" input-class="input mono" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Microsoft 365 workspace credentials -->
+      <div class="setting-group">
+        <h3 class="group-title">Microsoft 365 (Workspace)</h3>
+        <p class="hint">Setup: <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank">portal.azure.com → App registrations</a>. Redirect URI: <code>http://127.0.0.1:8080/workspace/oauth/callback</code>. API permissions: Microsoft Graph → Calendars.ReadWrite, Files.ReadWrite, Tasks.ReadWrite, User.Read.</p>
+        <div class="field-group">
+          <div class="field"><label class="label">Microsoft client ID</label>
+            <LockableField v-model="form.workspaceMicrosoftClientId" input-class="input mono" />
+          </div>
+          <div class="field"><label class="label">Microsoft client secret</label>
+            <LockableField v-model="form.workspaceMicrosoftClientSecret" input-class="input mono" />
           </div>
         </div>
       </div>
