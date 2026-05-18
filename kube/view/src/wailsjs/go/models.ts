@@ -4208,6 +4208,8 @@ export namespace pkg {
 	    slackClientId: string;
 	    slackClientSecret: string;
 	    slackSigningSecret: string;
+	    workspaceMicrosoftClientId: string;
+	    workspaceMicrosoftClientSecret: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SettingsPayload(source);
@@ -4279,6 +4281,8 @@ export namespace pkg {
 	        this.slackClientId = source["slackClientId"];
 	        this.slackClientSecret = source["slackClientSecret"];
 	        this.slackSigningSecret = source["slackSigningSecret"];
+	        this.workspaceMicrosoftClientId = source["workspaceMicrosoftClientId"];
+	        this.workspaceMicrosoftClientSecret = source["workspaceMicrosoftClientSecret"];
 	    }
 	}
 	export class SettingsResult {
