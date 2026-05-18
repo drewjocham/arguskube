@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +13,8 @@ from chromadb.config import Settings
 from argus_agents.config import AgentConfig
 from argus_agents.models import DocumentChunk, HabitPattern, MemoryEntry, UserAction
 
+# Silence noisy ChromaDB Posthog telemetry errors
+logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 class ChromaStore:
     def __init__(self, config: AgentConfig | None = None):

@@ -30,7 +30,7 @@ BUILD_BIN   := $(BACKEND_DIR)/build/bin/$(APP_NAME)
 .PHONY: help dev build sign-app build-terminal-app build-nopackage run frontend frontend-dev deps deps-go deps-vue \
         test test-go test-vue test-vector lint lint-go lint-vue clean doctor \
         bindings contexts logs \
-        agent-deps agent-check agent-test agent-lint agent-format agent-clean agent-image \
+        agent-deps agent-check agent-run agent-test agent-lint agent-format agent-clean agent-image \
         vector-test vector-validate-alert-ingress vector-validate-agent vector-docker
 
 # ── Default ──────────────────────────────────────────────────────
@@ -228,6 +228,8 @@ AGENT_VENV  := $(AGENT_DIR)/.venv
 AGENT_PYTHON := $(AGENT_VENV)/bin/python
 AGENT_PIP    := $(AGENT_VENV)/bin/pip
 
+AGENT_ARGS ?= interactive
+
 agent-deps: ## Install Argus Python agent dependencies (editable + dev)
 	@test -d $(AGENT_VENV) || python3 -m venv $(AGENT_VENV)
 	$(AGENT_PIP) install -q -e "$(AGENT_DIR)[dev]"
@@ -238,8 +240,11 @@ agent-check: agent-deps ## Validate Argus agents (imports + compile)
 	$(AGENT_PYTHON) -c "from argus_agents.cli import main; print('  ✓ CLI entry point OK')"
 	@echo "  ✓ All agent modules compile cleanly"
 
+agent-run: agent-deps ## Run Argus agent locally (default: interactive, override with AGENT_ARGS=...)
+	ANONYMIZED_TELEMETRY=False $(AGENT_PYTHON) -m argus_agents.cli $(AGENT_ARGS)
+
 agent-test: agent-deps ## Run Argus agent tests
-	$(AGENT_PYTHON) -m pytest $(AGENT_DIR)/tests -v
+	ANONYMIZED_TELEMETRY=False $(AGENT_PYTHON) -m pytest $(AGENT_DIR)/tests -v
 
 agent-lint: ## Lint Argus agents with ruff
 	$(AGENT_DIR)/.venv/bin/ruff check $(AGENT_DIR)/src
@@ -251,7 +256,7 @@ agent-clean: ## Remove Argus Python agent venv + caches
 	rm -rf $(AGENT_VENV)
 	find $(AGENT_DIR) -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-agent-image: ## Build the Go in-cluster agent Docker image
+agent-image: ## Build the in-cluster agent Docker image
 	docker build -t argus-agent:latest agent/
 
 # ── Deploy (Helm + Terraform) ────────────────────────────────────

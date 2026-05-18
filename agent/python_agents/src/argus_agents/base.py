@@ -108,12 +108,16 @@ class BaseAgent(ABC):
             "stream": False,
         }
 
+        headers = {}
+        if self.config.api_key:
+            headers["Authorization"] = f"Bearer {self.config.api_key}"
+
         last_err: Exception | None = None
         for attempt in range(self.config.max_retries + 1):
             try:
                 resp = self.client.post(
                     "/chat/completions",
-                    headers={"Authorization": f"Bearer {self.config.api_key}"},
+                    headers=headers,
                     json=payload,
                 )
 
@@ -155,9 +159,13 @@ class BaseAgent(ABC):
             "response_format": {"type": "json_object", "schema": schema},
         }
 
+        headers = {}
+        if self.config.api_key:
+            headers["Authorization"] = f"Bearer {self.config.api_key}"
+
         resp = self.client.post(
             "/chat/completions",
-            headers={"Authorization": f"Bearer {self.config.api_key}"},
+            headers=headers,
             json=payload,
         )
         resp.raise_for_status()
