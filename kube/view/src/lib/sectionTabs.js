@@ -160,7 +160,9 @@ export const SECTIONS = Object.freeze({
       { id: 'gtasks', label: 'Tasks' },
       { id: 'gchat', label: 'Google Chat' },
       { id: 'gcal', label: 'Calendar' },
+      { id: 'microsoft', label: 'Microsoft' },
       { id: 'icloud', label: 'iCloud' },
+      { id: 'custom', label: 'Custom' },
     ],
   },
   admin: {

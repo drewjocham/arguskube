@@ -125,7 +125,9 @@ const SERVICE_META = {
   gsheets: { label: 'Google Sheets', color: '#0F9D58', letter: 'S' },
   gtasks:  { label: 'Google Tasks',  color: '#4285F4', letter: 'T' },
   gcal:    { label: 'Google Calendar', color: '#4285F4', letter: 'E' },
+  microsoft: { label: 'Microsoft 365', color: '#0078D4', letter: 'M' },
   icloud:  { label: 'iCloud',        color: '#007AFF', letter: 'i' },
+  custom:  { label: 'Manual / Custom', color: '#6B7280', letter: '?' },
 }
 
 onMounted(async () => {
@@ -141,6 +143,13 @@ async function onConnect(service) {
   if (service === 'icloud') {
     appNav.requestNav({ navId: 'workspace' })
     sectionTabsStore.setTab('workspace', 'icloud')
+    return
+  }
+  // Custom/manual connection — prompt for a display name.
+  if (service === 'custom') {
+    const name = window.prompt('Name for this manual connection:')
+    if (!name || !name.trim()) return
+    await store.connectCustom(name.trim(), '')
     return
   }
   connecting.value = { ...connecting.value, [service]: true }

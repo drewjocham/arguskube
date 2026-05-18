@@ -1,6 +1,4 @@
 <script setup>
-// WorkspaceSection — section container for the Workspace feature.
-
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useSectionTabsStore } from '../../stores/sectionTabs'
@@ -14,6 +12,8 @@ import GChatPanel from './GChatPanel.vue'
 import SlackEventsPanel from './SlackEventsPanel.vue'
 import CalendarPanel from './CalendarPanel.vue'
 import ICloudPanel from './ICloudPanel.vue'
+import MicrosoftPanel from './MicrosoftPanel.vue'
+import CustomPanel from './CustomPanel.vue'
 
 const sectionTabsStore = useSectionTabsStore()
 const { tabs: sectionTabValues } = storeToRefs(sectionTabsStore)
@@ -37,7 +37,9 @@ function setTab(id) { sectionTabsStore.setTab('workspace', id) }
     <TasksPanel v-else-if="active === 'gtasks'" @switch-tab="setTab" />
     <GChatPanel v-else-if="active === 'gchat'" @switch-tab="setTab" />
     <CalendarPanel v-else-if="active === 'gcal'" @switch-tab="setTab" />
+    <MicrosoftPanel v-else-if="active === 'microsoft'" @switch-tab="setTab" />
     <ICloudPanel v-else-if="active === 'icloud'" @switch-tab="setTab" />
+    <CustomPanel v-else-if="active === 'custom'" @switch-tab="setTab" />
     <SlackEventsPanel v-else-if="active === 'slack-events'" />
   </div>
 </template>

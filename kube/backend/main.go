@@ -222,25 +222,44 @@ func run() error {
 			logger.Info("workspace: Slack provider registered")
 		}
 
-		// Google provider: unified grant covering Docs + Sheets + Tasks.
-		// We use a separate env-var prefix from the existing
-		// ARGUS_GOOGLE_* (which configures the OIDC login provider) so
-		// the two consents are independently configurable — a deployment
-		// can have Google Sign-In without exposing workspace scopes, or
-		// vice versa.
-		if id, sec := cfg.Workspace.GoogleClientID, cfg.Workspace.GoogleClientSecret; id != "" && sec != "" {
-			workspaceMgr.Register(&workspace.GoogleProvider{
-				ClientID:     id,
-				ClientSecret: sec,
-				RedirectURL:  strings.TrimRight(cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback",
-			})
-			logger.Info("workspace: Google provider registered")
-		}
+		// Google provider: unified grant covering Docs + Sheets + Tasks +
+		// Calendar. Always registered so the tile appears in the UI even
+		// before credentials are configured — Start() returns a helpful
+		// error until the user pastes their client ID + secret in Settings.
+		id := cfg.Workspace.GoogleClientID
+		sec := cfg.Workspace.GoogleClientSecret
+		workspaceMgr.Register(&workspace.GoogleProvider{
+			ClientID:     id,
+			ClientSecret: sec,
+			RedirectURL:  strings.TrimRight(cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback",
+		})
+		logger.Info("workspace: Google provider registered",
+			slog.Bool("credentials_configured", id != "" && sec != ""),
+		)
 
 		// iCloud provider is always available — it uses app-specific
 		// passwords validated via CalDAV, no OAuth client credentials needed.
 		workspaceMgr.Register(workspace.NewICloudProvider())
 		logger.Info("workspace: iCloud provider registered")
+
+		// Microsoft 365 provider — covers Outlook Calendar, OneDrive, Tasks.
+		// Setup: https://portal.azure.com → App registrations → New registration.
+		// Redirect URI: <PublicBaseURL>/workspace/oauth/callback.
+		// API permissions: Microsoft Graph → Calendars.ReadWrite, Files.ReadWrite, Tasks.ReadWrite, User.Read.
+		idMS := cfg.Workspace.MicrosoftClientID
+		secMS := cfg.Workspace.MicrosoftClientSecret
+		workspaceMgr.Register(&workspace.MicrosoftProvider{
+			ClientID:     idMS,
+			ClientSecret: secMS,
+			RedirectURL:  strings.TrimRight(cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback",
+		})
+		logger.Info("workspace: Microsoft provider registered",
+			slog.Bool("credentials_configured", idMS != "" && secMS != ""),
+		)
+
+		// Custom/manual provider — always available for unlisted services.
+		workspaceMgr.Register(workspace.NewCustomProvider())
+		logger.Info("workspace: Custom provider registered")
 
 		// Slack Events bus — SaaS-only inbound (requires public URL).
 		// Registers when ARGUS_SLACK_SIGNING_SECRET is set; the HTTP

@@ -578,6 +578,21 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     } finally { icloudLoading.value = false }
   }
 
+  // -------------------- Custom / Manual ----------------------------------
+  async function connectCustom(displayName, notes) {
+    loading.value = true; error.value = null
+    try {
+      const token = getSessionTokenSync()
+      const conn = await callGo('ConnectCustom', token, displayName, notes || '')
+      invalidateCache('ListWorkspaceConnections')
+      await loadConnections()
+      return conn
+    } catch (e) {
+      error.value = e?.message || String(e)
+      throw e
+    } finally { loading.value = false }
+  }
+
   return {
     services,
     connections,
@@ -645,5 +660,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     icloudReminders,
     connectICloud,
     clearICloudStatus,
+    // Custom
+    connectCustom,
   }
 })
