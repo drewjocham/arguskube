@@ -575,6 +575,24 @@ var httpExposedMethods = map[string]struct{}{
 	"CreateGoogleTask":      {},
 	"UpdateGoogleTask":      {},
 	"DeleteGoogleTask":      {},
+	// Google Calendar: list events + full CRUD. Same per-user
+	// scoping as the Docs/Sheets/Tasks block above via
+	// resolveGoogleConnection.
+	"ListGoogleCalendarEvents":  {},
+	"CreateGoogleCalendarEvent": {},
+	"UpdateGoogleCalendarEvent": {},
+	"DeleteGoogleCalendarEvent": {},
+	// iCloud calendar reads via CalDAV, scoped to the caller's
+	// stored iCloud connection. Notes/Reminders stay Wails-only —
+	// they shell out to macOS CLIs and have no SaaS-mode meaning.
+	"ListICloudEvents": {},
+	// Microsoft 365 OAuth handshake — mirrors the Google start/
+	// complete pair. No mutation methods exist yet.
+	"ConnectMicrosoft":         {},
+	"CompleteMicrosoftConnect": {},
+	// Manual / custom workspace connections — stores a name+notes
+	// row scoped to the caller's session.
+	"ConnectCustom": {},
 	// Workspace profiles — per-user UI snapshots (appearance, nav
 	// visibility, section tabs, saved filters). Same security posture
 	// as the workspace methods above: every call routes through
