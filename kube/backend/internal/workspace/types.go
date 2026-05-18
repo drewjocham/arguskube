@@ -48,20 +48,30 @@ const (
 	// passwords (not OAuth) — stored in the same encrypted token store
 	// with no refresh token or expiry.
 	ServiceICloud Service = "icloud"
+	// ServiceMicrosoft is the Microsoft 365 / Graph integration. Uses
+	// OAuth 2.0 with Microsoft identity platform. Covers Outlook Calendar,
+	// OneDrive, and eventually Teams.
+	ServiceMicrosoft Service = "microsoft"
+	// ServiceCustom is a manual/fallback connection type for providers
+	// not in the built-in catalogue. The user enters a display name and
+	// the connection is tracked but no API calls are made.
+	ServiceCustom Service = "custom"
 )
 
 // supportedServices is the closed enum the manager accepts. Adding a
 // new service means adding it here AND registering a Provider in
 // WorkspaceManager.
 var supportedServices = map[Service]bool{
-	ServiceSlack:   true,
-	ServiceGChat:   true,
-	ServiceGoogle:  true,
-	ServiceGCal:    true,
-	ServiceGDocs:   true,
-	ServiceGSheets: true,
-	ServiceGTasks:  true,
-	ServiceICloud:  true,
+	ServiceSlack:     true,
+	ServiceGChat:     true,
+	ServiceGoogle:    true,
+	ServiceGCal:      true,
+	ServiceGDocs:     true,
+	ServiceGSheets:   true,
+	ServiceGTasks:    true,
+	ServiceICloud:    true,
+	ServiceMicrosoft: true,
+	ServiceCustom:    true,
 }
 
 // Connection is one user's link to a specific external workspace —
@@ -177,8 +187,7 @@ type Channel struct {
 
 // Calendarer is implemented by calendar integrations (Google Calendar,
 // iCloud CalDAV). Following the same pattern as Messenger/DocEditor/
-// SheetEditor — the narrower interface lives here, the richer Event
-// struct with provider-specific fields lives in the adapter file.
+// SheetEditor.
 type Calendarer interface {
 	Integration
 	ListEvents(ctx context.Context, token Token, start, end string) ([]Event, error)
@@ -191,8 +200,7 @@ type Calendarer interface {
 // implementations. Times are RFC 3339 strings (what Google Calendar v3
 // and CalDAV both speak natively). Provider-specific extra fields
 // (attendees, recurrence, etc.) are surfaced by the adapter's own
-// richer type — this is the common subset every calendar adapter must
-// return.
+// richer type.
 type Event struct {
 	ID          string `json:"id"`
 	Summary     string `json:"summary"`

@@ -82,6 +82,10 @@ export function ClearUserActivity() {
   return window['go']['pkg']['App']['ClearUserActivity']();
 }
 
+export function CompleteMicrosoftConnect(arg1, arg2) {
+  return window['go']['pkg']['App']['CompleteMicrosoftConnect'](arg1, arg2);
+}
+
 export function CompleteOAuthFlow(arg1, arg2) {
   return window['go']['pkg']['App']['CompleteOAuthFlow'](arg1, arg2);
 }
@@ -90,8 +94,16 @@ export function CompleteWorkspaceConnect(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['CompleteWorkspaceConnect'](arg1, arg2, arg3);
 }
 
+export function ConnectCustom(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['ConnectCustom'](arg1, arg2, arg3);
+}
+
 export function ConnectICloud(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['ConnectICloud'](arg1, arg2, arg3);
+}
+
+export function ConnectMicrosoft(arg1) {
+  return window['go']['pkg']['App']['ConnectMicrosoft'](arg1);
 }
 
 export function ConnectToAgent(arg1) {

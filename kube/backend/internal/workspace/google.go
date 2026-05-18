@@ -56,10 +56,10 @@ type GoogleProvider struct {
 	RedirectURL  string
 
 	// Test overrides.
-	HTTPClient   *http.Client
-	AuthURLBase  string
-	TokenURL     string
-	UserinfoURL  string
+	HTTPClient  *http.Client
+	AuthURLBase string
+	TokenURL    string
+	UserinfoURL string
 
 	// flightMu guards flights; flights maps state -> PKCE verifier for
 	// in-progress flows so Complete can recover the verifier that was

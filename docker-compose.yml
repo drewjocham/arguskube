@@ -27,7 +27,8 @@ services:
       - HOME=/data
     volumes:
       - backend-data:/data                      # SQLite persistence
-      - ${KUBECONFIG:-~/.kube/config}:/root/.kube/config:ro  # K8s access
+      # Use HOST_KUBECONFIG to avoid collisions with multi-path KUBECONFIG env vars
+      - ${HOST_KUBECONFIG:-~/.kube/config}:/root/.kube/config:ro
     ports:
       - "8080:8080"                             # Direct API access (optional)
     networks:

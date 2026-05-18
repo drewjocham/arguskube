@@ -5,8 +5,8 @@ import {context} from '../models';
 import {k8s} from '../models';
 import {chi} from '../models';
 import {setup} from '../models';
-import {oauthproviders} from '../models';
 import {pkg} from '../models';
+import {oauthproviders} from '../models';
 import {agentconn} from '../models';
 import {workspace} from '../models';
 import {incidents} from '../models';
@@ -68,11 +68,17 @@ export function ClearUsageHistory():Promise<void>;
 
 export function ClearUserActivity():Promise<void>;
 
+export function CompleteMicrosoftConnect(arg1:string,arg2:string):Promise<pkg.WorkspaceConnectionView>;
+
 export function CompleteOAuthFlow(arg1:string,arg2:string):Promise<oauthproviders.UserInfo>;
 
 export function CompleteWorkspaceConnect(arg1:string,arg2:string,arg3:string):Promise<pkg.WorkspaceConnectionView>;
 
+export function ConnectCustom(arg1:string,arg2:string,arg3:string):Promise<pkg.WorkspaceConnectionView>;
+
 export function ConnectICloud(arg1:string,arg2:string,arg3:string):Promise<pkg.WorkspaceConnectionView>;
+
+export function ConnectMicrosoft(arg1:string):Promise<string>;
 
 export function ConnectToAgent(arg1:string):Promise<Array<agentconn.Anomaly>>;
 

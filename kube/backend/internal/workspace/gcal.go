@@ -24,7 +24,6 @@ const (
 
 // GCalEvent is the richer Calendar v3 event shape, with fields beyond
 // the common Event struct (conference data, attendees, recurrence).
-// The common subset is normalised to workspace.Event by toEvent/fromEvent.
 type GCalEvent struct {
 	ID          string `json:"id"`
 	Summary     string `json:"summary"`

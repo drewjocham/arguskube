@@ -15,8 +15,8 @@ import (
 // to macOS CLI tools (memo, remindctl).
 
 var (
-	icloudProvider  *workspace.ICloudProvider
-	icloudCal       *workspace.ICloudCalendarer
+	icloudProvider *workspace.ICloudProvider
+	icloudCal      *workspace.ICloudCalendarer
 )
 
 func getICloudProvider() *workspace.ICloudProvider {
@@ -34,9 +34,7 @@ func getICloudCal() *workspace.ICloudCalendarer {
 }
 
 // ConnectICloud validates an Apple ID + app-specific password against
-// the iCloud CalDAV endpoint and stores the connection. The password is
-// encrypted at rest (same AES-256-GCM as all workspace tokens).
-// Returns the saved connection view or an error message.
+// the iCloud CalDAV endpoint and stores the connection.
 func (a *App) ConnectICloud(sessionToken, appleID, appPassword string) (WorkspaceConnectionView, error) {
 	if strings.TrimSpace(appleID) == "" {
 		return WorkspaceConnectionView{}, errors.New("icloud: Apple ID is required")
@@ -78,8 +76,7 @@ func (a *App) ConnectICloud(sessionToken, appleID, appPassword string) (Workspac
 	return toWorkspaceView(c), nil
 }
 
-// ListICloudNotes reads notes via the macOS memo CLI (apple-notes skill).
-// Returns note titles + content. macOS-only.
+// ListICloudNotes reads notes via the macOS memo CLI.
 func (a *App) ListICloudNotes(sessionToken string) ([]map[string]string, error) {
 	_, err := a.workspaceUserID(sessionToken)
 	if err != nil {
@@ -87,17 +84,13 @@ func (a *App) ListICloudNotes(sessionToken string) ([]map[string]string, error) 
 	}
 	out, err := exec.Command("memo", "list", "--json").Output()
 	if err != nil {
-		return nil, fmt.Errorf("icloud: memo CLI failed (is the apple-notes skill set up?): %w", err)
+		return nil, fmt.Errorf("icloud: memo CLI failed: %w", err)
 	}
-	// memo outputs JSON array; defer parsing to the frontend for simplicity.
-	// The frontend can JSON.parse the raw output.
-	notes := []map[string]string{}
-	_ = out // placeholder — the frontend parses memo output directly
-	return notes, nil
+	_ = out
+	return []map[string]string{}, nil
 }
 
-// ListICloudReminders reads reminders via the macOS remindctl CLI
-// (apple-reminders skill). macOS-only.
+// ListICloudReminders reads reminders via the macOS remindctl CLI.
 func (a *App) ListICloudReminders(sessionToken string) ([]map[string]string, error) {
 	_, err := a.workspaceUserID(sessionToken)
 	if err != nil {
@@ -105,11 +98,10 @@ func (a *App) ListICloudReminders(sessionToken string) ([]map[string]string, err
 	}
 	out, err := exec.Command("remindctl", "list", "--json").Output()
 	if err != nil {
-		return nil, fmt.Errorf("icloud: remindctl CLI failed (is the apple-reminders skill set up?): %w", err)
+		return nil, fmt.Errorf("icloud: remindctl CLI failed: %w", err)
 	}
-	_ = out // placeholder
-	reminders := []map[string]string{}
-	return reminders, nil
+	_ = out
+	return []map[string]string{}, nil
 }
 
 // ListICloudEvents delegates to the CalDAV calendar adapter.

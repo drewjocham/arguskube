@@ -20,7 +20,7 @@ const activeTab = ref('notes')
 const connected = computed(() => icloudConnections.value.length > 0)
 
 const canConnect = computed(
-  () => !icloudLoading.value && appleID.value.trim() && appPassword.value.trim(),
+    () => !icloudLoading.value && appleID.value.trim() && appPassword.value.trim(),
 )
 
 async function doConnect() {
@@ -48,20 +48,20 @@ async function doConnect() {
       </p>
       <div class="form-row">
         <input
-          v-model="appleID"
-          placeholder="Apple ID (email)"
-          class="input"
-          type="email"
-          autocomplete="username"
+            v-model="appleID"
+            placeholder="Apple ID (email)"
+            class="input"
+            type="email"
+            autocomplete="username"
         />
       </div>
       <div class="form-row">
         <input
-          v-model="appPassword"
-          placeholder="App-specific password"
-          class="input"
-          type="password"
-          autocomplete="off"
+            v-model="appPassword"
+            placeholder="App-specific password"
+            class="input"
+            type="password"
+            autocomplete="off"
         />
       </div>
       <button :disabled="!canConnect" @click="doConnect" class="btn primary">
@@ -78,11 +78,11 @@ async function doConnect() {
       <!-- Tab bar for capability views -->
       <nav class="sub-tabs">
         <button
-          v-for="t in ['notes', 'reminders', 'calendar']"
-          :key="t"
-          class="sub-tab"
-          :class="{ active: activeTab === t }"
-          @click="activeTab = t"
+            v-for="t in ['notes', 'reminders', 'calendar']"
+            :key="t"
+            class="sub-tab"
+            :class="{ active: activeTab === t }"
+            @click="activeTab = t"
         >{{ t.charAt(0).toUpperCase() + t.slice(1) }}</button>
       </nav>
 

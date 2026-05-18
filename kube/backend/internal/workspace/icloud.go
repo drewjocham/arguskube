@@ -23,10 +23,6 @@ const (
 	icloudCalDAVURL  = "https://caldav.icloud.com/"
 )
 
-// ICloudProvider satisfies Provider so it can be registered in the
-// Manager's provider registry (HasProvider, AvailableServices, etc.),
-// but its Start/Complete methods are stubs — iCloud connections are
-// established via Manager.DirectConnect.
 type ICloudProvider struct {
 	HTTPClient *http.Client
 }

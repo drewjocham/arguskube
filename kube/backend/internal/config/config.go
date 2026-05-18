@@ -50,6 +50,11 @@ type WorkspaceConfig struct {
 	SlackClientID      string `env:"ARGUS_SLACK_CLIENT_ID"`
 	SlackClientSecret  string `env:"ARGUS_SLACK_CLIENT_SECRET"`
 	SlackSigningSecret string `env:"ARGUS_SLACK_SIGNING_SECRET"`
+
+	// Microsoft 365 / Graph (Outlook Calendar, OneDrive, Tasks).
+	// Setup: https://portal.azure.com → App registrations → New registration.
+	MicrosoftClientID     string `env:"ARGUS_MICROSOFT_CLIENT_ID"`
+	MicrosoftClientSecret string `env:"ARGUS_MICROSOFT_CLIENT_SECRET"`
 }
 
 // AuthConfig holds sign-in settings. By default, every /api endpoint
@@ -425,11 +430,13 @@ func New() (*OnlineDataConfig, error) {
 			PasskeyRPOrigin:     env("ARGUS_PASSKEY_RP_ORIGIN", "http://localhost:8080"),
 		},
 		Workspace: WorkspaceConfig{
-			GoogleClientID:     env("ARGUS_GOOGLE_WORKSPACE_CLIENT_ID", ""),
-			GoogleClientSecret: env("ARGUS_GOOGLE_WORKSPACE_CLIENT_SECRET", ""),
-			SlackClientID:      env("ARGUS_SLACK_CLIENT_ID", ""),
-			SlackClientSecret:  env("ARGUS_SLACK_CLIENT_SECRET", ""),
-			SlackSigningSecret: env("ARGUS_SLACK_SIGNING_SECRET", ""),
+			GoogleClientID:        env("ARGUS_GOOGLE_WORKSPACE_CLIENT_ID", ""),
+			GoogleClientSecret:    env("ARGUS_GOOGLE_WORKSPACE_CLIENT_SECRET", ""),
+			SlackClientID:         env("ARGUS_SLACK_CLIENT_ID", ""),
+			SlackClientSecret:     env("ARGUS_SLACK_CLIENT_SECRET", ""),
+			SlackSigningSecret:    env("ARGUS_SLACK_SIGNING_SECRET", ""),
+			MicrosoftClientID:     env("ARGUS_MICROSOFT_CLIENT_ID", ""),
+			MicrosoftClientSecret: env("ARGUS_MICROSOFT_CLIENT_SECRET", ""),
 		},
 	}
 

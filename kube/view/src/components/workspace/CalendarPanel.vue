@@ -55,22 +55,7 @@ const events = computed(() => {
 
 function formatTime(iso) {
   if (!iso) return ''
-  try {
-    return new Date(iso).toLocaleString()
-  } catch {
-    return iso
-  }
-}
-
-function toDatetimeLocal(iso) {
-  if (!iso) return ''
-  // Convert RFC 3339 to datetime-local format (YYYY-MM-DDTHH:MM)
-  try {
-    const d = new Date(iso)
-    return d.toISOString().slice(0, 16)
-  } catch {
-    return ''
-  }
+  try { return new Date(iso).toLocaleString() } catch { return iso }
 }
 
 onMounted(async () => {
@@ -118,10 +103,7 @@ async function deleteEvent(eventID) {
     />
 
     <div v-if="calendarError" class="status error">{{ calendarError }}</div>
-    <div
-      v-if="calendarStatus"
-      class="status ok"
-    >{{ calendarStatus.op }}</div>
+    <div v-if="calendarStatus" class="status ok">{{ calendarStatus.op }}</div>
 
     <!-- Create form -->
     <div class="card create-card">
@@ -142,10 +124,7 @@ async function deleteEvent(eventID) {
 
     <!-- Event list -->
     <div class="card">
-      <h4>
-        Events
-        <span class="range">{{ formatTime(rangeStart) }} – {{ formatTime(rangeEnd) }}</span>
-      </h4>
+      <h4>Events <span class="range">{{ formatTime(rangeStart) }} – {{ formatTime(rangeEnd) }}</span></h4>
       <div v-if="calendarLoading" class="muted">Loading…</div>
       <div v-else-if="!events.length" class="muted">No events this week.</div>
       <div v-for="ev in events" :key="ev.id" class="event-row">
