@@ -129,6 +129,8 @@ func (a *GCalAdapter) DeleteEvent(ctx context.Context, token Token, eventID stri
 		return fmt.Errorf("gcal: eventID required")
 	}
 	hc := googleClient(a.HTTPClient)
+	// googleAPICall tries to JSON-unmarshal empty 204 responses and
+	// fails silently; we build a manual request for DELETE.
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
 		a.base()+gcalCalPath+"/"+url.PathEscape(eventID), nil)
 	if err != nil {

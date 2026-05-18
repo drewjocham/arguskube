@@ -48,19 +48,24 @@ func (p *ICloudProvider) client() *http.Client {
 	return &http.Client{
 		Timeout: 15 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+			TLSClientConfig: &tls.Config{
+				// iCloud CalDAV requires TLS 1.2+.
+				MinVersion: tls.VersionTLS12,
+			},
 		},
 	}
 }
 
 // ValidateAppPassword makes a CalDAV PROPFIND request to verify the
-// Apple ID and app-specific password are valid. Returns the appleID
-// on success (used as ExternalWorkspaceID).
+// Apple ID and app-specific password are valid. Returns the principal
+// URL on success (used as ExternalWorkspaceID).
 func (p *ICloudProvider) ValidateAppPassword(ctx context.Context, appleID, appPassword string) (string, error) {
 	if appleID == "" || appPassword == "" {
 		return "", fmt.Errorf("icloud: apple ID and app-specific password are required")
 	}
 
+	// CalDAV PROPFIND to discover the principal. A minimal request is
+	// sufficient — we only need to check if the credentials work.
 	body := `<?xml version="1.0" encoding="UTF-8"?>
 <D:propfind xmlns:D="DAV:">
   <D:prop>
@@ -85,6 +90,7 @@ func (p *ICloudProvider) ValidateAppPassword(ctx context.Context, appleID, appPa
 
 	switch resp.StatusCode {
 	case 207: // Multi-Status — credentials valid
+		// Use the appleID as the external workspace identifier.
 		return appleID, nil
 	case 401, 403:
 		return "", fmt.Errorf("icloud: invalid Apple ID or app-specific password (HTTP %d)", resp.StatusCode)
@@ -94,6 +100,7 @@ func (p *ICloudProvider) ValidateAppPassword(ctx context.Context, appleID, appPa
 }
 
 // ICloudCalendarer is the CalDAV-based calendar adapter for iCloud.
+// Implements Calendarer for the workspace types.
 type ICloudCalendarer struct {
 	HTTPClient *http.Client
 }
@@ -115,6 +122,8 @@ func (a *ICloudCalendarer) getClient() *http.Client {
 }
 
 func (a *ICloudCalendarer) ListEvents(ctx context.Context, token Token, start, end string) ([]Event, error) {
+	// CalDAV REPORT for time-range query. The token's AccessToken IS the
+	// app-specific password; the "refresh token" is the Apple ID.
 	return nil, fmt.Errorf("icloud: ListEvents not yet implemented — CalDAV REPORT pending")
 }
 

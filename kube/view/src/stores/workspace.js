@@ -99,6 +99,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   let googleStatusTimer = null
 
   // ---------- Phase 2 — Google Calendar -----------------------------------
+  // Events cache: { [connectionID]: Event[] }. Time-range queries
+  // populate this; the panel re-queries when the range changes.
   const calendarEvents = ref({})
   const calendarLoading = ref(false)
   const calendarError = ref(null)
@@ -617,6 +619,81 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     } finally { loading.value = false }
   }
 
+  // -------------------- Calendar -------------------------------------------
+  function clearCalendarStatus() {
+    calendarError.value = null
+    calendarStatus.value = null
+    if (calendarStatusTimer) {
+      clearTimeout(calendarStatusTimer)
+      calendarStatusTimer = null
+    }
+  }
+  async function _calendarCall(method, args, opLabel) {
+    calendarLoading.value = true
+    calendarError.value = null
+    try {
+      const token = getSessionTokenSync()
+      const result = await callGo(method, token, ...args)
+      if (opLabel) {
+        calendarStatus.value = { op: opLabel, at: Date.now() }
+        if (calendarStatusTimer) clearTimeout(calendarStatusTimer)
+        calendarStatusTimer = setTimeout(() => {
+          calendarStatus.value = null
+          calendarStatusTimer = null
+        }, 4000)
+      }
+      return result
+    } catch (e) {
+      calendarError.value = e?.message || String(e)
+      if (calendarStatusTimer) clearTimeout(calendarStatusTimer)
+      calendarStatusTimer = setTimeout(() => {
+        calendarError.value = null
+        calendarStatusTimer = null
+      }, 4000)
+      throw e
+    } finally {
+      calendarLoading.value = false
+    }
+  }
+  async function loadCalendarEvents(connectionID, start, end) {
+    if (!connectionID) return []
+    const result = await _calendarCall(
+      'ListGoogleCalendarEvents', [connectionID, start || '', end || ''], null,
+    )
+    const arr = Array.isArray(result) ? result : []
+    calendarEvents.value = { ...calendarEvents.value, [connectionID]: arr }
+    return arr
+  }
+  async function createCalendarEvent(connectionID, ev) {
+    const created = await _calendarCall(
+      'CreateGoogleCalendarEvent', [connectionID, ev], 'event-created',
+    )
+    const list = calendarEvents.value[connectionID] || []
+    calendarEvents.value = { ...calendarEvents.value, [connectionID]: [...list, created] }
+    return created
+  }
+  async function updateCalendarEvent(connectionID, eventID, ev) {
+    const updated = await _calendarCall(
+      'UpdateGoogleCalendarEvent', [connectionID, eventID, ev], 'event-updated',
+    )
+    const list = (calendarEvents.value[connectionID] || []).map(
+      (e) => (e.id === eventID ? { ...e, ...updated } : e),
+    )
+    calendarEvents.value = { ...calendarEvents.value, [connectionID]: list }
+    return updated
+  }
+  async function deleteCalendarEvent(connectionID, eventID) {
+    await _calendarCall(
+      'DeleteGoogleCalendarEvent', [connectionID, eventID], 'event-deleted',
+    )
+    calendarEvents.value = {
+      ...calendarEvents.value,
+      [connectionID]: (calendarEvents.value[connectionID] || []).filter(
+        (e) => e.id !== eventID,
+      ),
+    }
+  }
+
   return {
     services,
     connections,
@@ -665,7 +742,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     updateTask,
     deleteTask,
     clearGoogleStatus,
-    // Calendar
+    // Phase 2 — Calendar
     calendarEvents,
     calendarLoading,
     calendarError,
@@ -675,7 +752,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     updateCalendarEvent,
     deleteCalendarEvent,
     clearCalendarStatus,
-    // iCloud
+    // Phase 2 — iCloud
     icloudConnections,
     icloudLoading,
     icloudError,
@@ -684,7 +761,5 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     icloudReminders,
     connectICloud,
     clearICloudStatus,
-    // Custom
-    connectCustom,
   }
 })

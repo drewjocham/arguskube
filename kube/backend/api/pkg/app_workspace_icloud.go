@@ -9,6 +9,11 @@ import (
 	"github.com/argues/argus/internal/workspace"
 )
 
+// app_workspace_icloud.go — Wails bindings for iCloud integration.
+// Uses app-specific passwords (not OAuth), stored encrypted in the
+// workspace token store. Calendar uses CalDAV; Notes/Reminders bridge
+// to macOS CLI tools (memo, remindctl).
+
 var (
 	icloudProvider *workspace.ICloudProvider
 	icloudCal      *workspace.ICloudCalendarer
@@ -45,12 +50,16 @@ func (a *App) ConnectICloud(sessionToken, appleID, appPassword string) (Workspac
 		return WorkspaceConnectionView{}, err
 	}
 
+	// Validate credentials.
 	prov := getICloudProvider()
 	extID, err := prov.ValidateAppPassword(a.appCtx(), appleID, appPassword)
 	if err != nil {
 		return WorkspaceConnectionView{}, fmt.Errorf("icloud: %w", err)
 	}
 
+	// Store the connection. The app-specific password is the "access
+	// token"; Apple ID is the "refresh token" (for human reference).
+	// No expiry — app-specific passwords don't rotate.
 	c, err := a.workspace.DirectConnect(a.appCtx(), workspace.Connection{
 		UserID:              userID,
 		Service:             workspace.ServiceICloud,

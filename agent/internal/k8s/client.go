@@ -3,7 +3,6 @@ package k8s
 import (
 	"context"
 	"log/slog"
-	"path/filepath"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -14,7 +13,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 )
 
 type Client struct {
@@ -27,12 +25,9 @@ func NewClient(ctx context.Context, logger *slog.Logger) (*Client, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		logger.Info("not running in cluster, falling back to local kubeconfig")
-		var kubeconfig string
-		if home := homedir.HomeDir(); home != "" {
-			kubeconfig = filepath.Join(home, ".kube", "config")
-		}
-
-		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+		configOverrides := &clientcmd.ConfigOverrides{}
+		config, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides).ClientConfig()
 		if err != nil {
 			return nil, err
 		}

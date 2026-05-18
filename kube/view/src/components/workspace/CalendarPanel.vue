@@ -15,6 +15,7 @@ const {
 
 const activeID = ref(null)
 
+// Calendar range — defaults to this week.
 function thisWeekStart() {
   const d = new Date()
   d.setDate(d.getDate() - d.getDay())
@@ -31,6 +32,7 @@ function thisWeekEnd() {
 const rangeStart = ref(thisWeekStart())
 const rangeEnd = ref(thisWeekEnd())
 
+// Create form
 const summary = ref('')
 const startTime = ref('')
 const endTime = ref('')
@@ -99,9 +101,11 @@ async function deleteEvent(eventID) {
       v-model:active-id="activeID"
       @change="refreshEvents"
     />
+
     <div v-if="calendarError" class="status error">{{ calendarError }}</div>
     <div v-if="calendarStatus" class="status ok">{{ calendarStatus.op }}</div>
 
+    <!-- Create form -->
     <div class="card create-card">
       <h4>New Event</h4>
       <div class="form-row">
@@ -118,6 +122,7 @@ async function deleteEvent(eventID) {
       </button>
     </div>
 
+    <!-- Event list -->
     <div class="card">
       <h4>Events <span class="range">{{ formatTime(rangeStart) }} – {{ formatTime(rangeEnd) }}</span></h4>
       <div v-if="calendarLoading" class="muted">Loading…</div>

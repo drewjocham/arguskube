@@ -11,25 +11,41 @@ import (
 // gcalTestHandler routes the four calendar endpoints the adapter calls.
 func gcalTestHandler(t *testing.T) http.HandlerFunc {
 	t.Helper()
+	handleList := func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("timeMin") != "" {
+			t.Logf("list with timeMin=%s timeMax=%s", r.URL.Query().Get("timeMin"), r.URL.Query().Get("timeMax"))
+		}
+		_, _ = w.Write([]byte(`{
+			"items": [
+				{"id":"E1","summary":"Standup","start":{"dateTime":"2026-01-01T10:00:00Z"},"end":{"dateTime":"2026-01-01T10:30:00Z"},"htmlLink":"https://example.com/e1"},
+				{"id":"E2","summary":"Lunch","description":"Team lunch","location":"Cafe","start":{"dateTime":"2026-01-01T12:00:00Z"},"end":{"dateTime":"2026-01-01T13:00:00Z"}}
+			]
+		}`))
+	}
+	handleCreate := func(w http.ResponseWriter, r *http.Request) {
+		// echo back a fake created event
+		_, _ = w.Write([]byte(`{
+			"id":"E3","summary":"Review","start":{"dateTime":"2026-06-01T14:00:00Z"},"end":{"dateTime":"2026-06-01T15:00:00Z"},"htmlLink":"https://example.com/e3"
+		}`))
+	}
+	handlePatch := func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"id":"E1","summary":"Standup (updated)","start":{"dateTime":"2026-01-01T10:00:00Z"},"end":{"dateTime":"2026-01-01T11:00:00Z"}
+		}`))
+	}
+	handleDelete := func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(204)
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/calendars/primary/events":
-			_, _ = w.Write([]byte(`{
-				"items": [
-					{"id":"E1","summary":"Standup","start":{"dateTime":"2026-01-01T10:00:00Z"},"end":{"dateTime":"2026-01-01T10:30:00Z"},"htmlLink":"https://example.com/e1"},
-					{"id":"E2","summary":"Lunch","description":"Team lunch","location":"Cafe","start":{"dateTime":"2026-01-01T12:00:00Z"},"end":{"dateTime":"2026-01-01T13:00:00Z"}}
-				]
-			}`))
+			handleList(w, r)
 		case r.Method == http.MethodPost && r.URL.Path == "/calendars/primary/events":
-			_, _ = w.Write([]byte(`{
-				"id":"E3","summary":"Review","start":{"dateTime":"2026-06-01T14:00:00Z"},"end":{"dateTime":"2026-06-01T15:00:00Z"},"htmlLink":"https://example.com/e3"
-			}`))
+			handleCreate(w, r)
 		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/calendars/primary/events/"):
-			_, _ = w.Write([]byte(`{
-				"id":"E1","summary":"Standup (updated)","start":{"dateTime":"2026-01-01T10:00:00Z"},"end":{"dateTime":"2026-01-01T11:00:00Z"}
-			}`))
+			handlePatch(w, r)
 		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/calendars/primary/events/"):
-			w.WriteHeader(204)
+			handleDelete(w, r)
 		default:
 			t.Errorf("unexpected: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(404)
@@ -44,6 +60,7 @@ func TestGCalAdapter_ListEvents(t *testing.T) {
 		end       string
 		wantCount int
 		wantFirst string
+		err       bool
 	}{
 		{name: "full range", start: "2026-01-01T00:00:00Z", end: "2026-01-02T00:00:00Z", wantCount: 2, wantFirst: "Standup"},
 		{name: "no time bounds", start: "", end: "", wantCount: 2, wantFirst: "Standup"},
@@ -56,8 +73,8 @@ func TestGCalAdapter_ListEvents(t *testing.T) {
 			tok := Token{AccessToken: "ya29.x"}
 
 			events, err := a.ListEvents(context.Background(), tok, tt.start, tt.end)
-			if err != nil {
-				t.Fatalf("ListEvents: %v", err)
+			if (err != nil) != tt.err {
+				t.Fatalf("ListEvents err=%v want err=%v", err, tt.err)
 			}
 			if len(events) != tt.wantCount {
 				t.Fatalf("got %d events, want %d", len(events), tt.wantCount)
@@ -123,8 +140,18 @@ func TestGCalAdapter_UpdateEvent(t *testing.T) {
 		wantErr bool
 		errMsg  string
 	}{
-		{name: "valid update", eventID: "E1", ev: Event{Summary: "Standup (updated)"}},
-		{name: "empty eventID", eventID: "", ev: Event{Summary: "x"}, wantErr: true, errMsg: "eventID required"},
+		{
+			name:    "valid update",
+			eventID: "E1",
+			ev:      Event{Summary: "Standup (updated)"},
+		},
+		{
+			name:    "empty eventID",
+			eventID: "",
+			ev:      Event{Summary: "x"},
+			wantErr: true,
+			errMsg:  "eventID required",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -188,8 +215,9 @@ func TestGCalAdapter_PropagatesError(t *testing.T) {
 	}))
 	defer srv.Close()
 	a := &GCalAdapter{HTTPClient: http.DefaultClient, APIBase: srv.URL}
+	tok := Token{AccessToken: "ya29.x"}
 
-	_, err := a.ListEvents(context.Background(), Token{AccessToken: "ya29.x"}, "", "")
+	_, err := a.ListEvents(context.Background(), tok, "", "")
 	if err == nil || !strings.Contains(err.Error(), "PERMISSION_DENIED") {
 		t.Fatalf("expected PERMISSION_DENIED, got %v", err)
 	}

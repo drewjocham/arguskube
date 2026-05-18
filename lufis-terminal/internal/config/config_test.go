@@ -10,35 +10,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// setFakeHome sets HOME to a temp directory so os.UserConfigDir() returns
-// an isolated path that won't interfere with the real user config.
-// Returns a cleanup function.
+// setFakeHome sets HOME to a temp directory using t.Setenv so it is
+// goroutine-safe and auto-restored.
 func setFakeHome(t *testing.T) {
 	t.Helper()
-	origHome := os.Getenv("HOME")
-	t.Cleanup(func() { os.Setenv("HOME", origHome) })
-
+	t.Setenv("HOME", t.TempDir())
 	if runtime.GOOS == "windows" {
-		origUserProfile := os.Getenv("USERPROFILE")
-		t.Cleanup(func() { os.Setenv("USERPROFILE", origUserProfile) })
-		// On Windows, UserConfigDir uses %AppData%.
-		// To keep things simple, we skip HOME-based isolation on Windows
-		// and use a different approach.
+		t.Setenv("USERPROFILE", t.TempDir())
 	}
+}
 
-	// On Darwin and Unix, UserConfigDir uses $HOME (or $XDG_CONFIG_HOME on Linux).
-	// On Darwin specifically: $HOME/Library/Application Support
-	os.Setenv("HOME", t.TempDir())
+// unsetEnv is a goroutine-safe equivalent of os.Unsetenv. It sets the
+// variable to the empty string, which is functionally identical to
+// unsetting for os.Getenv-based code (both return "").
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+	t.Setenv(key, "")
 }
 
 func TestDefaults(t *testing.T) {
 	setFakeHome(t)
-	origShell := os.Getenv("SHELL")
-	origArgusShell := os.Getenv("ARGUS_SHELL")
-	t.Cleanup(func() {
-		os.Setenv("SHELL", origShell)
-		os.Setenv("ARGUS_SHELL", origArgusShell)
-	})
+	unsetEnv(t, "KUBECONFIG")
 
 	tests := []struct {
 		name     string
@@ -73,16 +65,11 @@ func TestDefaults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.envShell == "" {
-				os.Unsetenv("SHELL")
-			} else {
-				os.Setenv("SHELL", tt.envShell)
-			}
-			os.Unsetenv("ARGUS_SHELL")
+			t.Setenv("SHELL", tt.envShell)
+			unsetEnv(t, "ARGUS_SHELL")
 
 			got := defaults()
 
-			// For the no-SHELL test on windows, expect cmd.exe
 			if runtime.GOOS == "windows" && tt.envShell == "" {
 				tt.want.Terminal.Shell = "cmd.exe"
 			}
@@ -94,12 +81,7 @@ func TestDefaults(t *testing.T) {
 
 func TestEnvVarOverride(t *testing.T) {
 	setFakeHome(t)
-	origShell := os.Getenv("SHELL")
-	origArgusShell := os.Getenv("ARGUS_SHELL")
-	t.Cleanup(func() {
-		os.Setenv("SHELL", origShell)
-		os.Setenv("ARGUS_SHELL", origArgusShell)
-	})
+	unsetEnv(t, "KUBECONFIG")
 
 	tests := []struct {
 		name     string
@@ -135,16 +117,8 @@ func TestEnvVarOverride(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.shellEnv == "" {
-				os.Unsetenv("SHELL")
-			} else {
-				os.Setenv("SHELL", tt.shellEnv)
-			}
-			if tt.argusEnv == "" {
-				os.Unsetenv("ARGUS_SHELL")
-			} else {
-				os.Setenv("ARGUS_SHELL", tt.argusEnv)
-			}
+			t.Setenv("SHELL", tt.shellEnv)
+			t.Setenv("ARGUS_SHELL", tt.argusEnv)
 
 			cfg, err := Load()
 			require.NoError(t, err)
@@ -155,6 +129,7 @@ func TestEnvVarOverride(t *testing.T) {
 
 func TestLoadFromFile(t *testing.T) {
 	setFakeHome(t)
+	unsetEnv(t, "KUBECONFIG")
 
 	tests := []struct {
 		name       string
@@ -199,17 +174,8 @@ font_size = 18
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			origShell := os.Getenv("SHELL")
-			origArgusShell := os.Getenv("ARGUS_SHELL")
-			t.Cleanup(func() {
-				os.Setenv("SHELL", origShell)
-				os.Setenv("ARGUS_SHELL", origArgusShell)
-			})
-			os.Unsetenv("ARGUS_SHELL")
+			unsetEnv(t, "ARGUS_SHELL")
 
-			// Write the config file at the path Load() will look for it.
-			// Since we've set a fake HOME (via setFakeHome), the config
-			// path will be under the temp dir.
 			p, err := path()
 			require.NoError(t, err)
 			err = os.MkdirAll(filepath.Dir(p), 0o700)
@@ -230,16 +196,9 @@ font_size = 18
 
 func TestLoadFileNotFound(t *testing.T) {
 	setFakeHome(t)
-	origShell := os.Getenv("SHELL")
-	origArgusShell := os.Getenv("ARGUS_SHELL")
-	t.Cleanup(func() {
-		os.Setenv("SHELL", origShell)
-		os.Setenv("ARGUS_SHELL", origArgusShell)
-	})
-
-	// HOME is already set to a temp dir with no config file
-	os.Unsetenv("ARGUS_SHELL")
-	os.Unsetenv("SHELL")
+	unsetEnv(t, "KUBECONFIG")
+	unsetEnv(t, "ARGUS_SHELL")
+	unsetEnv(t, "SHELL")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -250,6 +209,7 @@ func TestLoadFileNotFound(t *testing.T) {
 
 func TestLoadUserConfigDirError(t *testing.T) {
 	setFakeHome(t)
+	unsetEnv(t, "KUBECONFIG")
 
 	t.Run("path returns valid path", func(t *testing.T) {
 		p, err := path()
@@ -261,6 +221,7 @@ func TestLoadUserConfigDirError(t *testing.T) {
 
 func TestSave(t *testing.T) {
 	setFakeHome(t)
+	unsetEnv(t, "KUBECONFIG")
 
 	tests := []struct {
 		name    string
@@ -289,13 +250,7 @@ func TestSave(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			origShell := os.Getenv("SHELL")
-			origArgusShell := os.Getenv("ARGUS_SHELL")
-			t.Cleanup(func() {
-				os.Setenv("SHELL", origShell)
-				os.Setenv("ARGUS_SHELL", origArgusShell)
-			})
-			os.Unsetenv("ARGUS_SHELL")
+			unsetEnv(t, "ARGUS_SHELL")
 
 			err := Save(tt.cfg)
 			if tt.wantErr {
@@ -313,13 +268,8 @@ func TestSave(t *testing.T) {
 
 func TestSaveCreatesDirectory(t *testing.T) {
 	setFakeHome(t)
-	origShell := os.Getenv("SHELL")
-	origArgusShell := os.Getenv("ARGUS_SHELL")
-	t.Cleanup(func() {
-		os.Setenv("SHELL", origShell)
-		os.Setenv("ARGUS_SHELL", origArgusShell)
-	})
-	os.Unsetenv("ARGUS_SHELL")
+	unsetEnv(t, "KUBECONFIG")
+	unsetEnv(t, "ARGUS_SHELL")
 
 	cfg := Config{
 		Terminal: TerminalConfig{
@@ -351,15 +301,9 @@ func TestSaveCreatesDirectory(t *testing.T) {
 
 func TestSaveOverwritesExisting(t *testing.T) {
 	setFakeHome(t)
-	origShell := os.Getenv("SHELL")
-	origArgusShell := os.Getenv("ARGUS_SHELL")
-	t.Cleanup(func() {
-		os.Setenv("SHELL", origShell)
-		os.Setenv("ARGUS_SHELL", origArgusShell)
-	})
-	os.Unsetenv("ARGUS_SHELL")
+	unsetEnv(t, "KUBECONFIG")
+	unsetEnv(t, "ARGUS_SHELL")
 
-	// Save initial config
 	initial := Config{
 		Terminal: TerminalConfig{
 			Shell:    "/bin/bash",
@@ -371,7 +315,6 @@ func TestSaveOverwritesExisting(t *testing.T) {
 	err := Save(initial)
 	require.NoError(t, err)
 
-	// Save updated config
 	updated := Config{
 		Terminal: TerminalConfig{
 			Shell:    "/bin/fish",
@@ -390,13 +333,8 @@ func TestSaveOverwritesExisting(t *testing.T) {
 
 func TestSaveAtomicDoesNotLeaveTempFile(t *testing.T) {
 	setFakeHome(t)
-	origShell := os.Getenv("SHELL")
-	origArgusShell := os.Getenv("ARGUS_SHELL")
-	t.Cleanup(func() {
-		os.Setenv("SHELL", origShell)
-		os.Setenv("ARGUS_SHELL", origArgusShell)
-	})
-	os.Unsetenv("ARGUS_SHELL")
+	unsetEnv(t, "KUBECONFIG")
+	unsetEnv(t, "ARGUS_SHELL")
 
 	cfg := Config{
 		Terminal: TerminalConfig{
@@ -432,11 +370,6 @@ func TestPath(t *testing.T) {
 }
 
 func TestDefaultShell(t *testing.T) {
-	origShell := os.Getenv("SHELL")
-	t.Cleanup(func() {
-		os.Setenv("SHELL", origShell)
-	})
-
 	tests := []struct {
 		name     string
 		envShell string
@@ -456,11 +389,7 @@ func TestDefaultShell(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.envShell == "" {
-				os.Unsetenv("SHELL")
-			} else {
-				os.Setenv("SHELL", tt.envShell)
-			}
+			t.Setenv("SHELL", tt.envShell)
 
 			got := defaultShell()
 

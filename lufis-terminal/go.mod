@@ -10,7 +10,6 @@ require github.com/argues/argus-pty v0.0.0-00010101000000-000000000000
 replace github.com/argues/argus-pty => ../pkg/pty
 
 require (
-	github.com/creack/pty v1.1.24
 	github.com/go-gl/gl v0.0.0-20260331235117-4566fea9a276
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20260406072232-3ac4aa2bb164
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
@@ -22,6 +21,7 @@ require (
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
+	github.com/creack/pty v1.1.24 // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
