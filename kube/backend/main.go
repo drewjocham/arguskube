@@ -237,6 +237,11 @@ func run() error {
 			logger.Info("workspace: Google provider registered")
 		}
 
+		// iCloud provider is always available — it uses app-specific
+		// passwords validated via CalDAV, no OAuth client credentials needed.
+		workspaceMgr.Register(workspace.NewICloudProvider())
+		logger.Info("workspace: iCloud provider registered")
+
 		// Slack Events bus — SaaS-only inbound (requires public URL).
 		// Registers when ARGUS_SLACK_SIGNING_SECRET is set; the HTTP
 		// routes (/workspace/slack/events, /workspace/slack/commands)

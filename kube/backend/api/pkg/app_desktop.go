@@ -183,6 +183,9 @@ func (a *App) rebuildWorkspaceProviders() {
 			RedirectURL:  strings.TrimRight(a.cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback",
 		})
 	}
+	// iCloud is always available — it doesn't need OAuth client credentials
+	// (uses app-specific passwords validated via CalDAV).
+	providers = append(providers, workspace.NewICloudProvider())
 	a.workspace.ReregisterProviders(providers)
 	if len(providers) > 0 {
 		a.logger.Info("workspace providers rebuilt", slog.Int("count", len(providers)))
