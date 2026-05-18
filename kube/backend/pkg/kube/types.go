@@ -31,7 +31,7 @@ type PodInfo struct {
 	Status       string            `json:"status"`
 	NodeName     string            `json:"node_name"`
 	Age          time.Duration     `json:"age"`
-	RestartCount int32             `json:"restart_count"`
+	RestartCount int64             `json:"restart_count"`
 	Labels       map[string]string `json:"labels,omitempty"`
 	Containers   []ContainerInfo   `json:"containers,omitempty"`
 }

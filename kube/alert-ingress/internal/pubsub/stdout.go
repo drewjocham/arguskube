@@ -4,20 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/argues/argus/alert-ingress/internal/models"
 )
 
-type StdoutPublisher struct{}
+type StdoutPublisher struct {
+	logger *slog.Logger
+}
 
-func NewStdout() Publisher {
-	return &StdoutPublisher{}
+func NewStdout(logger *slog.Logger) Publisher {
+	return &StdoutPublisher{logger: logger}
 }
 
 func (s *StdoutPublisher) PublishAlert(_ context.Context, alert models.ArgusAlert) error {
 	b, _ := json.MarshalIndent(alert, "", "  ")
-	log.Printf("[alert-ingress] %s\n", string(b))
+	s.logger.Info("alert published", "alert", string(b))
 	return nil
 }
 

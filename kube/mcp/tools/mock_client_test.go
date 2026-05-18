@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/argues/argus/pkg/kube"
@@ -86,10 +85,6 @@ func (m *mockK8sClient) GetResourceQuotas(_ context.Context, _ string) ([]kube.R
 
 func (m *mockK8sClient) GetClusterInfo(_ context.Context) (*kube.ClusterInfo, error) {
 	return m.cluster, m.clusterErr
-}
-
-func (m *mockK8sClient) GetResource(_ context.Context, _, _ string) ([]runtime.Object, error) {
-	return nil, nil
 }
 
 func (m *mockK8sClient) HealthCheck(_ context.Context) error {

@@ -130,7 +130,6 @@ const { bundle, loading: diagLoading, error: diagError, diagnose } = useDiagnost
 const { tier, isAllowed } = useFeatures()
 const { mode } = useAppMode()
 
-const logLines = ref([])
 const selectedAlert = ref(null)
 // activeNav is now a SECTION id (one of the 9 SECTIONS keys). The
 // Sidebar emits section ids; CenterPanel routes by section. Legacy
@@ -223,15 +222,6 @@ useWailsEvent(Events.ALERT_UPDATE, (data) => {
 
 useWailsEvent(Events.METRICS_UPDATE, (data) => {
   if (data) metrics.value = data
-})
-
-useWailsEvent(Events.LOG_LINE, (data) => {
-  if (data) {
-    logLines.value.push(data)
-    if (logLines.value.length > 200) {
-      logLines.value = logLines.value.slice(-200)
-    }
-  }
 })
 
 function onAlertSelect(alert) {
@@ -403,7 +393,6 @@ useWailsEvent('argus:status', (data) => {
             :metrics="metrics"
             :alerts="alerts"
             :selectedAlert="selectedAlert"
-            :logLines="logLines"
             :activeNav="activeNav"
             @select-alert="onAlertSelect"
             @diagnose-all="onDiagnoseAlert"

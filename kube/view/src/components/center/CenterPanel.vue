@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import Select from '../common/Select.vue'
 import MetricsRow from './MetricsRow.vue'
 import AlertList from './AlertList.vue'
-import LogStream from './LogStream.vue'
+import MonitoringDashboard from './MonitoringDashboard.vue'
 import ResourceTable from '../resources/ResourceTable.vue'
 import ResourceDetail from '../resources/ResourceDetail.vue'
 import RunbooksView from '../operations/RunbooksView.vue'
@@ -86,7 +86,6 @@ const props = defineProps({
   metrics: { type: Object, default: null },
   alerts: { type: Array, default: () => [] },
   selectedAlert: { type: Object, default: null },
-  logLines: { type: Array, default: () => [] },
   // activeNav is now a SECTION id (monitoring | cluster | workloads | …).
   activeNav: { type: String, default: 'monitoring' },
 })
@@ -147,7 +146,7 @@ function closeDetail() { selectedResource.value = null }
 
 // Customizable Alerts dashboard layout.
 const editMode = ref(false)
-const widgetOrder = ref(['metrics', 'alerts', 'logs'])
+const widgetOrder = ref(['metrics', 'alerts'])
 function moveUp(index) {
   if (index > 0) {
     const tmp = widgetOrder.value[index]
@@ -221,7 +220,8 @@ const adminTabs = SECTIONS.admin.tabs
         :active-tab="currentTab"
         @update:active-tab="setTab('monitoring', $event)"
       />
-      <ArgusAIChat v-if="currentTab === 'argusai'" />
+      <MonitoringDashboard v-if="currentTab === 'dashboards'" />
+      <ArgusAIChat v-else-if="currentTab === 'argusai'" />
       <MetricsExplorer v-else-if="currentTab === 'metrics'" />
       <VulnerabilityList v-else-if="currentTab === 'vulnerabilities'" />
       <LogExplorer v-else-if="currentTab === 'logs'" />
@@ -306,11 +306,6 @@ const adminTabs = SECTIONS.admin.tabs
                   :alerts="alerts"
                   :selectedAlert="selectedAlert"
                   @select="emit('select-alert', $event)"
-                />
-                <LogStream
-                  v-else-if="widget === 'logs'"
-                  :alerts="alerts"
-                  :externalLines="logLines"
                 />
               </div>
             </div>

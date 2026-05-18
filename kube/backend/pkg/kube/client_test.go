@@ -1553,37 +1553,7 @@ func TestClient_GetResourceQuotas(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Client GetResource (placeholder) test
-// ---------------------------------------------------------------------------
-
-func TestClient_GetResource(t *testing.T) {
-	ctx := context.Background()
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-
-	tests := []struct {
-		name string
-		kind string
-	}{
-		{name: "returns nil for any kind", kind: "Pod"},
-		{name: "returns nil for empty kind", kind: ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := &Client{cs: fake.NewSimpleClientset(), logger: logger}
-			got, err := c.GetResource(ctx, tt.kind, "some-name")
-			if err != nil {
-				t.Errorf("GetResource() unexpected error: %v", err)
-			}
-			if got != nil {
-				t.Errorf("GetResource() returned %v, want nil", got)
-			}
-		})
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Client GetRawInterface test
+// Audit client delegation tests
 // ---------------------------------------------------------------------------
 
 func TestClient_GetRawInterface(t *testing.T) {
@@ -1770,10 +1740,6 @@ func (v *verificationClient) GetClusterInfo(ctx context.Context) (*ClusterInfo, 
 	v.calls = append(v.calls, "GetClusterInfo")
 	return nil, nil
 }
-func (v *verificationClient) GetResource(ctx context.Context, kind, name string) ([]runtime.Object, error) {
-	v.calls = append(v.calls, "GetResource")
-	return nil, nil
-}
 func (v *verificationClient) HealthCheck(ctx context.Context) error {
 	v.calls = append(v.calls, "HealthCheck")
 	return nil
@@ -1860,11 +1826,6 @@ func TestAuditClient_DelegatesToInner(t *testing.T) {
 			name: "GetClusterInfo delegates to inner",
 			callFn: func(ci ClientInterface) { _, _ = ci.GetClusterInfo(ctx) },
 			wantCall: "GetClusterInfo",
-		},
-		{
-			name: "GetResource delegates to inner",
-			callFn: func(ci ClientInterface) { _, _ = ci.GetResource(ctx, "Pod", "name") },
-			wantCall: "GetResource",
 		},
 		{
 			name: "HealthCheck delegates to inner",

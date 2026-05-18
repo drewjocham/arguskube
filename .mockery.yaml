@@ -1,0 +1,15 @@
+# .mockery.yaml — mock generation config for Argus
+# Run: mockery
+
+with-expecter: false
+filename: "mocks.go"
+outpkg: "mocks"
+dir: "{{.InterfaceDir}}/mocks"
+mockname: "{{.InterfaceName}}"
+boilerplate-file: ""
+disable-version-string: true
+
+packages:
+  github.com/argues/argus/pkg/kube:
+    interfaces:
+      ClientInterface:
