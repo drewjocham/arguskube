@@ -79,6 +79,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const googleStatus = ref(null)
   let googleStatusTimer = null
 
+  // ---------- Phase 2 — Google Calendar -----------------------------------
+  const calendarEvents = ref({})
+  const calendarLoading = ref(false)
+  const calendarError = ref(null)
+  const calendarStatus = ref(null)
+  let calendarStatusTimer = null
+
   const connectionsByService = computed(() => {
     const out = {}
     for (const c of connections.value) {
@@ -494,10 +501,81 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await _googleCall('DeleteGoogleTask', [connectionID, listID, taskID], 'task-deleted')
     invalidateCache('ListGoogleTasks', getSessionTokenSync(), connectionID, listID)
     const key = `${connectionID}:${listID}`
-    tasks.value = {
-      ...tasks.value,
-      [key]: (tasks.value[key] || []).filter((t) => t.id !== taskID),
-    }
+    tasks.value = { ...tasks.value, [key]: (tasks.value[key] || []).filter((t) => t.id !== taskID) }
+  }
+
+  // -------------------- Calendar -------------------------------------------
+  function clearCalendarStatus() {
+    calendarError.value = null; calendarStatus.value = null
+    if (calendarStatusTimer) { clearTimeout(calendarStatusTimer); calendarStatusTimer = null }
+  }
+  async function _calendarCall(method, args, opLabel) {
+    calendarLoading.value = true; calendarError.value = null
+    try {
+      const token = getSessionTokenSync()
+      const result = await callGo(method, token, ...args)
+      if (opLabel) {
+        calendarStatus.value = { op: opLabel, at: Date.now() }
+        if (calendarStatusTimer) clearTimeout(calendarStatusTimer)
+        calendarStatusTimer = setTimeout(() => { calendarStatus.value = null; calendarStatusTimer = null }, 4000)
+      }
+      return result
+    } catch (e) {
+      calendarError.value = e?.message || String(e)
+      calendarStatusTimer = setTimeout(() => { calendarError.value = null; calendarStatusTimer = null }, 4000)
+      throw e
+    } finally { calendarLoading.value = false }
+  }
+  async function loadCalendarEvents(connectionID, start, end) {
+    if (!connectionID) return []
+    const result = await _calendarCall('ListGoogleCalendarEvents', [connectionID, start || '', end || ''], null)
+    const arr = Array.isArray(result) ? result : []
+    calendarEvents.value = { ...calendarEvents.value, [connectionID]: arr }
+    return arr
+  }
+  async function createCalendarEvent(connectionID, ev) {
+    const created = await _calendarCall('CreateGoogleCalendarEvent', [connectionID, ev], 'event-created')
+    const list = calendarEvents.value[connectionID] || []
+    calendarEvents.value = { ...calendarEvents.value, [connectionID]: [...list, created] }
+    return created
+  }
+  async function updateCalendarEvent(connectionID, eventID, ev) {
+    const updated = await _calendarCall('UpdateGoogleCalendarEvent', [connectionID, eventID, ev], 'event-updated')
+    const list = (calendarEvents.value[connectionID] || []).map((e) => (e.id === eventID ? { ...e, ...updated } : e))
+    calendarEvents.value = { ...calendarEvents.value, [connectionID]: list }
+    return updated
+  }
+  async function deleteCalendarEvent(connectionID, eventID) {
+    await _calendarCall('DeleteGoogleCalendarEvent', [connectionID, eventID], 'event-deleted')
+    calendarEvents.value = { ...calendarEvents.value, [connectionID]: (calendarEvents.value[connectionID] || []).filter((e) => e.id !== eventID) }
+  }
+
+  // -------------------- iCloud ---------------------------------------------
+  const icloudConnections = computed(() => connections.value.filter((c) => c.service === 'icloud'))
+  const icloudLoading = ref(false)
+  const icloudError = ref(null)
+  const icloudStatus = ref(null)
+  let icloudStatusTimer = null
+  const icloudNotes = ref([])
+  const icloudReminders = ref([])
+  function clearICloudStatus() {
+    icloudError.value = null; icloudStatus.value = null
+    if (icloudStatusTimer) { clearTimeout(icloudStatusTimer); icloudStatusTimer = null }
+  }
+  async function connectICloud(appleID, appPassword) {
+    icloudLoading.value = true; icloudError.value = null
+    try {
+      const token = getSessionTokenSync()
+      const conn = await callGo('ConnectICloud', token, appleID, appPassword)
+      invalidateCache('ListWorkspaceConnections')
+      await loadConnections()
+      icloudStatus.value = { op: 'icloud-connected', at: Date.now() }
+      icloudStatusTimer = setTimeout(() => { icloudStatus.value = null; icloudStatusTimer = null }, 4000)
+      return conn
+    } catch (e) {
+      icloudError.value = e?.message || String(e)
+      throw e
+    } finally { icloudLoading.value = false }
   }
 
   return {
@@ -548,5 +626,24 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     updateTask,
     deleteTask,
     clearGoogleStatus,
+    // Calendar
+    calendarEvents,
+    calendarLoading,
+    calendarError,
+    calendarStatus,
+    loadCalendarEvents,
+    createCalendarEvent,
+    updateCalendarEvent,
+    deleteCalendarEvent,
+    clearCalendarStatus,
+    // iCloud
+    icloudConnections,
+    icloudLoading,
+    icloudError,
+    icloudStatus,
+    icloudNotes,
+    icloudReminders,
+    connectICloud,
+    clearICloudStatus,
   }
 })

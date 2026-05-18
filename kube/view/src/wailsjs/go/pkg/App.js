@@ -90,6 +90,10 @@ export function CompleteWorkspaceConnect(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['CompleteWorkspaceConnect'](arg1, arg2, arg3);
 }
 
+export function ConnectICloud(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['ConnectICloud'](arg1, arg2, arg3);
+}
+
 export function ConnectToAgent(arg1) {
   return window['go']['pkg']['App']['ConnectToAgent'](arg1);
 }
@@ -104,6 +108,10 @@ export function CreateCodeReviewReport(arg1, arg2, arg3, arg4) {
 
 export function CreateExternalBridge(arg1) {
   return window['go']['pkg']['App']['CreateExternalBridge'](arg1);
+}
+
+export function CreateGoogleCalendarEvent(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['CreateGoogleCalendarEvent'](arg1, arg2, arg3);
 }
 
 export function CreateGoogleDoc(arg1, arg2, arg3, arg4) {
@@ -146,6 +154,10 @@ export function DeleteDBConnection(arg1, arg2) {
   return window['go']['pkg']['App']['DeleteDBConnection'](arg1, arg2);
 }
 
+export function DeleteGoogleCalendarEvent(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['DeleteGoogleCalendarEvent'](arg1, arg2, arg3);
+}
+
 export function DeleteGoogleTask(arg1, arg2, arg3, arg4) {
   return window['go']['pkg']['App']['DeleteGoogleTask'](arg1, arg2, arg3, arg4);
 }
@@ -160,6 +172,14 @@ export function DeleteNotebook(arg1) {
 
 export function DeletePod(arg1, arg2) {
   return window['go']['pkg']['App']['DeletePod'](arg1, arg2);
+}
+
+export function DeleteProfileGroup(arg1, arg2) {
+  return window['go']['pkg']['App']['DeleteProfileGroup'](arg1, arg2);
+}
+
+export function DeleteProfileVariant(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['DeleteProfileVariant'](arg1, arg2, arg3);
 }
 
 export function DeleteResource(arg1, arg2, arg3) {
@@ -236,6 +256,10 @@ export function GenerateTrafficSplitHTTPRoute(arg1, arg2, arg3, arg4, arg5) {
 
 export function GenerateWorkloadYAML(arg1) {
   return window['go']['pkg']['App']['GenerateWorkloadYAML'](arg1);
+}
+
+export function GetActiveProfile(arg1) {
+  return window['go']['pkg']['App']['GetActiveProfile'](arg1);
 }
 
 export function GetAgentEventLog() {
@@ -530,6 +554,10 @@ export function ListGitHubPullRequests() {
   return window['go']['pkg']['App']['ListGitHubPullRequests']();
 }
 
+export function ListGoogleCalendarEvents(arg1, arg2, arg3, arg4) {
+  return window['go']['pkg']['App']['ListGoogleCalendarEvents'](arg1, arg2, arg3, arg4);
+}
+
 export function ListGoogleChatSpaces(arg1, arg2) {
   return window['go']['pkg']['App']['ListGoogleChatSpaces'](arg1, arg2);
 }
@@ -546,6 +574,18 @@ export function ListHTTPRoutes(arg1) {
   return window['go']['pkg']['App']['ListHTTPRoutes'](arg1);
 }
 
+export function ListICloudEvents(arg1, arg2, arg3, arg4) {
+  return window['go']['pkg']['App']['ListICloudEvents'](arg1, arg2, arg3, arg4);
+}
+
+export function ListICloudNotes(arg1) {
+  return window['go']['pkg']['App']['ListICloudNotes'](arg1);
+}
+
+export function ListICloudReminders(arg1) {
+  return window['go']['pkg']['App']['ListICloudReminders'](arg1);
+}
+
 export function ListIncidents() {
   return window['go']['pkg']['App']['ListIncidents']();
 }
@@ -560,6 +600,10 @@ export function ListNotebooks() {
 
 export function ListOAuthProviders() {
   return window['go']['pkg']['App']['ListOAuthProviders']();
+}
+
+export function ListProfileGroups(arg1) {
+  return window['go']['pkg']['App']['ListProfileGroups'](arg1);
 }
 
 export function ListRegistryTags(arg1) {
@@ -718,6 +762,14 @@ export function SavePRGuidelines(arg1, arg2) {
   return window['go']['pkg']['App']['SavePRGuidelines'](arg1, arg2);
 }
 
+export function SaveProfileGroup(arg1, arg2) {
+  return window['go']['pkg']['App']['SaveProfileGroup'](arg1, arg2);
+}
+
+export function SaveProfileVariant(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['SaveProfileVariant'](arg1, arg2, arg3);
+}
+
 export function SaveRunbook(arg1, arg2) {
   return window['go']['pkg']['App']['SaveRunbook'](arg1, arg2);
 }
@@ -752,6 +804,10 @@ export function SendSlackMessage(arg1, arg2, arg3, arg4) {
 
 export function ServeHTTP(arg1, arg2) {
   return window['go']['pkg']['App']['ServeHTTP'](arg1, arg2);
+}
+
+export function SetActiveProfile(arg1, arg2, arg3) {
+  return window['go']['pkg']['App']['SetActiveProfile'](arg1, arg2, arg3);
 }
 
 export function SetAgentProfile(arg1) {
@@ -852,6 +908,10 @@ export function UndeployAgent(arg1) {
 
 export function UpdateBillingRates(arg1, arg2, arg3) {
   return window['go']['pkg']['App']['UpdateBillingRates'](arg1, arg2, arg3);
+}
+
+export function UpdateGoogleCalendarEvent(arg1, arg2, arg3, arg4) {
+  return window['go']['pkg']['App']['UpdateGoogleCalendarEvent'](arg1, arg2, arg3, arg4);
 }
 
 export function UpdateGoogleTask(arg1, arg2, arg3, arg4, arg5) {
