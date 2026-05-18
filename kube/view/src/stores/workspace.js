@@ -694,47 +694,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
-  // -------------------- iCloud ---------------------------------------------
-  const icloudConnections = computed(() =>
-    connections.value.filter((c) => c.service === 'icloud'),
-  )
-  const icloudLoading = ref(false)
-  const icloudError = ref(null)
-  const icloudStatus = ref(null)
-  let icloudStatusTimer = null
-  const icloudNotes = ref([])
-  const icloudReminders = ref([])
-
-  function clearICloudStatus() {
-    icloudError.value = null
-    icloudStatus.value = null
-    if (icloudStatusTimer) {
-      clearTimeout(icloudStatusTimer)
-      icloudStatusTimer = null
-    }
-  }
-  async function connectICloud(appleID, appPassword) {
-    icloudLoading.value = true
-    icloudError.value = null
-    try {
-      const token = getSessionTokenSync()
-      const conn = await callGo('ConnectICloud', token, appleID, appPassword)
-      invalidateCache('ListWorkspaceConnections')
-      await loadConnections()
-      icloudStatus.value = { op: 'icloud-connected', at: Date.now() }
-      icloudStatusTimer = setTimeout(() => {
-        icloudStatus.value = null
-        icloudStatusTimer = null
-      }, 4000)
-      return conn
-    } catch (e) {
-      icloudError.value = e?.message || String(e)
-      throw e
-    } finally {
-      icloudLoading.value = false
-    }
-  }
-
   return {
     services,
     connections,
