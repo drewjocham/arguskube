@@ -16,15 +16,32 @@ onMounted(async () => {
   } catch {}
 })
 
+// Tracks the namespace of the in-flight request so a stale resolution
+// (user clicked Analyze for "default", then quickly switched to "kube-
+// system" and clicked again) can't overwrite the newer result with the
+// older one. The button is disabled while loading.value is true, so
+// double-clicks for the *same* namespace are already prevented — this
+// guard protects against namespace switches mid-flight.
+let inflightToken = 0
+
 async function analyze() {
+  const token = ++inflightToken
+  const ns = namespace.value
   loading.value = true
   error.value = null
   try {
-    profile.value = await callGo('ProfileWaste', namespace.value)
+    const next = await callGo('ProfileWaste', ns)
+    if (token !== inflightToken) return // a newer request superseded us
+    profile.value = next
   } catch (e) {
+    if (token !== inflightToken) return
+    // Keep the prior profile on screen if one exists — a transient
+    // error shouldn't blank a useful page. The error banner makes the
+    // failure obvious; the Retry button gives a single-click recovery.
     error.value = e?.message || String(e)
+  } finally {
+    if (token === inflightToken) loading.value = false
   }
-  loading.value = false
 }
 
 function scoreColor(score) {
@@ -46,7 +63,10 @@ function scoreColor(score) {
       </button>
     </div>
 
-    <div v-if="error" class="error-banner">{{ error }}</div>
+    <div v-if="error" class="error-banner" data-testid="waste-error-banner">
+      <span>{{ error }}</span>
+      <button class="btn-retry" @click="analyze" :disabled="loading">Retry</button>
+    </div>
 
     <div v-if="profile" class="results">
       <div class="score-card" :style="{ borderColor: scoreColor(profile.score) }">
@@ -98,7 +118,21 @@ function scoreColor(score) {
 .controls { display: flex; gap: 8px; align-items: center; }
 .btn-analyze { padding: 6px 16px; font-size: 12px; background: rgba(167,139,250,0.15); border: 1px solid rgba(167,139,250,0.3); color: #a78bfa; border-radius: 5px; cursor: pointer; }
 .btn-analyze:disabled { opacity: 0.4; cursor: not-allowed; }
-.error-banner { padding: 8px 12px; background: rgba(240,84,84,0.12); border: 1px solid rgba(240,84,84,0.25); border-radius: 6px; color: #f05454; font-size: 12px; }
+/* Body text uses the regular foreground so the message itself meets
+   WCAG AA contrast on the dark app background. Error severity is
+   carried by the red border + red Retry button + a small accent dot,
+   not by red message text — that's both more accessible and easier
+   for users with red-green color blindness to read. */
+.error-banner { padding: 8px 12px; background: rgba(240,84,84,0.12); border: 1px solid rgba(240,84,84,0.45); border-radius: 6px; color: var(--text, #e8eaec); font-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.error-banner::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #f05454; margin-right: 8px; flex-shrink: 0; }
+.error-banner > span { flex: 1; }
+/* Solid filled red with white label so the action button passes WCAG
+   AA without depending on the page background — the previous tinted
+   variant put light-red text on a faint red wash, which Sonar
+   correctly flagged as low contrast. */
+.btn-retry { padding: 3px 10px; font-size: 11px; background: #b8392f; border: 1px solid #b8392f; color: #fff; border-radius: 4px; cursor: pointer; flex-shrink: 0; }
+.btn-retry:hover:not(:disabled) { background: #d23f33; border-color: #d23f33; }
+.btn-retry:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .results { display: flex; flex-direction: column; gap: 16px; }
 .score-card { background: #1e2023; border: 2px solid; border-radius: 8px; padding: 16px; }
