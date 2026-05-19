@@ -34,7 +34,7 @@ func TestRegionFromAWSARN(t *testing.T) {
 		"arn:aws:secretsmanager:eu-west-1:111:secret:foo": "eu-west-1",
 		"arn:aws:secretsmanager:us-east-2:222:secret:bar": "us-east-2",
 		"short-name-no-arn": "",
-		"": "",
+		"":                  "",
 	}
 	for arn, want := range cases {
 		t.Run(arn, func(t *testing.T) {
