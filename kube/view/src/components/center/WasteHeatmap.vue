@@ -118,8 +118,16 @@ function scoreColor(score) {
 .controls { display: flex; gap: 8px; align-items: center; }
 .btn-analyze { padding: 6px 16px; font-size: 12px; background: rgba(167,139,250,0.15); border: 1px solid rgba(167,139,250,0.3); color: #a78bfa; border-radius: 5px; cursor: pointer; }
 .btn-analyze:disabled { opacity: 0.4; cursor: not-allowed; }
-.error-banner { padding: 8px 12px; background: rgba(240,84,84,0.12); border: 1px solid rgba(240,84,84,0.25); border-radius: 6px; color: #f05454; font-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.btn-retry { padding: 3px 10px; font-size: 11px; background: rgba(240,84,84,0.15); border: 1px solid rgba(240,84,84,0.4); color: #f05454; border-radius: 4px; cursor: pointer; flex-shrink: 0; }
+/* Body text uses the regular foreground so the message itself meets
+   WCAG AA contrast on the dark app background. Error severity is
+   carried by the red border + red Retry button + a small accent dot,
+   not by red message text — that's both more accessible and easier
+   for users with red-green color blindness to read. */
+.error-banner { padding: 8px 12px; background: rgba(240,84,84,0.12); border: 1px solid rgba(240,84,84,0.45); border-radius: 6px; color: var(--text, #e8eaec); font-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.error-banner::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #f05454; margin-right: 8px; flex-shrink: 0; }
+.error-banner > span { flex: 1; }
+.btn-retry { padding: 3px 10px; font-size: 11px; background: rgba(240,84,84,0.18); border: 1px solid rgba(240,84,84,0.55); color: #ff9b9b; border-radius: 4px; cursor: pointer; flex-shrink: 0; }
+.btn-retry:hover:not(:disabled) { background: rgba(240,84,84,0.28); }
 .btn-retry:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .results { display: flex; flex-direction: column; gap: 16px; }
