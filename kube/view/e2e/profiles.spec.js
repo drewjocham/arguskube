@@ -51,7 +51,10 @@ test.describe('Profiles', () => {
     // by checking for a stable handle. If unavailable, skip rather than
     // pretend to pass.
     const handle = await page.evaluate(async (name) => {
-      const mod = await import('/src/stores/profiles.ts')
+      // The import below runs INSIDE the page via Vite's dev-server module
+      // resolver, where /src/* is the correct URL prefix. Sonar's static
+      // analysis can't see that this isn't a Node-side import.
+      const mod = await import('/src/stores/profiles.ts') // NOSONAR(javascript:S6859)
       const useProfilesStore = mod.useProfilesStore || mod.default
       if (!useProfilesStore) return { ok: false, why: 'no store export' }
       const store = useProfilesStore()
@@ -75,7 +78,9 @@ test.describe('Profiles', () => {
     await page.waitForLoadState('networkidle')
 
     const present = await page.evaluate(async (name) => {
-      const mod = await import('/src/stores/profiles.ts')
+      // Same Vite-resolver rationale as the prior test — Sonar can't tell
+      // this runs in the browser, not in Node.
+      const mod = await import('/src/stores/profiles.ts') // NOSONAR(javascript:S6859)
       const useProfilesStore = mod.useProfilesStore || mod.default
       if (!useProfilesStore) return { ok: false }
       const store = useProfilesStore()
