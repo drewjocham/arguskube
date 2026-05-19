@@ -606,6 +606,16 @@ var httpExposedMethods = map[string]struct{}{
 	"DeleteProfileVariant": {},
 	"GetActiveProfile":     {},
 	"SetActiveProfile":     {},
+	// Cloud secrets (Phase 1: read-only identity + list + reveal).
+	// All three calls resolve credentials from the Argus process's
+	// own environment (env vars, ~/.aws, ADC). An HTTP caller can
+	// therefore only ever observe the same secrets the operator
+	// already has access to from the same machine — exposure here
+	// doesn't widen the trust boundary, it just lets browser-mode
+	// users use the feature without dropping into the desktop app.
+	"CloudIdentities":   {},
+	"CloudListSecrets":  {},
+	"CloudRevealSecret": {},
 }
 
 func methodAllowedOverHTTP(name string) bool {
