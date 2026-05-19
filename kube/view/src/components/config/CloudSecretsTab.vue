@@ -65,7 +65,7 @@ function statusBadge(id) {
 function fmtExpiry(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
-  if (isNaN(d.getTime())) return iso
+  if (Number.isNaN(d.getTime())) return iso
   const now = Date.now()
   const diff = d.getTime() - now
   const abs = Math.abs(diff)
@@ -145,7 +145,7 @@ async function copyToClipboard(text) {
 function fmtDate(iso) {
   if (!iso) return '—'
   const d = new Date(iso)
-  if (isNaN(d.getTime())) return '—'
+  if (Number.isNaN(d.getTime())) return '—'
   return d.toISOString().slice(0, 10)
 }
 
@@ -381,9 +381,13 @@ function switchProvider(id) {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.ic-badge[data-tone="ok"]    { background: rgba(62,207,142,0.14); color: #3ecf8e; }
-.ic-badge[data-tone="warn"]  { background: rgba(245,166,35,0.16); color: #f5a623; }
-.ic-badge[data-tone="error"] { background: rgba(241,92,92,0.16); color: #f15c5c; }
+/* Badge foregrounds bumped to lighter tints — same hue family, but
+   high enough contrast against the translucent tinted backgrounds to
+   clear WCAG AA. The deeper saturations (#3ecf8e / #f5a623 / #f15c5c)
+   sit right at the threshold against same-hue overlays. */
+.ic-badge[data-tone="ok"]    { background: rgba(62,207,142,0.14); color: #6ee7b7; }
+.ic-badge[data-tone="warn"]  { background: rgba(245,166,35,0.16); color: #fcd34d; }
+.ic-badge[data-tone="error"] { background: rgba(241,92,92,0.16); color: #fca5a5; }
 .ic-badge[data-tone="neutral"] { background: rgba(255,255,255,0.06); color: var(--text3); }
 .ic-body { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text2); }
 .ic-row { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: baseline; }
@@ -420,9 +424,9 @@ function switchProvider(id) {
   cursor: pointer;
 }
 .data-btn.primary {
-  background: rgba(167,139,250,0.15);
-  border-color: rgba(167,139,250,0.3);
-  color: #a78bfa;
+  background: rgba(167,139,250,0.18);
+  border-color: rgba(167,139,250,0.45);
+  color: #c4b3fd; /* lighter purple for WCAG AA on the tinted bg */
 }
 .data-btn:hover:not(:disabled) { background: var(--bg4); color: var(--text); }
 .data-btn.primary:hover:not(:disabled) { background: rgba(167,139,250,0.25); }
@@ -439,7 +443,7 @@ function switchProvider(id) {
   padding: 14px;
   border-radius: 6px;
   font-size: 13px;
-  color: #8b8f96;
+  color: var(--text2, #b0b4ba); /* brighter than #8b8f96 to clear AA */
   display: block;
 }
 .state-error { color: #f15c5c; border-color: rgba(241,92,92,0.3); }

@@ -56,18 +56,19 @@ func (AzureProvider) Identity(ctx context.Context) Identity {
 	return id
 }
 
+// azureSecretsPathMarker is the path segment Key Vault URIs use to
+// delimit the secret name from the rest of the resource id, e.g.
+// https://my-vault.vault.azure.net/secrets/<name>/<version>.
+const azureSecretsPathMarker = "/secrets/"
+
 func (AzureProvider) ListSecrets(ctx context.Context, opts ListOpts) ([]SecretItem, error) {
 	vaultURL := normalizeAzureVaultURL(opts.AzureVaultURL)
 	if vaultURL == "" {
 		return nil, errors.New("Azure vault URL required (e.g. https://my-vault.vault.azure.net)")
 	}
-	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	cli, err := newAzureSecretsClient(vaultURL)
 	if err != nil {
-		return nil, fmt.Errorf("azure credential: %w", err)
-	}
-	cli, err := azsecrets.NewClient(vaultURL, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("keyvault client: %w", err)
+		return nil, err
 	}
 	pager := cli.NewListSecretsPager(nil)
 	items := []SecretItem{}
@@ -78,49 +79,79 @@ func (AzureProvider) ListSecrets(ctx context.Context, opts ListOpts) ([]SecretIt
 			return nil, fmt.Errorf("list secrets: %w", err)
 		}
 		for _, s := range resp.Value {
-			if s == nil || s.ID == nil {
-				continue
+			if item, ok := azureSecretItem(s, vaultURL); ok {
+				items = append(items, item)
 			}
-			full := string(*s.ID)
-			displayName := full
-			// ID shape: https://<vault>.vault.azure.net/secrets/<name>/<version?>
-			if i := strings.Index(full, "/secrets/"); i > 0 {
-				rest := full[i+len("/secrets/"):]
-				if slash := strings.Index(rest, "/"); slash > 0 {
-					displayName = rest[:slash]
-				} else {
-					displayName = rest
-				}
-			}
-			item := SecretItem{
-				Name:        full,
-				DisplayName: displayName,
-				Region:      vaultURL,
-			}
-			if s.Attributes != nil {
-				if s.Attributes.Created != nil {
-					item.Created = *s.Attributes.Created
-				}
-				if s.Attributes.Updated != nil {
-					item.Updated = *s.Attributes.Updated
-				}
-			}
-			if s.Tags != nil {
-				labels := make(map[string]string, len(s.Tags))
-				for k, v := range s.Tags {
-					if v != nil {
-						labels[k] = *v
-					}
-				}
-				if len(labels) > 0 {
-					item.Labels = labels
-				}
-			}
-			items = append(items, item)
 		}
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].DisplayName < items[j].DisplayName })
 	return items, nil
+}
+
+// newAzureSecretsClient wraps the credential + client construction so
+// the public list/reveal calls don't each carry the same boilerplate.
+func newAzureSecretsClient(vaultURL string) (*azsecrets.Client, error) {
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		return nil, fmt.Errorf("azure credential: %w", err)
+	}
+	cli, err := azsecrets.NewClient(vaultURL, cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("keyvault client: %w", err)
+	}
+	return cli, nil
+}
+
+// azureSecretItem projects a single SDK SecretItem into the cloud-
+// agnostic SecretItem row. Returns ok=false for entries that have no
+// id (no useful row content).
+func azureSecretItem(s *azsecrets.SecretItem, vaultURL string) (SecretItem, bool) {
+	if s == nil || s.ID == nil {
+		return SecretItem{}, false
+	}
+	full := string(*s.ID)
+	item := SecretItem{
+		Name:        full,
+		DisplayName: azureDisplayName(full),
+		Region:      vaultURL,
+	}
+	if s.Attributes != nil {
+		if s.Attributes.Created != nil {
+			item.Created = *s.Attributes.Created
+		}
+		if s.Attributes.Updated != nil {
+			item.Updated = *s.Attributes.Updated
+		}
+	}
+	if labels := azureLabelsFromTags(s.Tags); len(labels) > 0 {
+		item.Labels = labels
+	}
+	return item, true
+}
+
+func azureDisplayName(fullID string) string {
+	i := strings.Index(fullID, azureSecretsPathMarker)
+	if i < 0 {
+		return fullID
+	}
+	rest := fullID[i+len(azureSecretsPathMarker):]
+	if slash := strings.Index(rest, "/"); slash > 0 {
+		return rest[:slash]
+	}
+	return rest
+}
+
+func azureLabelsFromTags(tags map[string]*string) map[string]string {
+	if len(tags) == 0 {
+		return nil
+	}
+	labels := make(map[string]string, len(tags))
+	for k, v := range tags {
+		if v != nil {
+			labels[k] = *v
+		}
+	}
+	return labels
 }
 
 func (AzureProvider) RevealSecret(ctx context.Context, name string) (SecretValue, error) {
@@ -234,13 +265,12 @@ func normalizeAzureVaultURL(in string) string {
 //   https://my-vault.vault.azure.net/secrets/db-password/abc123
 //   -> "https://my-vault.vault.azure.net", "db-password", "abc123"
 func splitAzureSecretID(id string) (vault, name, version string) {
-	const marker = "/secrets/"
-	i := strings.Index(id, marker)
+	i := strings.Index(id, azureSecretsPathMarker)
 	if i < 0 {
 		return "", "", ""
 	}
 	vault = id[:i]
-	rest := id[i+len(marker):]
+	rest := id[i+len(azureSecretsPathMarker):]
 	if j := strings.Index(rest, "/"); j > 0 {
 		return vault, rest[:j], rest[j+1:]
 	}

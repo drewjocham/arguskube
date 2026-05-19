@@ -78,52 +78,11 @@ func (VaultProvider) ListSecrets(ctx context.Context, opts ListOpts) ([]SecretIt
 	}
 	prefix := strings.Trim(opts.VaultPath, "/")
 
-	// KV v2 listing path: <mount>/metadata/<prefix>
-	listPath := mount + "/metadata"
-	if prefix != "" {
-		listPath += "/" + prefix
-	}
-	sec, err := cli.Logical().ListWithContext(ctx, listPath)
+	keys, err := vaultListKeys(ctx, cli, mount, prefix)
 	if err != nil {
-		// Fall back to KV v1 layout if v2 metadata isn't there.
-		v1, v1err := cli.Logical().ListWithContext(ctx, mount+"/"+prefix)
-		if v1err != nil {
-			return nil, fmt.Errorf("list %s: %w", listPath, err)
-		}
-		sec = v1
+		return nil, err
 	}
-	if sec == nil || sec.Data == nil {
-		return []SecretItem{}, nil
-	}
-	keysAny, ok := sec.Data["keys"]
-	if !ok {
-		return []SecretItem{}, nil
-	}
-	keys, ok := keysAny.([]interface{})
-	if !ok {
-		return []SecretItem{}, nil
-	}
-	items := make([]SecretItem, 0, len(keys))
-	for _, k := range keys {
-		name, _ := k.(string)
-		if name == "" {
-			continue
-		}
-		full := name
-		if prefix != "" {
-			full = prefix + "/" + name
-		}
-		// Skip directory entries — frontend doesn't recurse yet; the
-		// user types the deeper prefix into the path input.
-		if strings.HasSuffix(name, "/") {
-			continue
-		}
-		items = append(items, SecretItem{
-			Name:        mount + "/" + full,
-			DisplayName: full,
-			Region:      mount,
-		})
-	}
+	items := vaultKeysToItems(mount, prefix, keys)
 	sort.Slice(items, func(i, j int) bool { return items[i].DisplayName < items[j].DisplayName })
 	return items, nil
 }
@@ -161,6 +120,53 @@ func (VaultProvider) RevealSecret(ctx context.Context, name string) (SecretValue
 }
 
 // ── helpers ──────────────────────────────────────────────────────
+
+// vaultListKeys returns the raw key slice for a given mount + prefix,
+// trying KV v2 first and falling back to KV v1 layout. Empty slice
+// (no error) when the path exists but has no children.
+func vaultListKeys(ctx context.Context, cli *vaultapi.Client, mount, prefix string) ([]interface{}, error) {
+	listPath := mount + "/metadata"
+	if prefix != "" {
+		listPath += "/" + prefix
+	}
+	sec, err := cli.Logical().ListWithContext(ctx, listPath)
+	if err != nil {
+		v1, v1err := cli.Logical().ListWithContext(ctx, mount+"/"+prefix)
+		if v1err != nil {
+			return nil, fmt.Errorf("list %s: %w", listPath, err)
+		}
+		sec = v1
+	}
+	if sec == nil || sec.Data == nil {
+		return nil, nil
+	}
+	keys, _ := sec.Data["keys"].([]interface{})
+	return keys, nil
+}
+
+// vaultKeysToItems projects the raw key slice from
+// Logical.List into SecretItem rows. Directory entries (trailing /)
+// are skipped — the frontend doesn't recurse yet; the user re-runs
+// the list with the deeper prefix.
+func vaultKeysToItems(mount, prefix string, keys []interface{}) []SecretItem {
+	items := make([]SecretItem, 0, len(keys))
+	for _, k := range keys {
+		name, _ := k.(string)
+		if name == "" || strings.HasSuffix(name, "/") {
+			continue
+		}
+		full := name
+		if prefix != "" {
+			full = prefix + "/" + name
+		}
+		items = append(items, SecretItem{
+			Name:        mount + "/" + full,
+			DisplayName: full,
+			Region:      mount,
+		})
+	}
+	return items
+}
 
 // vaultClient builds a Vault API client from ambient env. The Vault
 // SDK already honors VAULT_ADDR/VAULT_TOKEN/VAULT_NAMESPACE — we
