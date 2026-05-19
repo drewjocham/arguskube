@@ -169,13 +169,12 @@ func (a *App) rebuildWorkspaceProviders() {
 		return
 	}
 	providers := []workspace.Provider{}
-	if id, sec := a.cfg.Workspace.GoogleClientID, a.cfg.Workspace.GoogleClientSecret; id != "" && sec != "" {
-		providers = append(providers, &workspace.GoogleProvider{
-			ClientID:     id,
-			ClientSecret: sec,
-			RedirectURL:  strings.TrimRight(a.cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback",
-		})
-	}
+	id, sec := a.cfg.Workspace.GoogleClientID, a.cfg.Workspace.GoogleClientSecret
+	providers = append(providers, &workspace.GoogleProvider{
+		ClientID:     id,
+		ClientSecret: sec,
+		RedirectURL:  strings.TrimRight(a.cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback",
+	})
 	if id, sec := a.cfg.Workspace.SlackClientID, a.cfg.Workspace.SlackClientSecret; id != "" && sec != "" {
 		providers = append(providers, &workspace.SlackProvider{
 			ClientID:     id,
@@ -183,6 +182,9 @@ func (a *App) rebuildWorkspaceProviders() {
 			RedirectURL:  strings.TrimRight(a.cfg.Auth.PublicBaseURL, "/") + "/workspace/oauth/callback",
 		})
 	}
+	// iCloud is always available — it doesn't need OAuth client credentials
+	// (uses app-specific passwords validated via CalDAV).
+	providers = append(providers, workspace.NewICloudProvider())
 	a.workspace.ReregisterProviders(providers)
 	if len(providers) > 0 {
 		a.logger.Info("workspace providers rebuilt", slog.Int("count", len(providers)))
@@ -294,6 +296,9 @@ type SettingsPayload struct {
 	SlackClientID               string `json:"slackClientId"`
 	SlackClientSecret           string `json:"slackClientSecret"`
 	SlackSigningSecret          string `json:"slackSigningSecret"`
+	// Microsoft 365
+	WorkspaceMicrosoftClientID     string `json:"workspaceMicrosoftClientId"`
+	WorkspaceMicrosoftClientSecret string `json:"workspaceMicrosoftClientSecret"`
 }
 
 func maskSecret(s string) string {

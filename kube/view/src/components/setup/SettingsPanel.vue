@@ -15,6 +15,7 @@ import { useWatcherRegistryStore } from '../../stores/watcherRegistry'
 import { runDueNow as watcherRunDueNow, runWatcherById } from '../../composables/useWatcherEngine'
 import Select from '../common/Select.vue'
 import RevealableInput from '../common/RevealableInput.vue'
+import LockableField from '../common/LockableField.vue'
 import SecretsToolProbeRow from './SecretsToolProbeRow.vue'
 import SetupChecklist from './SetupChecklist.vue'
 import PrivacyControls from './PrivacyControls.vue'
@@ -568,6 +569,8 @@ const form = ref({
   slackClientId: '',
   slackClientSecret: '',
   slackSigningSecret: '',
+  workspaceMicrosoftClientId: '',
+  workspaceMicrosoftClientSecret: '',
 })
 
 const PIPELINE_PROVIDERS = [
@@ -773,6 +776,8 @@ async function loadSettings() {
         slackClientId: result.slackClientId || '',
         slackClientSecret: result.slackClientSecret || '',
         slackSigningSecret: result.slackSigningSecret || '',
+        workspaceMicrosoftClientId: result.workspaceMicrosoftClientId || '',
+        workspaceMicrosoftClientSecret: result.workspaceMicrosoftClientSecret || '',
       }
     }
   } catch (e) {
@@ -877,6 +882,8 @@ async function saveSettings() {
       slackClientId: form.value.slackClientId,
       slackClientSecret: form.value.slackClientSecret,
       slackSigningSecret: form.value.slackSigningSecret,
+      workspaceMicrosoftClientId: form.value.workspaceMicrosoftClientId,
+      workspaceMicrosoftClientSecret: form.value.workspaceMicrosoftClientSecret,
     })
     saveMessage.value = 'Sign-in providers reloaded — no restart needed.'
     await loadSettings()
@@ -1500,26 +1507,47 @@ onMounted(async () => {
             from the sign-in credentials above.
           </p>
 
+          <!-- Locked-by-default behavior:
+               When a saved credential comes back from GetSettings,
+               LockableField renders a "configured" placeholder
+               (••••••••) WITHOUT putting the value in the DOM.
+               The Unlock checkbox is required to view or replace it.
+               Empty fields start unlocked so first-time setup is
+               a single-step type-and-save. -->
           <div class="field-group">
             <div class="field"><label class="label">Google Workspace client ID</label>
-              <input v-model="form.workspaceGoogleClientId" type="text" class="input mono" />
+              <LockableField v-model="form.workspaceGoogleClientId" input-class="input mono" />
             </div>
             <div class="field"><label class="label">Google Workspace client secret</label>
-              <RevealableInput v-model="form.workspaceGoogleClientSecret" input-class="input mono" />
+              <LockableField v-model="form.workspaceGoogleClientSecret" input-class="input mono" />
             </div>
           </div>
 
           <div class="field-group">
             <div class="field"><label class="label">Slack client ID</label>
-              <input v-model="form.slackClientId" type="text" class="input mono" />
+              <LockableField v-model="form.slackClientId" input-class="input mono" />
             </div>
             <div class="field"><label class="label">Slack client secret</label>
-              <RevealableInput v-model="form.slackClientSecret" input-class="input mono" />
+              <LockableField v-model="form.slackClientSecret" input-class="input mono" />
             </div>
           </div>
           <div class="field">
             <label class="label">Slack signing secret (Events API)</label>
-            <RevealableInput v-model="form.slackSigningSecret" input-class="input mono" />
+            <LockableField v-model="form.slackSigningSecret" input-class="input mono" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Microsoft 365 workspace credentials -->
+      <div class="setting-group">
+        <h3 class="group-title">Microsoft 365 (Workspace)</h3>
+        <p class="hint">Setup: <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank">portal.azure.com → App registrations</a>. Redirect URI: <code>http://127.0.0.1:8080/workspace/oauth/callback</code>. API permissions: Microsoft Graph → Calendars.ReadWrite, Files.ReadWrite, Tasks.ReadWrite, User.Read.</p>
+        <div class="field-group">
+          <div class="field"><label class="label">Microsoft client ID</label>
+            <LockableField v-model="form.workspaceMicrosoftClientId" input-class="input mono" />
+          </div>
+          <div class="field"><label class="label">Microsoft client secret</label>
+            <LockableField v-model="form.workspaceMicrosoftClientSecret" input-class="input mono" />
           </div>
         </div>
       </div>

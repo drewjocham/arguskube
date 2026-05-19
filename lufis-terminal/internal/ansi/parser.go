@@ -109,6 +109,15 @@ func (p *Parser) paramClamp(i int, def int) int {
 }
 
 func (p *Parser) ground(b byte) {
+	// Flush any pending incomplete UTF-8 sequence when a non-continuation
+	// byte arrives. This handles truncated sequences and stray bytes.
+	if len(p.runeBuf) > 0 && (b < 0x80 || b > 0xBF) {
+		for range p.runeBuf {
+			p.buffer.Print('\uFFFD')
+		}
+		p.runeBuf = p.runeBuf[:0]
+	}
+
 	switch {
 	case b == 0x1b:
 		p.state = stateEscape
@@ -385,7 +394,8 @@ func (p *Parser) dispatchSGR() {
 			p.buffer.SetAttr(screen.AttrHidden)
 		case param == 9:
 			p.buffer.SetAttr(screen.AttrStrikethrough)
-		case 21 <= param && param <= 29:
+		case param == 21:
+			p.buffer.ClearAttr(screen.AttrUnderline)
 		case param == 22:
 			p.buffer.ClearAttr(screen.AttrBold)
 			p.buffer.ClearAttr(screen.AttrDim)
@@ -485,7 +495,105 @@ func (p *Parser) dispatchOSC() {
 	_ = data
 }
 
+// decodeUTF8 accumulates bytes for a single UTF-8 code point and emits it
+// once the sequence is complete. It handles 2-, 3-, and 4-byte sequences.
+// Invalid sequences emit U+FFFD (replacement character) for each bad byte.
 func (p *Parser) decodeUTF8(b byte) {
-	p.runeBuf = p.runeBuf[:0]
+	if b < 0x80 {
+		// ASCII byte in the UTF-8 path shouldn't happen, but handle it.
+		p.buffer.Print(rune(b))
+		return
+	}
+
+	if len(p.runeBuf) == 0 {
+		// Start of a new multi-byte sequence.
+		if b < 0xC0 || b > 0xF7 {
+			// Invalid leading byte.
+			p.buffer.Print('\uFFFD')
+			return
+		}
+		p.runeBuf = append(p.runeBuf, rune(b))
+		return
+	}
+
+	// Continuation byte expected.
+	if b < 0x80 || b > 0xBF {
+		// Invalid continuation byte. Flush what we have as replacement chars
+		// and treat this byte as a new leading byte.
+		for range p.runeBuf {
+			p.buffer.Print('\uFFFD')
+		}
+		p.runeBuf = p.runeBuf[:0]
+		// Recurse to handle this byte as a fresh start.
+		p.decodeUTF8(b)
+		return
+	}
+
 	p.runeBuf = append(p.runeBuf, rune(b))
+	// Check if we have a complete sequence.
+	lead := p.runeBuf[0]
+	var expectedLen int
+	switch {
+	case lead&0xE0 == 0xC0:
+		expectedLen = 2
+	case lead&0xF0 == 0xE0:
+		expectedLen = 3
+	case lead&0xF8 == 0xF0:
+		expectedLen = 4
+	default:
+		// Shouldn't reach here — invalid leading byte.
+		for range p.runeBuf {
+			p.buffer.Print('\uFFFD')
+		}
+		p.runeBuf = p.runeBuf[:0]
+		return
+	}
+
+	if len(p.runeBuf) < expectedLen {
+		return // Wait for more continuation bytes.
+	}
+
+	// Decode the accumulated bytes into a rune.
+	r, ok := decodeRune(p.runeBuf)
+	p.runeBuf = p.runeBuf[:0]
+	if !ok {
+		r = '\uFFFD'
+	}
+	p.buffer.Print(r)
+}
+
+// decodeRune decodes a complete UTF-8 byte sequence into a rune.
+// Each element of seq is a rune holding a raw byte value (0x00-0xFF).
+// Returns the rune and true on success, or 0, false on an overlong
+// or surrogate sequence.
+func decodeRune(seq []rune) (rune, bool) {
+	b0, b1 := byte(seq[0]), byte(0)
+	if len(seq) > 1 {
+		b1 = byte(seq[1])
+	}
+	switch len(seq) {
+	case 2:
+		r := rune(b0&0x1F)<<6 | rune(b1&0x3F)
+		if r < 0x80 {
+			return 0, false // overlong
+		}
+		return r, true
+	case 3:
+		b2 := byte(seq[2])
+		r := rune(b0&0x0F)<<12 | rune(b1&0x3F)<<6 | rune(b2&0x3F)
+		if r < 0x800 || (0xD800 <= r && r <= 0xDFFF) {
+			return 0, false // overlong or surrogate
+		}
+		return r, true
+	case 4:
+		b2, b3 := byte(seq[2]), byte(seq[3])
+		r := rune(b0&0x07)<<18 | rune(b1&0x3F)<<12 |
+			rune(b2&0x3F)<<6 | rune(b3&0x3F)
+		if r < 0x10000 || r > 0x10FFFF {
+			return 0, false // overlong or out of Unicode range
+		}
+		return r, true
+	default:
+		return 0, false
+	}
 }

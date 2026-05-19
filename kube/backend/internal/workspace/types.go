@@ -33,6 +33,10 @@ const (
 	// connection rather than three separate ones.
 	ServiceGoogle Service = "google"
 
+	// ServiceGCal is the Google Calendar capability. Like Docs/Sheets/Tasks,
+	// it shares the unified Google OAuth grant under ServiceGoogle.
+	ServiceGCal Service = "gcal"
+
 	// ServiceGDocs/GSheets/GTasks are retained as per-capability
 	// aliases so callers that only need one slice (a Docs-only test
 	// fixture, e.g.) can name it directly. The active OAuth grant
@@ -40,18 +44,34 @@ const (
 	ServiceGDocs   Service = "gdocs"
 	ServiceGSheets Service = "gsheets"
 	ServiceGTasks  Service = "gtasks"
+	// ServiceICloud is the Apple iCloud integration. Uses app-specific
+	// passwords (not OAuth) — stored in the same encrypted token store
+	// with no refresh token or expiry.
+	ServiceICloud Service = "icloud"
+	// ServiceMicrosoft is the Microsoft 365 / Graph integration. Uses
+	// OAuth 2.0 with Microsoft identity platform. Covers Outlook Calendar,
+	// OneDrive, and eventually Teams.
+	ServiceMicrosoft Service = "microsoft"
+	// ServiceCustom is a manual/fallback connection type for providers
+	// not in the built-in catalogue. The user enters a display name and
+	// the connection is tracked but no API calls are made.
+	ServiceCustom Service = "custom"
 )
 
 // supportedServices is the closed enum the manager accepts. Adding a
 // new service means adding it here AND registering a Provider in
 // WorkspaceManager.
 var supportedServices = map[Service]bool{
-	ServiceSlack:   true,
-	ServiceGChat:   true,
-	ServiceGoogle:  true,
-	ServiceGDocs:   true,
-	ServiceGSheets: true,
-	ServiceGTasks:  true,
+	ServiceSlack:     true,
+	ServiceGChat:     true,
+	ServiceGoogle:    true,
+	ServiceGCal:      true,
+	ServiceGDocs:     true,
+	ServiceGSheets:   true,
+	ServiceGTasks:    true,
+	ServiceICloud:    true,
+	ServiceMicrosoft: true,
+	ServiceCustom:    true,
 }
 
 // Connection is one user's link to a specific external workspace —
@@ -163,4 +183,30 @@ type Messenger interface {
 type Channel struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+// Calendarer is implemented by calendar integrations (Google Calendar,
+// iCloud CalDAV). Following the same pattern as Messenger/DocEditor/
+// SheetEditor.
+type Calendarer interface {
+	Integration
+	ListEvents(ctx context.Context, token Token, start, end string) ([]Event, error)
+	CreateEvent(ctx context.Context, token Token, ev Event) (Event, error)
+	UpdateEvent(ctx context.Context, token Token, eventID string, ev Event) (Event, error)
+	DeleteEvent(ctx context.Context, token Token, eventID string) error
+}
+
+// Event is the normalised calendar event returned by Calendarer
+// implementations. Times are RFC 3339 strings (what Google Calendar v3
+// and CalDAV both speak natively). Provider-specific extra fields
+// (attendees, recurrence, etc.) are surfaced by the adapter's own
+// richer type.
+type Event struct {
+	ID          string `json:"id"`
+	Summary     string `json:"summary"`
+	Description string `json:"description,omitempty"`
+	Location    string `json:"location,omitempty"`
+	Start       string `json:"start"` // RFC 3339
+	End         string `json:"end"`   // RFC 3339
+	HTMLink     string `json:"htmlLink,omitempty"`
 }

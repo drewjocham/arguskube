@@ -34,6 +34,7 @@ const (
 	googleScopes = "https://www.googleapis.com/auth/documents " +
 		"https://www.googleapis.com/auth/spreadsheets " +
 		"https://www.googleapis.com/auth/tasks " +
+		"https://www.googleapis.com/auth/calendar " +
 		// Google Chat scopes — chat.spaces.readonly lists the spaces
 		// the user is in; chat.messages.create lets the adapter post.
 		// Connected users from before Phase 3 won't have these grants
@@ -55,10 +56,10 @@ type GoogleProvider struct {
 	RedirectURL  string
 
 	// Test overrides.
-	HTTPClient   *http.Client
-	AuthURLBase  string
-	TokenURL     string
-	UserinfoURL  string
+	HTTPClient  *http.Client
+	AuthURLBase string
+	TokenURL    string
+	UserinfoURL string
 
 	// flightMu guards flights; flights maps state -> PKCE verifier for
 	// in-progress flows so Complete can recover the verifier that was

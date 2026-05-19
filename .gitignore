@@ -35,6 +35,9 @@ HomePage/dist/
 .vscode/
 *.swp
 
+# Claude agent worktrees
+.claude/
+
 # Python
 **/__pycache__/
 *.egg-info/

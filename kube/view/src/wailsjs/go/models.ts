@@ -4208,6 +4208,8 @@ export namespace pkg {
 	    slackClientId: string;
 	    slackClientSecret: string;
 	    slackSigningSecret: string;
+	    workspaceMicrosoftClientId: string;
+	    workspaceMicrosoftClientSecret: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SettingsPayload(source);
@@ -4279,6 +4281,8 @@ export namespace pkg {
 	        this.slackClientId = source["slackClientId"];
 	        this.slackClientSecret = source["slackClientSecret"];
 	        this.slackSigningSecret = source["slackSigningSecret"];
+	        this.workspaceMicrosoftClientId = source["workspaceMicrosoftClientId"];
+	        this.workspaceMicrosoftClientSecret = source["workspaceMicrosoftClientSecret"];
 	    }
 	}
 	export class SettingsResult {
@@ -6402,6 +6406,30 @@ export namespace workspace {
 	        this.id = source["id"];
 	        this.title = source["title"];
 	        this.body = source["body"];
+	    }
+	}
+	export class Event {
+	    id: string;
+	    summary: string;
+	    description?: string;
+	    location?: string;
+	    start: string;
+	    end: string;
+	    htmlLink?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Event(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.summary = source["summary"];
+	        this.description = source["description"];
+	        this.location = source["location"];
+	        this.start = source["start"];
+	        this.end = source["end"];
+	        this.htmlLink = source["htmlLink"];
 	    }
 	}
 	export class Sheet {

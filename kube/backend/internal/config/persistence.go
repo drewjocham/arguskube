@@ -102,6 +102,9 @@ type PersistedWorkspaceSettings struct {
 	SlackClientID      string `json:"slackClientId,omitempty"`
 	SlackClientSecret  string `json:"slackClientSecret,omitempty"`
 	SlackSigningSecret string `json:"slackSigningSecret,omitempty"`
+	// Microsoft 365 / Graph
+	MicrosoftClientID     string `json:"microsoftClientId,omitempty"`
+	MicrosoftClientSecret string `json:"microsoftClientSecret,omitempty"`
 }
 
 // PersistedPipelinesSettings mirrors PipelinesConfig 1:1 so every field the
@@ -329,11 +332,13 @@ func (s *PersistedSettings) MergeInto(cfg *OnlineDataConfig) {
 	// Workspace OAuth credentials: same gated replace.
 	if s.HasWorkspace {
 		cfg.Workspace = WorkspaceConfig{
-			GoogleClientID:     s.Workspace.GoogleClientID,
-			GoogleClientSecret: s.Workspace.GoogleClientSecret,
-			SlackClientID:      s.Workspace.SlackClientID,
-			SlackClientSecret:  s.Workspace.SlackClientSecret,
-			SlackSigningSecret: s.Workspace.SlackSigningSecret,
+			GoogleClientID:        s.Workspace.GoogleClientID,
+			GoogleClientSecret:    s.Workspace.GoogleClientSecret,
+			SlackClientID:         s.Workspace.SlackClientID,
+			SlackClientSecret:     s.Workspace.SlackClientSecret,
+			SlackSigningSecret:    s.Workspace.SlackSigningSecret,
+			MicrosoftClientID:     s.Workspace.MicrosoftClientID,
+			MicrosoftClientSecret: s.Workspace.MicrosoftClientSecret,
 		}
 	}
 }
@@ -394,11 +399,13 @@ func FromConfig(cfg *OnlineDataConfig) *PersistedSettings {
 		Auth:              authFromConfig(cfg.Auth),
 		HasWorkspace:      true,
 		Workspace: PersistedWorkspaceSettings{
-			GoogleClientID:     cfg.Workspace.GoogleClientID,
-			GoogleClientSecret: cfg.Workspace.GoogleClientSecret,
-			SlackClientID:      cfg.Workspace.SlackClientID,
-			SlackClientSecret:  cfg.Workspace.SlackClientSecret,
-			SlackSigningSecret: cfg.Workspace.SlackSigningSecret,
+			GoogleClientID:        cfg.Workspace.GoogleClientID,
+			GoogleClientSecret:    cfg.Workspace.GoogleClientSecret,
+			SlackClientID:         cfg.Workspace.SlackClientID,
+			SlackClientSecret:     cfg.Workspace.SlackClientSecret,
+			SlackSigningSecret:    cfg.Workspace.SlackSigningSecret,
+			MicrosoftClientID:     cfg.Workspace.MicrosoftClientID,
+			MicrosoftClientSecret: cfg.Workspace.MicrosoftClientSecret,
 		},
 	}
 }

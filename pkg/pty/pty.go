@@ -80,6 +80,11 @@ type PTY struct {
 	ptmx   *os.File
 	closed bool
 
+	// done is closed by closeLocked to signal the readLoop goroutine
+	// to exit. A new channel is created each Start() so each
+	// incarnation gets its own cancellation signal.
+	done chan struct{}
+
 	// OnOutput is the callback the readLoop fires for each chunk of
 	// data the PTY produces. Safe to set before Start; ignored when
 	// nil. Implementations should not block — readLoop runs single-
@@ -111,6 +116,8 @@ func (p *PTY) Start(opts Options) error {
 	if p.ptmx != nil {
 		_ = p.closeLocked()
 	}
+
+	p.done = make(chan struct{})
 
 	shell := opts.Shell
 	if shell == "" {
@@ -151,7 +158,7 @@ func (p *PTY) Start(opts Options) error {
 	if bufSize <= 0 {
 		bufSize = DefaultBufferSize
 	}
-	go p.readLoop(ptmx, bufSize)
+	go p.readLoop(ptmx, p.done, bufSize)
 
 	return nil
 }
@@ -206,6 +213,11 @@ func (p *PTY) closeLocked() error {
 	}
 	p.closed = true
 
+	// Signal the readLoop goroutine to exit.
+	if p.done != nil {
+		close(p.done)
+	}
+
 	var errs []error
 	if p.ptmx != nil {
 		if err := p.ptmx.Close(); err != nil {
@@ -235,12 +247,19 @@ func (p *PTY) IsRunning() bool {
 	return p.ptmx != nil && !p.closed && p.cmd != nil && p.cmd.Process != nil
 }
 
-// readLoop pulls data off the PTY until it closes. ptmx is passed
-// in rather than read off p.ptmx so a future Start() that swaps the
-// field can't race the goroutine. bufSize is the read buffer size.
-func (p *PTY) readLoop(ptmx *os.File, bufSize int) {
+// readLoop pulls data off the PTY until it closes or the done
+// channel is signalled. ptmx is passed in rather than read off
+// p.ptmx so a future Start() that swaps the field can't race the
+// goroutine. done is closed by closeLocked to cancel the loop.
+// bufSize is the read buffer size.
+func (p *PTY) readLoop(ptmx *os.File, done <-chan struct{}, bufSize int) {
 	buf := make([]byte, bufSize)
 	for {
+		select {
+		case <-done:
+			return
+		default:
+		}
 		n, err := ptmx.Read(buf)
 		if n > 0 && p.OnOutput != nil {
 			p.OnOutput(string(buf[:n]))

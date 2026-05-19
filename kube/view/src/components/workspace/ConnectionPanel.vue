@@ -5,14 +5,185 @@
 //
 // Per-service control panels (channels, doc pickers, etc.) live in
 // their own tabs in 1B+; this tile is intentionally minimal.
+//
+// Inline OAuth credential editor: each Google-family tile exposes an
+// expander that shows the workspaceGoogle* values from settings via
+// LockableField. Saved values render LOCKED with a placeholder, no
+// raw value in the DOM, and require ticking "Unlock to edit" to be
+// modified. The expander lives here (not in Settings) so the user
+// can set up credentials WITHOUT navigating away from the page that
+// gates on them — the previous flow was "see the Connect button is
+// dead → click 'Open Settings' link → scroll to OAuth section → save
+// → go back". That trip is the entire reason this expander exists.
 
 import { onMounted, ref, computed } from 'vue'
+import { callGo } from '../../composables/useBridge'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useAppNavStore } from '../../stores/appNav'
+import { useSectionTabsStore } from '../../stores/sectionTabs'
+import LockableField from '../common/LockableField.vue'
 
 const store = useWorkspaceStore()
 const appNav = useAppNavStore()
+const sectionTabsStore = useSectionTabsStore()
 const connecting = ref({})  // service -> bool
+
+// OAuth-credential form state, loaded lazily from GetSettings the
+// first time the user expands a tile. Holds ALL settings so a save
+// can round-trip through UpdateSettings without nulling out unrelated
+// fields. settingsLoaded gates the expander UI so the user doesn't
+// see empty inputs before the backend round-trip completes.
+const settingsForm = ref(null)
+const settingsLoaded = ref(false)
+const settingsLoadError = ref('')
+const settingsSaving = ref(false)
+const settingsSavedAt = ref(0)
+// Tracks which tiles have their credentials expander open. Keyed by
+// service so multiple tiles can be open simultaneously.
+const credsExpanded = ref({})
+
+// iCloud inline connect state — shown when user clicks Connect on the icloud tile.
+const icloudAppleID = ref('')
+const icloudAppPassword = ref('')
+const icloudConnecting = ref(false)
+const icloudConnectError = ref('')
+
+function startICloudFlow() {
+  credsExpanded.value = { ...credsExpanded.value, icloud: true }
+}
+
+async function doICloudConnect() {
+  if (!icloudAppleID.value.trim() || !icloudAppPassword.value.trim()) return
+  icloudConnecting.value = true
+  icloudConnectError.value = ''
+  try {
+    await store.connectICloud(icloudAppleID.value.trim(), icloudAppPassword.value)
+    icloudAppleID.value = ''
+    icloudAppPassword.value = ''
+    credsExpanded.value = { ...credsExpanded.value, icloud: false }
+  } catch (e) {
+    icloudConnectError.value = e?.message || String(e)
+  } finally {
+    icloudConnecting.value = false
+  }
+}
+
+async function loadSettingsOnce() {
+  if (settingsLoaded.value) return
+  try {
+    const result = await callGo('GetSettings')
+    settingsForm.value = result || {}
+    settingsLoaded.value = true
+  } catch (err) {
+    settingsLoadError.value = err?.message || String(err)
+  }
+}
+
+async function toggleCreds(service) {
+  credsExpanded.value = { ...credsExpanded.value, [service]: !credsExpanded.value[service] }
+  if (credsExpanded.value[service]) {
+    await loadSettingsOnce()
+  }
+}
+
+// saveCredentials sends the full settings object back so the backend
+// keeps every other field intact. The user only edits OAuth values
+// here; the rest of the form is whatever we loaded.
+async function saveCredentials() {
+  if (!settingsForm.value) return
+  settingsSaving.value = true
+  try {
+    await callGo('UpdateSettings', settingsForm.value)
+    settingsSavedAt.value = Date.now()
+    // Re-load services because a new Google client ID could enable
+    // a Provider that wasn't available before.
+    await store.loadServices()
+  } catch (err) {
+    settingsLoadError.value = err?.message || String(err)
+  } finally {
+    settingsSaving.value = false
+  }
+}
+
+// Per-service field map. Fields saved here are the same ones the
+// Settings panel reads/writes — changing them in either place updates both.
+const CRED_FIELDS = {
+  google: [
+    { key: 'workspaceGoogleClientId',     label: 'Google client ID' },
+    { key: 'workspaceGoogleClientSecret', label: 'Google client secret' },
+  ],
+  gchat: [
+    { key: 'workspaceGoogleClientId',     label: 'Google client ID' },
+    { key: 'workspaceGoogleClientSecret', label: 'Google client secret' },
+  ],
+  gcal: [
+    { key: 'workspaceGoogleClientId',     label: 'Google client ID' },
+    { key: 'workspaceGoogleClientSecret', label: 'Google client secret' },
+  ],
+  gdocs:   null,
+  gsheets: null,
+  gtasks:  null,
+  microsoft: [
+    { key: 'workspaceMicrosoftClientId',     label: 'Microsoft client ID' },
+    { key: 'workspaceMicrosoftClientSecret', label: 'Microsoft client secret' },
+  ],
+  slack: [
+    { key: 'slackClientId',     label: 'Slack client ID' },
+    { key: 'slackClientSecret', label: 'Slack client secret' },
+  ],
+}
+
+// Setup guides — shown when the user expands a tile's credentials section
+// or on first connect attempt for unconfigured providers.
+const SETUP_GUIDES = {
+  google: {
+    title: 'Google Cloud Console',
+    url: 'https://console.cloud.google.com/apis/credentials',
+    steps: [
+      '1. Go to APIs & Services → Credentials',
+      '2. Create OAuth 2.0 Client ID → Desktop app',
+      '3. Add redirect URI: http://127.0.0.1:8080/workspace/oauth/callback',
+      '4. Copy the Client ID and Client Secret below',
+    ],
+    scopes: 'APIs needed: Google Docs, Google Sheets, Google Calendar, Google Tasks',
+  },
+  microsoft: {
+    title: 'Azure Portal',
+    url: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
+    steps: [
+      '1. App registrations → New registration',
+      '2. Redirect URI: Web → http://127.0.0.1:8080/workspace/oauth/callback',
+      '3. Certificates & secrets → New client secret',
+      '4. API permissions → Microsoft Graph → Calendars.ReadWrite, Files.ReadWrite, Tasks.ReadWrite, User.Read',
+      '5. Copy the Application (client) ID and secret value below',
+    ],
+  },
+  slack: {
+    title: 'Slack API',
+    url: 'https://api.slack.com/apps',
+    steps: [
+      '1. Create New App → From scratch',
+      '2. OAuth & Permissions → Add redirect URL: http://127.0.0.1:8080/workspace/oauth/callback',
+      '3. Bot Token Scopes: chat:write, channels:read',
+      '4. Install to workspace, copy Client ID and Client Secret',
+    ],
+  },
+  icloud: {
+    title: 'Apple ID',
+    url: 'https://appleid.apple.com/account/manage',
+    steps: [
+      '1. Sign in → Sign-In and Security → App-Specific Passwords',
+      '2. Generate a password named "Argus"',
+      '3. Enter your Apple ID and the generated password in the iCloud panel',
+    ],
+  },
+}
+function credFieldsFor(service) {
+  return CRED_FIELDS[service] || null
+}
+function setupGuideFor(service) {
+  return SETUP_GUIDES[service] || null
+}
 
 // Empty-state CTA: jump to the new "Sign-in & integrations" section in
 // Settings so the user can paste OAuth client credentials without
@@ -35,6 +206,10 @@ const SERVICE_META = {
   gdocs:   { label: 'Google Docs',   color: '#4285F4', letter: 'D' },
   gsheets: { label: 'Google Sheets', color: '#0F9D58', letter: 'S' },
   gtasks:  { label: 'Google Tasks',  color: '#4285F4', letter: 'T' },
+  gcal:    { label: 'Google Calendar', color: '#4285F4', letter: 'E' },
+  microsoft: { label: 'Microsoft 365', color: '#0078D4', letter: 'M' },
+  icloud:  { label: 'iCloud',        color: '#007AFF', letter: 'i' },
+  custom:  { label: 'Manual / Custom', color: '#6B7280', letter: '?' },
 }
 
 onMounted(async () => {
@@ -45,6 +220,18 @@ onMounted(async () => {
 const visibleServices = computed(() => store.services.filter(s => SERVICE_META[s]))
 
 async function onConnect(service) {
+  // iCloud uses app-specific passwords. Open inline form on the tile.
+  if (service === 'icloud') {
+    startICloudFlow()
+    return
+  }
+  // Custom/manual connection — prompt for a display name.
+  if (service === 'custom') {
+    const name = window.prompt('Name for this manual connection:')
+    if (!name || !name.trim()) return
+    await store.connectCustom(name.trim(), '')
+    return
+  }
   connecting.value = { ...connecting.value, [service]: true }
   try {
     await store.startConnect(service)
@@ -107,12 +294,82 @@ function avatarStyle(meta) {
             </div>
           </div>
           <button
+            v-if="credFieldsFor(svc)"
+            class="creds-btn"
+            type="button"
+            :aria-expanded="!!credsExpanded[svc]"
+            :title="credsExpanded[svc] ? 'Hide OAuth credentials' : 'Configure OAuth credentials'"
+            @click="toggleCreds(svc)"
+          >{{ credsExpanded[svc] ? 'Hide credentials' : 'Credentials' }}</button>
+          <button
             class="connect-btn"
             :disabled="connecting[svc]"
             @click="onConnect(svc)"
           >
             {{ connecting[svc] ? 'Connecting…' : (store.connectionsByService[svc]?.length ? 'Add another' : 'Connect') }}
           </button>
+        </div>
+
+        <!-- OAuth credential editor.
+             Locked by default when a saved value comes back from
+             GetSettings — LockableField renders the placeholder, NOT
+             the raw value, so the secret never reaches the DOM until
+             the user explicitly unlocks. -->
+        <div v-if="credsExpanded[svc] && credFieldsFor(svc)" class="creds-editor">
+          <div v-if="settingsLoadError" class="error" style="margin: 0 0 10px;">{{ settingsLoadError }}</div>
+          <div v-else-if="!settingsLoaded" class="hint">Loading current credentials…</div>
+          <template v-else>
+            <p class="hint" style="margin: 0 0 8px;">
+              Saved values are hidden until you unlock the field. The
+              same values are also editable in
+              <a href="#" @click.prevent="openSettings">Settings → Sign-in &amp; integrations</a>.
+            </p>
+            <div
+              v-for="f in credFieldsFor(svc)"
+              :key="f.key"
+              class="cred-field"
+            >
+              <label class="cred-label">{{ f.label }}</label>
+              <LockableField
+                v-model="settingsForm[f.key]"
+                input-class="creds-input"
+              />
+            </div>
+            <div class="cred-actions">
+              <button
+                class="save-btn"
+                type="button"
+                :disabled="settingsSaving"
+                @click="saveCredentials"
+              >{{ settingsSaving ? 'Saving…' : 'Save credentials' }}</button>
+              <span v-if="settingsSavedAt" class="save-ok">Saved ✓</span>
+            </div>
+          </template>
+        </div>
+
+        <!-- iCloud inline connect form — shown when user clicks Connect on the tile -->
+        <div v-if="svc === 'icloud' && credsExpanded['icloud']" class="creds-editor">
+          <div v-if="icloudConnectError" class="error" style="margin:0 0 10px">{{ icloudConnectError }}</div>
+          <div class="form-row">
+            <input v-model="icloudAppleID" placeholder="Apple ID (email)" class="input" type="email" autocomplete="username" />
+          </div>
+          <div class="form-row">
+            <input v-model="icloudAppPassword" placeholder="App-specific password" class="input" type="password" autocomplete="off" />
+          </div>
+          <button :disabled="icloudConnecting || !icloudAppleID.trim() || !icloudAppPassword.trim()" @click="doICloudConnect" class="save-btn">
+            {{ icloudConnecting ? 'Validating…' : 'Connect iCloud' }}
+          </button>
+        </div>
+
+        <!-- Setup guide — shown below the credentials editor -->
+        <div v-if="setupGuideFor(svc) && credsExpanded[svc]" class="setup-guide">
+          <a :href="setupGuideFor(svc).url" target="_blank" class="guide-title">
+            📋 {{ setupGuideFor(svc).title }} →
+          </a>
+          <ol class="guide-steps">
+            <li v-for="s in setupGuideFor(svc).steps" :key="s">{{ s.replace(/^\d+\.\s*/, '') }}</li>
+          </ol>
+          <p v-if="setupGuideFor(svc).scopes" class="guide-scopes">{{ setupGuideFor(svc).scopes }}</p>
         </div>
 
         <ul v-if="store.connectionsByService[svc]?.length" class="conns">
@@ -150,6 +407,8 @@ header h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--tex
   border-radius: 6px;
   color: var(--text);
   font-size: 12.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .empty {
@@ -207,6 +466,71 @@ header h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--tex
 .connect-btn:hover:not(:disabled) { opacity: 0.85; }
 .connect-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.creds-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--text2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.creds-btn:hover { background: var(--bg3); color: var(--text); }
+.creds-btn[aria-expanded="true"] {
+  background: var(--bg3);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.creds-editor {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--bg3);
+}
+.cred-field {
+  margin-bottom: 10px;
+}
+.cred-field:last-of-type { margin-bottom: 12px; }
+.cred-label {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text3);
+  margin-bottom: 4px;
+}
+:deep(.creds-input) {
+  width: 100%;
+  padding: 5px 8px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+}
+:deep(.creds-input:focus) {
+  outline: none;
+  border-color: var(--accent);
+}
+.cred-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.save-btn {
+  padding: 5px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--border2);
+  background: var(--accent);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.save-ok { font-size: 11.5px; color: var(--green, #5ec76d); }
+
 .conns {
   list-style: none;
   margin: 12px 0 0;
@@ -237,4 +561,22 @@ header h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; color: var(--tex
   cursor: pointer;
 }
 .disconnect-btn:hover { background: var(--bg4); color: var(--text); border-color: rgba(220, 80, 80, 0.5); }
+
+.setup-guide {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--bg1);
+}
+.guide-title {
+  font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none;
+}
+.guide-title:hover { text-decoration: underline; }
+.guide-steps {
+  margin: 6px 0 0; padding-left: 18px; font-size: 11.5px; color: var(--text2); line-height: 1.6;
+}
+.guide-scopes {
+  margin: 6px 0 0; font-size: 11px; color: var(--text3); font-style: italic;
+}
 </style>

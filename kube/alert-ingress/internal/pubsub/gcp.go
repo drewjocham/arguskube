@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"cloud.google.com/go/pubsub"
@@ -15,9 +15,10 @@ import (
 type GCPPublisher struct {
 	client *pubsub.Client
 	topic  *pubsub.Topic
+	logger *slog.Logger
 }
 
-func NewGCP(ctx context.Context, projectID, topicID string) (*GCPPublisher, error) {
+func NewGCP(ctx context.Context, logger *slog.Logger, projectID, topicID string) (*GCPPublisher, error) {
 	if projectID == "" {
 		projectID = os.Getenv("GOOGLE_CLOUD_PROJECT")
 	}
@@ -45,11 +46,11 @@ func NewGCP(ctx context.Context, projectID, topicID string) (*GCPPublisher, erro
 			client.Close()
 			return nil, fmt.Errorf("create topic: %w", err)
 		}
-		log.Printf("created pubsub topic %s", topicID)
+		logger.Info("created pubsub topic", "topic", topicID)
 	}
 
-	log.Printf("pubsub publisher ready: project=%s topic=%s", projectID, topicID)
-	return &GCPPublisher{client: client, topic: topic}, nil
+	logger.Info("pubsub publisher ready", "project", projectID, "topic", topicID)
+	return &GCPPublisher{client: client, topic: topic, logger: logger}, nil
 }
 
 func (g *GCPPublisher) PublishAlert(ctx context.Context, alert models.ArgusAlert) error {
@@ -67,7 +68,7 @@ func (g *GCPPublisher) PublishAlert(ctx context.Context, alert models.ArgusAlert
 		return fmt.Errorf("pubsub publish: %w", err)
 	}
 
-	log.Printf("published alert %s as message %s", alert.ID, id)
+	g.logger.Info("published alert", "alertID", alert.ID, "messageID", id)
 	return nil
 }
 

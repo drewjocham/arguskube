@@ -41,6 +41,7 @@ export const SECTIONS = Object.freeze({
     label: 'Monitoring',
     icon: 'M2 12h4l3-9 4 18 3-9h4',
     tabs: [
+      { id: 'dashboards', label: 'Dashboards' },
       { id: 'argusai', label: 'Argus AI' },
       { id: 'metrics', label: 'Metrics Explorer' },
       { id: 'alerts', label: 'Alerts' },
@@ -159,6 +160,10 @@ export const SECTIONS = Object.freeze({
       { id: 'gsheets', label: 'Sheets' },
       { id: 'gtasks', label: 'Tasks' },
       { id: 'gchat', label: 'Google Chat' },
+      { id: 'gcal', label: 'Calendar' },
+      { id: 'microsoft', label: 'Microsoft' },
+      { id: 'icloud', label: 'iCloud' },
+      { id: 'custom', label: 'Custom' },
     ],
   },
   admin: {
@@ -196,7 +201,7 @@ export const SECTION_ORDER = Object.freeze([
 //   - Workloads  → pods (the most-visited resource type)
 //   - everything else → the section's first tab
 export const DEFAULT_TABS = Object.freeze({
-  monitoring: 'alerts',
+  monitoring: 'dashboards',
   cluster: 'nodes',
   workloads: 'pods',
   config: 'configmaps',

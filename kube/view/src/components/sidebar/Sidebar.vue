@@ -399,13 +399,54 @@ function closeMenu() { ctxMenu.value = null }
       </div>
     </div>
 
-    <!-- §C4 Density quick-pick in the sidebar footer. One-click access
-         so users don't have to open Settings just to tighten spacing. -->
+    <!-- §C4 Density + theme quick-picks in the sidebar footer.
+         One-click access so users don't have to open Settings just to
+         tighten spacing or flip the theme. The theme selector exposes
+         the three modes the appearance store accepts: light, dark,
+         auto (follow OS). Active state reflects the *stored* value,
+         not the resolved value, so 'auto' shows as its own state
+         instead of silently masquerading as light or dark. -->
     <div
       class="sidebar-footer"
       v-if="!sidebarCollapsed"
       data-testid="sidebar-footer"
     >
+      <div class="theme-selector" :title="`Theme: ${appearance.theme}`">
+        <button
+          v-for="t in ['light', 'dark', 'auto']"
+          :key="t"
+          type="button"
+          class="theme-btn"
+          :class="{ active: appearance.theme === t }"
+          :title="`${t.charAt(0).toUpperCase() + t.slice(1)} theme`"
+          :aria-pressed="appearance.theme === t"
+          :data-testid="`theme-${t}`"
+          @click="appearance.setTheme(t)"
+        >
+          <!-- Sun -->
+          <svg v-if="t === 'light'" width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+          <!-- Moon -->
+          <svg v-else-if="t === 'dark'" width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+          <!-- Auto (half-filled circle) -->
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 3v18" />
+            <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none" />
+          </svg>
+        </button>
+      </div>
+
       <div class="density-selector" :title="`UI density: ${appearance.density}`">
         <button
           v-for="d in ['compact', 'normal', 'comfortable']"
@@ -769,13 +810,18 @@ function closeMenu() { ctxMenu.value = null }
 }
 .ai-context-action.pro-label { color: var(--amber, #d4a256); cursor: default; }
 
-/* §C4 — density picker pinned to the bottom of the sidebar */
+/* §C4 — quick-picks pinned to the bottom of the sidebar.
+   Two pill-groups (theme + density) sit side by side. Wraps cleanly
+   on a narrow sidebar — each group is its own self-contained pill. */
 .sidebar-footer {
   padding: 6px 10px 10px;
   border-top: 1px solid var(--border, #2a2a2a);
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
+  gap: 6px;
 }
+.theme-selector,
 .density-selector {
   display: flex;
   gap: 2px;
@@ -784,6 +830,7 @@ function closeMenu() { ctxMenu.value = null }
   border: 1px solid var(--border, #2a2a2a);
   border-radius: 6px;
 }
+.theme-btn,
 .density-btn {
   background: none;
   border: none;
@@ -798,10 +845,16 @@ function closeMenu() { ctxMenu.value = null }
   border-radius: 4px;
   transition: background 0.1s, color 0.1s;
   font-family: inherit;
+  padding: 0;
 }
+.theme-btn:hover,
 .density-btn:hover { background: var(--bg4, #2a2a2a); color: var(--text, #e5e5e5); }
+.theme-btn.active,
 .density-btn.active {
   background: rgba(79, 142, 247, 0.16);
   color: var(--accent2, #4a9eff);
+}
+.theme-btn svg {
+  display: block;
 }
 </style>

@@ -2,7 +2,7 @@ package webhook
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -14,10 +14,11 @@ import (
 
 type Handler struct {
 	publisher pubsub.Publisher
+	logger    *slog.Logger
 }
 
-func New(publisher pubsub.Publisher) *Handler {
-	return &Handler{publisher: publisher}
+func New(publisher pubsub.Publisher, logger *slog.Logger) *Handler {
+	return &Handler{publisher: publisher, logger: logger}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -28,7 +29,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var webhook models.AnomstackWebhook
 	if err := json.NewDecoder(r.Body).Decode(&webhook); err != nil {
-		log.Printf("bad webhook payload: %v", err)
+		h.logger.Warn("bad webhook payload", "error", err)
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -68,7 +69,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.publisher.PublishAlert(r.Context(), alert); err != nil {
-		log.Printf("publish failed: %v", err)
+		h.logger.Error("publish failed", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

@@ -28,9 +28,9 @@ FLINK_DIR   := kube/flink
 BUILD_BIN   := $(BACKEND_DIR)/build/bin/$(APP_NAME)
 
 .PHONY: help dev build sign-app build-terminal-app build-nopackage run frontend frontend-dev deps deps-go deps-vue \
-        test test-go test-vue test-vector lint lint-go clean doctor \
+        test test-go test-vue test-vector lint lint-go lint-vue clean doctor \
         bindings contexts logs \
-        agent-deps agent-check agent-test agent-lint agent-format agent-clean \
+        agent-deps agent-check agent-run agent-test agent-lint agent-format agent-clean agent-image \
         vector-test vector-validate-alert-ingress vector-validate-agent vector-docker
 
 # ── Default ──────────────────────────────────────────────────────
@@ -126,6 +126,7 @@ deps-go: ## Go module tidy
 	cd $(BACKEND_DIR) && go mod tidy
 	cd $(ALERT_INGRESS_DIR) && go mod tidy
 	cd agent && go mod tidy
+	cd lufis-terminal && go mod tidy
 	cd $(FLINK_DIR)/gateway && go mod tidy
 
 deps-vue: ## npm install for Vue frontend
@@ -144,6 +145,7 @@ test-go: ## Run Go tests
 	cd $(BACKEND_DIR) && go test ./... -count=1
 	cd $(ALERT_INGRESS_DIR) && go test ./... -count=1
 	cd agent && go test ./... -count=1
+	cd lufis-terminal && go test ./... -count=1
 
 test-vue: ## Run Vue/Vitest tests
 	cd $(VIEW_DIR) && npm run test:run
@@ -159,6 +161,7 @@ lint-go: ## Run golangci-lint on all Go modules
 	cd $(BACKEND_DIR) && golangci-lint run ./...
 	cd $(ALERT_INGRESS_DIR) && golangci-lint run ./...
 	cd agent && golangci-lint run ./...
+	cd lufis-terminal && golangci-lint run ./...
 
 lint-vue: ## Type-check and lint Vue frontend
 	cd $(VIEW_DIR) && npx vue-tsc --noEmit
@@ -225,6 +228,8 @@ AGENT_VENV  := $(AGENT_DIR)/.venv
 AGENT_PYTHON := $(AGENT_VENV)/bin/python
 AGENT_PIP    := $(AGENT_VENV)/bin/pip
 
+AGENT_ARGS ?= interactive
+
 agent-deps: ## Install Argus Python agent dependencies (editable + dev)
 	@test -d $(AGENT_VENV) || python3 -m venv $(AGENT_VENV)
 	$(AGENT_PIP) install -q -e "$(AGENT_DIR)[dev]"
@@ -235,8 +240,11 @@ agent-check: agent-deps ## Validate Argus agents (imports + compile)
 	$(AGENT_PYTHON) -c "from argus_agents.cli import main; print('  ✓ CLI entry point OK')"
 	@echo "  ✓ All agent modules compile cleanly"
 
+agent-run: agent-deps ## Run Argus agent locally (default: interactive, override with AGENT_ARGS=...)
+	ANONYMIZED_TELEMETRY=False $(AGENT_PYTHON) -m argus_agents.cli $(AGENT_ARGS)
+
 agent-test: agent-deps ## Run Argus agent tests
-	$(AGENT_PYTHON) -m pytest $(AGENT_DIR)/tests -v
+	ANONYMIZED_TELEMETRY=False $(AGENT_PYTHON) -m pytest $(AGENT_DIR)/tests -v
 
 agent-lint: ## Lint Argus agents with ruff
 	$(AGENT_DIR)/.venv/bin/ruff check $(AGENT_DIR)/src
@@ -247,6 +255,9 @@ agent-format: ## Format Argus agents with ruff
 agent-clean: ## Remove Argus Python agent venv + caches
 	rm -rf $(AGENT_VENV)
 	find $(AGENT_DIR) -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+agent-image: ## Build the in-cluster agent Docker image
+	docker build -t argus-agent:latest agent/
 
 # ── Deploy (Helm + Terraform) ────────────────────────────────────
 
