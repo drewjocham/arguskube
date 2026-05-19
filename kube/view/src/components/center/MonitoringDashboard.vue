@@ -147,25 +147,23 @@ onUnmounted(() => {
          explanation of why. Shown only when the first fetch failed
          AND no cached data is available; once any successful fetch
          arrives we keep showing whatever we last had. ──────────── -->
-    <div
+    <output
       v-if="clusterMetricsState === 'error'"
       class="dashboard-banner banner-error"
       data-testid="dashboard-disconnected-banner"
-      role="status"
     >
       <strong>No live metrics.</strong>
       The Argus backend at <code>:8080</code> isn't reachable
       <span v-if="clusterMetricsError">— <em>{{ clusterMetricsError }}</em></span>.
       Start the desktop app or sign in to populate this dashboard.
-    </div>
-    <div
+    </output>
+    <output
       v-else-if="clusterMetricsState === 'loading'"
       class="dashboard-banner banner-loading"
       data-testid="dashboard-loading-banner"
-      role="status"
     >
       Loading cluster metrics…
-    </div>
+    </output>
 
     <!-- ── Info message for empty dashboards ────────────────────── -->
     <div v-if="widgetCount === 0" class="empty-hint">
@@ -223,6 +221,7 @@ onUnmounted(() => {
 }
 
 .dashboard-banner {
+  display: block;
   padding: 8px 12px;
   border-radius: 6px;
   font-size: 12px;
