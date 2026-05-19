@@ -111,7 +111,7 @@ const fileMode = computed({
 // Preview is editable for inline sources (upload/paste/type/ai) but
 // read-only when the source is "file" — the engine reads from disk at
 // runtime, so edits to the in-memory preview wouldn't actually be sent.
-const previewReadonly = computed(() => source.value === 'file')
+const previewReadonly = computed(() => activeTab.value === 'file')
 async function doResolve() {
   resolveError.value = ''
   resolved.value = null
