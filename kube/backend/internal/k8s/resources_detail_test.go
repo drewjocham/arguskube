@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"encoding/base64"
 	"log/slog"
 	"os"
 	"testing"
@@ -24,6 +25,8 @@ func detailClient(objects ...interface{}) *Client {
 			_, _ = cs.CoreV1().PersistentVolumes().Create(ctx, o, metav1.CreateOptions{})
 		case *storagev1.StorageClass:
 			_, _ = cs.StorageV1().StorageClasses().Create(ctx, o, metav1.CreateOptions{})
+		case *corev1.Secret:
+			_, _ = cs.CoreV1().Secrets(o.Namespace).Create(ctx, o, metav1.CreateOptions{})
 		}
 	}
 	return &Client{
@@ -180,4 +183,84 @@ func propsByKey(props []KeyValue) map[string]string {
 		m[p.Key] = p.Value
 	}
 	return m
+}
+
+// Regression: an earlier revision masked every secret value as
+// "(N bytes)" server-side, leaving SecretsView.vue's Reveal button
+// with nothing to decode — users saw the byte-count string instead
+// of the actual value. The fix sends base64-encoded values (the same
+// encoding `kubectl get secret -o yaml` uses) so the client-side
+// decodeBase64 can show plaintext on reveal.
+func TestGetSecretDetail_ReturnsBase64EncodedValues(t *testing.T) {
+	t.Parallel()
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "db-creds", Namespace: "default"},
+		Type:       corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			"username": []byte("admin"),
+			"password": []byte("hunter2"),
+			"binary":   {0x00, 0x01, 0x02, 0xff},
+		},
+	}
+
+	c := detailClient(secret)
+	got, err := c.GetResourceDetail(context.Background(), "secrets", "default", "db-creds")
+	if err != nil {
+		t.Fatalf("GetResourceDetail: %v", err)
+	}
+
+	want := map[string]string{
+		"username": base64.StdEncoding.EncodeToString([]byte("admin")),
+		"password": base64.StdEncoding.EncodeToString([]byte("hunter2")),
+		"binary":   base64.StdEncoding.EncodeToString([]byte{0x00, 0x01, 0x02, 0xff}),
+	}
+	if len(got.Data) != len(want) {
+		t.Fatalf("Data length = %d, want %d", len(got.Data), len(want))
+	}
+	for k, expected := range want {
+		actual, ok := got.Data[k]
+		if !ok {
+			t.Errorf("missing key %q in Data", k)
+			continue
+		}
+		if actual != expected {
+			t.Errorf("Data[%q] = %q, want %q", k, actual, expected)
+		}
+		decoded, err := base64.StdEncoding.DecodeString(actual)
+		if err != nil {
+			t.Errorf("Data[%q] is not valid base64: %v", k, err)
+		}
+		if string(decoded) != string(secret.Data[k]) {
+			t.Errorf("Data[%q] round-trip mismatch: got %q, want %q", k, decoded, secret.Data[k])
+		}
+	}
+
+	// Negative guard: the old masked format must never appear in the
+	// response. If somebody re-introduces "(N bytes)" the test fails.
+	for k, v := range got.Data {
+		if len(v) >= 8 && v[0] == '(' && v[len(v)-len(" bytes)"):] == " bytes)" {
+			t.Errorf("Data[%q] looks like the old masked format %q — must be base64", k, v)
+		}
+	}
+}
+
+func TestGetSecretDetail_ReportsDataKeyCount(t *testing.T) {
+	t.Parallel()
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "multi", Namespace: "default"},
+		Type:       corev1.SecretTypeOpaque,
+		Data:       map[string][]byte{"a": []byte("1"), "b": []byte("2"), "c": []byte("3")},
+	}
+
+	c := detailClient(secret)
+	got, err := c.GetResourceDetail(context.Background(), "secrets", "default", "multi")
+	if err != nil {
+		t.Fatalf("GetResourceDetail: %v", err)
+	}
+
+	if propsByKey(got.Properties)["Data Keys"] != "3" {
+		t.Fatalf(`Data Keys property = %q, want "3"`, propsByKey(got.Properties)["Data Keys"])
+	}
 }

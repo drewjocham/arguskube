@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -240,10 +241,20 @@ func (c *Client) getSecretDetail(ctx context.Context, ns, name string) (*Resourc
 		{Key: "Data Keys", Value: fmt.Sprintf("%d", len(s.Data))},
 	}
 
-	// Show key names but mask values for security.
-	maskedData := make(map[string]string, len(s.Data))
+	// Return values base64-encoded — the same encoding the K8s API and
+	// `kubectl get secret -o yaml` use. The frontend keeps the value
+	// obfuscated until the user clicks Reveal, then decodes locally
+	// (SecretsView.vue:decodeBase64). The previous implementation pre-
+	// masked values to "(N bytes)" server-side, which left the
+	// frontend's Reveal button with nothing to decode and made every
+	// secret look like its byte count after a click. Wire-level access
+	// already requires an authenticated session (authorizeAPIRequest),
+	// and any caller with that session could read the secret via the
+	// raw K8s API anyway, so sending the encoded value doesn't widen
+	// the trust boundary.
+	encoded := make(map[string]string, len(s.Data))
 	for k, v := range s.Data {
-		maskedData[k] = fmt.Sprintf("(%d bytes)", len(v))
+		encoded[k] = base64.StdEncoding.EncodeToString(v)
 	}
 
 	return &ResourceDetailResult{
@@ -254,7 +265,7 @@ func (c *Client) getSecretDetail(ctx context.Context, ns, name string) (*Resourc
 		Labels:      s.Labels,
 		Annotations: s.Annotations,
 		Properties:  props,
-		Data:        maskedData,
+		Data:        encoded,
 	}, nil
 }
 
