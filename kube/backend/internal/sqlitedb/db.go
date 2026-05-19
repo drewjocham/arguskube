@@ -428,4 +428,25 @@ var migrations = []migration{
 			updated_at INTEGER NOT NULL
 		)`,
 	},
+	{
+		// Heal migration: some installs reached this slot with the
+		// _migrations row for create_distload_local_runs recorded but
+		// the table itself missing — symptom was a runtime
+		// "no such table: distload_local_runs" when GetLocalDistLoadQuota
+		// ran. The original migration used CREATE TABLE (not IF NOT
+		// EXISTS), so once the row was inserted the migrator skipped
+		// it on every subsequent boot regardless of actual table state.
+		// Idempotent re-create here repairs those installs without
+		// disturbing the recorded migration history.
+		name: "heal_distload_local_runs",
+		sql: `CREATE TABLE IF NOT EXISTS distload_local_runs (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			run_id     TEXT NOT NULL,
+			started_at INTEGER NOT NULL
+		)`,
+	},
+	{
+		name: "heal_distload_local_runs_index",
+		sql:  `CREATE INDEX IF NOT EXISTS idx_distload_local_runs_started ON distload_local_runs(started_at DESC)`,
+	},
 }
