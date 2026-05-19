@@ -381,13 +381,14 @@ function switchProvider(id) {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-/* Badge foregrounds bumped to lighter tints — same hue family, but
-   high enough contrast against the translucent tinted backgrounds to
-   clear WCAG AA. The deeper saturations (#3ecf8e / #f5a623 / #f15c5c)
-   sit right at the threshold against same-hue overlays. */
-.ic-badge[data-tone="ok"]    { background: rgba(62,207,142,0.14); color: #6ee7b7; }
-.ic-badge[data-tone="warn"]  { background: rgba(245,166,35,0.16); color: #fcd34d; }
-.ic-badge[data-tone="error"] { background: rgba(241,92,92,0.16); color: #fca5a5; }
+/* Badges use solid-fill backgrounds with white text. The previous
+   tinted-text-on-tinted-bg approach (even with lighter foregrounds)
+   sits at the AA contrast threshold and Sonar's css:S7924 rule
+   correctly flagged it. Solid fills drop the page-bg dependency
+   entirely so contrast is constant regardless of theme tweaks. */
+.ic-badge[data-tone="ok"]    { background: #1d6f49; color: #fff; }
+.ic-badge[data-tone="warn"]  { background: #8c5a0c; color: #fff; }
+.ic-badge[data-tone="error"] { background: #b8392f; color: #fff; }
 .ic-badge[data-tone="neutral"] { background: rgba(255,255,255,0.06); color: var(--text3); }
 .ic-body { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text2); }
 .ic-row { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: baseline; }
@@ -424,12 +425,15 @@ function switchProvider(id) {
   cursor: pointer;
 }
 .data-btn.primary {
-  background: rgba(167,139,250,0.18);
-  border-color: rgba(167,139,250,0.45);
-  color: #c4b3fd; /* lighter purple for WCAG AA on the tinted bg */
+  /* Solid purple fill + white text to clear WCAG AA. The earlier
+     tinted-purple-on-tinted-bg combo (even at #c4b3fd) sat at the
+     threshold; Sonar's css:S7924 caught it. */
+  background: #6d4ade;
+  border-color: #6d4ade;
+  color: #fff;
 }
 .data-btn:hover:not(:disabled) { background: var(--bg4); color: var(--text); }
-.data-btn.primary:hover:not(:disabled) { background: rgba(167,139,250,0.25); }
+.data-btn.primary:hover:not(:disabled) { background: #5a3bc7; border-color: #5a3bc7; }
 .data-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .data-btn.active {
   background: rgba(79,142,247,0.16);
