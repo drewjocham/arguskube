@@ -9,6 +9,7 @@ import {
 
 const {
   dashboards, activeIndex, activeDashboard, editMode,
+  clusterMetricsState, clusterMetricsError,
   createDashboard, deleteDashboard, renameDashboard,
   addWidget, removeWidget, moveWidget,
   fetchClusterMetrics, refreshSparklines,
@@ -141,6 +142,29 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <!-- ── Connection banner — surfaces the GetMetrics failure that
+         would otherwise leave every category showing "—" with no
+         explanation of why. Shown only when the first fetch failed
+         AND no cached data is available; once any successful fetch
+         arrives we keep showing whatever we last had. ──────────── -->
+    <output
+      v-if="clusterMetricsState === 'error'"
+      class="dashboard-banner banner-error"
+      data-testid="dashboard-disconnected-banner"
+    >
+      <strong>No live metrics.</strong>
+      The Argus backend at <code>:8080</code> isn't reachable
+      <span v-if="clusterMetricsError">— <em>{{ clusterMetricsError }}</em></span>.
+      Start the desktop app or sign in to populate this dashboard.
+    </output>
+    <output
+      v-else-if="clusterMetricsState === 'loading'"
+      class="dashboard-banner banner-loading"
+      data-testid="dashboard-loading-banner"
+    >
+      Loading cluster metrics…
+    </output>
+
     <!-- ── Info message for empty dashboards ────────────────────── -->
     <div v-if="widgetCount === 0" class="empty-hint">
       Expand a category, then click <b>+</b> on any metric to pin it here.
@@ -194,6 +218,36 @@ onUnmounted(() => {
   height: 100%;
   gap: 10px;
   padding: 0 0 10px;
+}
+
+.dashboard-banner {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+.dashboard-banner code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  padding: 1px 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+.dashboard-banner em {
+  font-style: normal;
+  opacity: 0.8;
+}
+.banner-error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: var(--text, #eee);
+}
+.banner-loading {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border, #2a2a2a);
+  color: var(--text3, #888);
 }
 
 /* ── Top bar ──────────────────────────────────────────────────── */

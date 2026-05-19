@@ -587,6 +587,19 @@ useWailsEvent('argus:status', (data) => {
   transform: rotate(180deg);
 }
 
+/* Responsive fallback: when the viewport is too narrow for the right-side
+   AI panel + the main content's own min-width to coexist, the panel's
+   320px floor would otherwise starve .content of all horizontal space
+   (flex:1 of zero collapses to 0px). Hide both the panel and its toggle
+   below the threshold so the active feature (dashboard, alerts, etc.)
+   always renders. Users on wider viewports keep the panel by default. */
+@media (max-width: 1024px) {
+  .diag-stack,
+  .diag-collapse-bar {
+    display: none !important;
+  }
+}
+
 .auth-bootstrap {
   position: fixed;
   inset: 0;
