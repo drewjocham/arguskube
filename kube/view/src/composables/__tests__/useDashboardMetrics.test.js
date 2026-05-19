@@ -24,7 +24,7 @@ const PERSIST_KEY = 'argus.dashboards.v1'
 let memoryStorage = {}
 function installLocalStorageStub() {
   memoryStorage = {}
-  Object.defineProperty(window, 'localStorage', {
+  Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
     value: {
       getItem: (k) => (k in memoryStorage ? memoryStorage[k] : null),
@@ -40,7 +40,7 @@ function installLocalStorageStub() {
 describe('useDashboardMetrics', () => {
   beforeEach(() => {
     installLocalStorageStub()
-    if (window.go) delete window.go
+    if (globalThis.go) delete globalThis.go
     vi.clearAllMocks()
   })
 
@@ -52,7 +52,7 @@ describe('useDashboardMetrics', () => {
   describe('formatters', () => {
     it('formatBytes scales across Ki/Mi/Gi and handles missing values', () => {
       expect(formatBytes(null)).toBe('—')
-      expect(formatBytes(NaN)).toBe('—')
+      expect(formatBytes(Number.NaN)).toBe('—')
       expect(formatBytes(512)).toBe('1 Ki')
       expect(formatBytes(2 * 1024 * 1024)).toBe('2 Mi')
       expect(formatBytes(3 * 1024 * 1024 * 1024)).toBe('3.0 Gi')
@@ -274,7 +274,7 @@ describe('useDashboardMetrics', () => {
   // ── fetchClusterMetrics + fetchSparkline via real callGo path ─────
   describe('async fetching', () => {
     it('fetchClusterMetrics stores the result on success', async () => {
-      const payload = { podHealthPct: 88.0, podsRunning: 10 }
+      const payload = { podHealthPct: 88, podsRunning: 10 }
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
         json: vi.fn().mockResolvedValue({ result: payload }),
