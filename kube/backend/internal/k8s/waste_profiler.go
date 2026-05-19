@@ -2,11 +2,90 @@ package k8s
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
+	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	appsv1 "k8s.io/api/apps/v1"
 )
+
+// listDeploymentsWithRetry calls Deployments(ns).List with up to 2
+// retries on transient errors. The user-reported symptom — "same
+// namespace works sometimes and fails sometimes" — is the classic
+// signature of a single-shot K8s API call hitting a network blip,
+// API-server throttle (429), or a brief 5xx during a leader-election.
+// Permanent failures (Forbidden, NotFound, context cancelled) short-
+// circuit so we don't waste time retrying things that can't recover.
+func (c *Client) listDeploymentsWithRetry(ctx context.Context, namespace string) (*appsv1.DeploymentList, error) {
+	const maxAttempts = 3
+	backoff := 200 * time.Millisecond
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		deps, err := c.cs.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+		if err == nil {
+			return deps, nil
+		}
+		lastErr = err
+		if !isTransientK8sError(err) || attempt == maxAttempts {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+	}
+	return nil, lastErr
+}
+
+// isTransientK8sError returns true for K8s API errors that have a
+// reasonable chance of succeeding on a retry. We deliberately keep
+// the set narrow — retrying a 403 forever just punishes the user
+// with the same eventual error after a longer wait.
+func isTransientK8sError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) || apierrors.IsNotFound(err) {
+		return false
+	}
+	return apierrors.IsTimeout(err) ||
+		apierrors.IsServerTimeout(err) ||
+		apierrors.IsTooManyRequests(err) ||
+		apierrors.IsServiceUnavailable(err) ||
+		apierrors.IsInternalError(err)
+}
+
+// friendlyWasteError translates a low-level K8s API error into a
+// short message the user can act on. The raw error
+// ("Get \"https://10.0.0.1:6443/...\": dial tcp: i/o timeout") was
+// previously surfaced verbatim in the heatmap banner.
+func friendlyWasteError(namespace string, err error) error {
+	switch {
+	case apierrors.IsForbidden(err):
+		return fmt.Errorf("you don't have permission to list deployments in %q", namespace)
+	case apierrors.IsUnauthorized(err):
+		return fmt.Errorf("not authenticated against the cluster — sign in and retry")
+	case apierrors.IsNotFound(err):
+		return fmt.Errorf("namespace %q not found", namespace)
+	case apierrors.IsTimeout(err), apierrors.IsServerTimeout(err):
+		return fmt.Errorf("cluster API timed out listing deployments in %q — retry in a moment", namespace)
+	case apierrors.IsTooManyRequests(err):
+		return fmt.Errorf("cluster API rate-limited the request — retry in a moment")
+	case errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("listing deployments in %q took too long; cluster may be overloaded", namespace)
+	default:
+		return fmt.Errorf("could not list deployments in %q: %w", namespace, err)
+	}
+}
 
 type WasteProfile struct {
 	Namespace     string         `json:"namespace"`
@@ -30,9 +109,9 @@ type WasteItem struct {
 func (c *Client) ProfileWaste(ctx context.Context, namespace string) (*WasteProfile, error) {
 	profile := &WasteProfile{Namespace: namespace}
 
-	deps, err := c.cs.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+	deps, err := c.listDeploymentsWithRetry(ctx, namespace)
 	if err != nil {
-		return nil, fmt.Errorf("list deployments: %w", err)
+		return nil, friendlyWasteError(namespace, err)
 	}
 
 	var totalWasteCPU, totalWasteMem int64
