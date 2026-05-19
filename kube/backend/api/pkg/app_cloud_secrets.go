@@ -24,8 +24,12 @@ func (a *App) cloudProvider(name string) (cloud.Provider, error) {
 		return cloud.AWSProvider{}, nil
 	case cloud.ProviderGCP:
 		return cloud.GCPProvider{}, nil
+	case cloud.ProviderVault:
+		return cloud.VaultProvider{}, nil
+	case cloud.ProviderAzure:
+		return cloud.AzureProvider{}, nil
 	default:
-		return nil, fmt.Errorf("unknown cloud provider %q (want aws|gcp)", name)
+		return nil, fmt.Errorf("unknown cloud provider %q (want aws|gcp|vault|azure)", name)
 	}
 }
 
@@ -34,7 +38,12 @@ func (a *App) cloudProvider(name string) (cloud.Provider, error) {
 // to authenticate is encoded in the Identity.Error field rather than
 // raised as a Go error so the frontend can render all cards.
 func (a *App) CloudIdentities() []cloud.Identity {
-	providers := []cloud.Provider{cloud.AWSProvider{}, cloud.GCPProvider{}}
+	providers := []cloud.Provider{
+		cloud.AWSProvider{},
+		cloud.GCPProvider{},
+		cloud.VaultProvider{},
+		cloud.AzureProvider{},
+	}
 	out := make([]cloud.Identity, 0, len(providers))
 	for _, p := range providers {
 		out = append(out, p.Identity(a.ctx))

@@ -15,8 +15,10 @@ import (
 // Provider names — kept as constants so the wire payload, frontend
 // switches, and Go switches all use the same strings.
 const (
-	ProviderAWS = "aws"
-	ProviderGCP = "gcp"
+	ProviderAWS   = "aws"
+	ProviderGCP   = "gcp"
+	ProviderVault = "vault" // HashiCorp Vault
+	ProviderAzure = "azure" // Azure Key Vault
 )
 
 // Identity describes who the console is currently authenticated as
@@ -123,4 +125,13 @@ type ListOpts struct {
 	// Project is the GCP project ID. Empty falls back to ADC's
 	// inferred project.
 	Project string `json:"project,omitempty"`
+	// VaultMount is the HashiCorp Vault KV mount to list under
+	// (e.g. "secret"). Required for Vault.
+	VaultMount string `json:"vaultMount,omitempty"`
+	// VaultPath narrows the listing to a subdirectory of the mount.
+	// Empty means "list the mount root".
+	VaultPath string `json:"vaultPath,omitempty"`
+	// AzureVaultURL is the full Azure Key Vault base URL
+	// (e.g. "https://my-vault.vault.azure.net"). Required for Azure.
+	AzureVaultURL string `json:"azureVaultUrl,omitempty"`
 }

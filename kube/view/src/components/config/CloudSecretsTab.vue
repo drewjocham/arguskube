@@ -10,6 +10,8 @@ import { callGo } from '../../composables/useBridge'
 const PROVIDERS = [
   { id: 'aws', label: 'AWS' },
   { id: 'gcp', label: 'GCP' },
+  { id: 'vault', label: 'HashiCorp Vault' },
+  { id: 'azure', label: 'Azure Key Vault' },
 ]
 
 const activeProvider = ref('aws')
@@ -23,6 +25,9 @@ const secretsLoading = ref(false)
 const secretsError = ref('')
 const region = ref('')          // AWS region override
 const project = ref('')         // GCP project override
+const vaultMount = ref('secret') // HashiCorp Vault KV mount (default "secret")
+const vaultPath = ref('')       // optional sub-path within the mount
+const azureVaultURL = ref('')   // full URL: https://<name>.vault.azure.net
 
 // Reveal/draft state — keyed by `${provider}/${name}` so reveals are
 // scoped per value the same way kube-secrets are.
@@ -77,9 +82,23 @@ async function loadSecrets() {
   secretsError.value = ''
   secrets.value = []
   try {
-    const opts = activeProvider.value === 'aws'
-      ? { region: region.value || '' }
-      : { project: project.value || '' }
+    let opts
+    switch (activeProvider.value) {
+      case 'aws':
+        opts = { region: region.value || '' }
+        break
+      case 'gcp':
+        opts = { project: project.value || '' }
+        break
+      case 'vault':
+        opts = { vaultMount: vaultMount.value || 'secret', vaultPath: vaultPath.value || '' }
+        break
+      case 'azure':
+        opts = { azureVaultUrl: azureVaultURL.value || '' }
+        break
+      default:
+        opts = {}
+    }
     const out = await callGo('CloudListSecrets', activeProvider.value, opts)
     secrets.value = Array.isArray(out) ? out : []
   } catch (e) {
@@ -144,6 +163,12 @@ function switchProvider(id) {
   revealed.value = new Set()
   revealedValues.value = {}
   revealError.value = {}
+  // Provider-specific inputs reset on switch so the previous tab's
+  // value doesn't accidentally apply to the next call.
+  if (id !== 'aws') region.value = ''
+  if (id !== 'gcp') project.value = ''
+  if (id !== 'vault') vaultPath.value = ''
+  if (id !== 'azure') azureVaultURL.value = ''
 }
 </script>
 
@@ -206,11 +231,32 @@ function switchProvider(id) {
         data-testid="cloud-aws-region"
       />
       <input
-        v-else
+        v-else-if="activeProvider === 'gcp'"
         v-model="project"
         class="search-input"
         placeholder="GCP project ID (blank = ADC default)"
         data-testid="cloud-gcp-project"
+      />
+      <template v-else-if="activeProvider === 'vault'">
+        <input
+          v-model="vaultMount"
+          class="search-input narrow"
+          placeholder="KV mount (e.g. secret)"
+          data-testid="cloud-vault-mount"
+        />
+        <input
+          v-model="vaultPath"
+          class="search-input"
+          placeholder="Path within mount (optional)"
+          data-testid="cloud-vault-path"
+        />
+      </template>
+      <input
+        v-else-if="activeProvider === 'azure'"
+        v-model="azureVaultURL"
+        class="search-input"
+        placeholder="https://<your-vault>.vault.azure.net"
+        data-testid="cloud-azure-vault-url"
       />
       <button
         class="data-btn primary"
@@ -263,8 +309,10 @@ function switchProvider(id) {
       </div>
     </div>
     <div v-else-if="!secretsLoading && !secretsError" class="state-box">
-      Click <b>List secrets</b> above to fetch from the
-      {{ activeProvider.toUpperCase() }} Secrets Manager.
+      <template v-if="activeProvider === 'aws'">Click <b>List secrets</b> to fetch from <b>AWS Secrets Manager</b>.</template>
+      <template v-else-if="activeProvider === 'gcp'">Click <b>List secrets</b> to fetch from <b>Google Secret Manager</b>.</template>
+      <template v-else-if="activeProvider === 'vault'">Pick a KV mount (and optional path), then click <b>List secrets</b>.</template>
+      <template v-else-if="activeProvider === 'azure'">Enter your Key Vault URL, then click <b>List secrets</b>.</template>
     </div>
   </div>
 </template>
@@ -359,6 +407,7 @@ function switchProvider(id) {
   font-family: inherit;
 }
 .search-input:focus { outline: none; border-color: var(--accent2); }
+.search-input.narrow { flex: 0 0 160px; }
 
 .data-btn {
   background: var(--bg3);
