@@ -1,6 +1,7 @@
 package cloud
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -133,6 +134,184 @@ func TestShortGCPName(t *testing.T) {
 	}
 	if got := shortGCPName("no-slashes"); got != "no-slashes" {
 		t.Errorf("shortGCPName = %q", got)
+	}
+}
+
+// ── Vault helpers ─────────────────────────────────────────────────
+
+func TestHumanizeVaultErr(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in, want string
+	}{
+		{"permission denied on auth/token/lookup-self", "permission denied"},
+		{"missing client token", "VAULT_TOKEN"},
+		{"Get https://vault.local:8200/v1/auth/token/lookup-self: connection refused", "VAULT_ADDR"},
+		{"tls: failed to verify certificate: x509: cert", "VAULT_CACERT"},
+		{"some unrelated thing", "vault:"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			got := humanizeVaultErr(stubErr(tc.in))
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("humanizeVaultErr(%q) = %q, want it to contain %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFormatVaultSecret(t *testing.T) {
+	t.Parallel()
+	// Single-key map returns the bare string value.
+	got := formatVaultSecret("secret/db", map[string]interface{}{"password": "hunter2"})
+	if got.Value != "hunter2" {
+		t.Errorf("single-key value = %q, want %q", got.Value, "hunter2")
+	}
+	// Multi-key map renders as indented JSON.
+	got = formatVaultSecret("secret/api", map[string]interface{}{"user": "admin", "pw": "x"})
+	if !strings.Contains(got.Value, `"user"`) || !strings.Contains(got.Value, `"pw"`) {
+		t.Errorf("multi-key value = %q, want JSON with both keys", got.Value)
+	}
+	// Empty map gives empty SecretValue.
+	got = formatVaultSecret("secret/empty", nil)
+	if got.Value != "" {
+		t.Errorf("empty map value = %q, want \"\"", got.Value)
+	}
+}
+
+func TestVaultTTLSeconds(t *testing.T) {
+	t.Parallel()
+	if vaultTTLSeconds(float64(3600)) != 3600 {
+		t.Error("float64")
+	}
+	if vaultTTLSeconds(int(7200)) != 7200 {
+		t.Error("int")
+	}
+	if vaultTTLSeconds(int64(86400)) != 86400 {
+		t.Error("int64")
+	}
+	if vaultTTLSeconds("not a number") != 0 {
+		t.Error("string fallback")
+	}
+}
+
+// ── Azure helpers ─────────────────────────────────────────────────
+
+func TestNormalizeAzureVaultURL(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"":                                          "",
+		"  my-vault.vault.azure.net  ":              "https://my-vault.vault.azure.net",
+		"my-vault.vault.azure.net/":                 "https://my-vault.vault.azure.net",
+		"https://my-vault.vault.azure.net":          "https://my-vault.vault.azure.net",
+		"https://my-vault.vault.azure.net/":         "https://my-vault.vault.azure.net",
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			t.Parallel()
+			if got := normalizeAzureVaultURL(in); got != want {
+				t.Errorf("normalizeAzureVaultURL(%q) = %q, want %q", in, got, want)
+			}
+		})
+	}
+}
+
+func TestSplitAzureSecretID(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		id, vault, name, version string
+	}{
+		{
+			"https://my-vault.vault.azure.net/secrets/db-password/abc123",
+			"https://my-vault.vault.azure.net", "db-password", "abc123",
+		},
+		{
+			"https://my-vault.vault.azure.net/secrets/db-password",
+			"https://my-vault.vault.azure.net", "db-password", "",
+		},
+		{"not-a-key-vault-url", "", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			t.Parallel()
+			v, n, ver := splitAzureSecretID(tc.id)
+			if v != tc.vault || n != tc.name || ver != tc.version {
+				t.Errorf("splitAzureSecretID(%q) = (%q, %q, %q), want (%q, %q, %q)",
+					tc.id, v, n, ver, tc.vault, tc.name, tc.version)
+			}
+		})
+	}
+}
+
+func TestHumanizeAzureCredErr(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in, want string
+	}{
+		{"DefaultAzureCredential: failed to acquire a token", "az login"},
+		{"AADSTS70043 The refresh token has expired", "az login"},
+		{"AADSTS50034 user does not exist in this tenant", "wrong --tenant"},
+		{"random other", "azure:"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			got := humanizeAzureCredErr(stubErr(tc.in))
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("humanizeAzureCredErr(%q) = %q, want it to contain %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestInferAzureSource(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		env, want string
+	}{
+		{"AZURE_CLIENT_SECRET", "service principal (env)"},
+		{"AZURE_FEDERATED_TOKEN_FILE", "workload identity (federated)"},
+		{"MSI_ENDPOINT", "managed identity"},
+		{"", "az CLI / azd CLI cache"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.env, func(t *testing.T) {
+			// Cannot run in parallel — mutates the package-level
+			// lookupEnv stub.
+			original := lookupEnv
+			t.Cleanup(func() { lookupEnv = original })
+			lookupEnv = func(k string) (string, bool) {
+				if tc.env != "" && k == tc.env {
+					return "x", true
+				}
+				return "", false
+			}
+			if got := inferAzureSource(); got != tc.want {
+				t.Errorf("inferAzureSource() with %q = %q, want %q", tc.env, got, tc.want)
+			}
+		})
+	}
+}
+
+// azureClaim parses an unsigned-from-our-perspective JWT.
+func TestAzureClaim(t *testing.T) {
+	t.Parallel()
+	// header.payload.signature — only payload matters here.
+	// payload: {"upn":"jane@contoso.com","tid":"tenant-id"}
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"upn":"jane@contoso.com","tid":"tenant-id"}`))
+	tok := "x." + payload + ".y"
+	if got := azureClaim(tok, "upn"); got != "jane@contoso.com" {
+		t.Errorf("upn = %q", got)
+	}
+	if got := azureClaim(tok, "tid"); got != "tenant-id" {
+		t.Errorf("tid = %q", got)
+	}
+	if got := azureClaim(tok, "missing"); got != "" {
+		t.Errorf("missing = %q, want \"\"", got)
+	}
+	if got := azureClaim("not.a.jwt", "upn"); got != "" {
+		t.Errorf("bad payload = %q", got)
 	}
 }
 
