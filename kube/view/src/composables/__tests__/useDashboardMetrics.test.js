@@ -273,22 +273,42 @@ describe('useDashboardMetrics', () => {
 
   // ── fetchClusterMetrics + fetchSparkline via real callGo path ─────
   describe('async fetching', () => {
-    it('fetchClusterMetrics stores the result on success', async () => {
+    it('fetchClusterMetrics stores the result on success and sets state ok', async () => {
       const payload = { podHealthPct: 88, podsRunning: 10 }
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
         ok: true,
         json: vi.fn().mockResolvedValue({ result: payload }),
       }))
       const dm = useDashboardMetrics()
-      await dm.fetchClusterMetrics()
+      expect(dm.clusterMetricsState.value).toBe('idle')
+      const promise = dm.fetchClusterMetrics()
+      expect(dm.clusterMetricsState.value).toBe('loading')
+      await promise
       expect(dm.clusterMetrics.value).toEqual(payload)
+      expect(dm.clusterMetricsState.value).toBe('ok')
+      expect(dm.clusterMetricsError.value).toBeNull()
     })
 
-    it('fetchClusterMetrics swallows errors and leaves metrics null', async () => {
+    it('fetchClusterMetrics records error state and message on failure', async () => {
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('boom')))
       const dm = useDashboardMetrics()
       await dm.fetchClusterMetrics()
       expect(dm.clusterMetrics.value).toBeNull()
+      expect(dm.clusterMetricsState.value).toBe('error')
+      expect(dm.clusterMetricsError.value).toContain('boom')
+    })
+
+    it('keeps stale data and flips state to error when a later poll fails', async () => {
+      const ok = { podHealthPct: 50 }
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: vi.fn().mockResolvedValue({ result: ok }) })
+        .mockRejectedValueOnce(new Error('lost network'))
+      vi.stubGlobal('fetch', fetchMock)
+      const dm = useDashboardMetrics()
+      await dm.fetchClusterMetrics()
+      await dm.fetchClusterMetrics()
+      expect(dm.clusterMetrics.value).toEqual(ok)
+      expect(dm.clusterMetricsState.value).toBe('error')
     })
 
     it('fetchSparkline populates the metric series and clears loading flag', async () => {

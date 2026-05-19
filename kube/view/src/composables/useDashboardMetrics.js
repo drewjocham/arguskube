@@ -229,6 +229,17 @@ export function useDashboardMetrics() {
   // Cached cluster metrics (from GetMetrics polling)
   const clusterMetrics = ref(null)
 
+  // Connection state surfaces to the UI so the dashboard can render an
+  // explicit empty/disconnected banner instead of an array of "—"
+  // placeholders that look identical to "loading" or "broken."
+  // - 'idle'  : first fetch hasn't started yet
+  // - 'loading' : a fetch is in flight and no data has ever arrived
+  // - 'ok'    : at least one fetch succeeded
+  // - 'error' : the most recent fetch failed (clusterMetrics may be
+  //             stale from an earlier success or still null)
+  const clusterMetricsState = ref('idle')
+  const clusterMetricsError = ref(null)
+
   // Sparkline data: metricId → array of {time, value}
   const sparklines = reactive({})
 
@@ -237,10 +248,17 @@ export function useDashboardMetrics() {
 
   // ── Cluster metrics fetching ──────────────────────────────────
   async function fetchClusterMetrics() {
+    if (clusterMetrics.value == null) clusterMetricsState.value = 'loading'
     try {
       const result = await callGo('GetMetrics')
-      if (result) clusterMetrics.value = result
+      if (result) {
+        clusterMetrics.value = result
+        clusterMetricsState.value = 'ok'
+        clusterMetricsError.value = null
+      }
     } catch (e) {
+      clusterMetricsState.value = 'error'
+      clusterMetricsError.value = e?.message ?? String(e)
       console.warn('[dashboards] GetMetrics failed:', e)
     }
   }
@@ -405,6 +423,8 @@ export function useDashboardMetrics() {
     activeDashboard,
     editMode,
     clusterMetrics,
+    clusterMetricsState,
+    clusterMetricsError,
     sparklines,
     loadingSparklines,
     // Categories
