@@ -7,9 +7,9 @@ import (
 	"sort"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	appsv1 "k8s.io/api/apps/v1"
 )
 
 // listDeploymentsWithRetry calls Deployments(ns).List with up to 2
@@ -17,7 +17,7 @@ import (
 // namespace works sometimes and fails sometimes" — is the classic
 // signature of a single-shot K8s API call hitting a network blip,
 // API-server throttle (429), or a brief 5xx during a leader-election.
-// Permanent failures (Forbidden, NotFound, context cancelled) short-
+// Permanent failures (Forbidden, NotFound, context canceled) short-
 // circuit so we don't waste time retrying things that can't recover.
 func (c *Client) listDeploymentsWithRetry(ctx context.Context, namespace string) (*appsv1.DeploymentList, error) {
 	const maxAttempts = 3
@@ -88,11 +88,11 @@ func friendlyWasteError(namespace string, err error) error {
 }
 
 type WasteProfile struct {
-	Namespace     string         `json:"namespace"`
-	Deployments   []WasteItem    `json:"deployments"`
-	TotalWasteCPU string         `json:"totalWasteCPU"`
-	TotalWasteMem string         `json:"totalWasteMem"`
-	Score         string         `json:"score"`
+	Namespace     string      `json:"namespace"`
+	Deployments   []WasteItem `json:"deployments"`
+	TotalWasteCPU string      `json:"totalWasteCPU"`
+	TotalWasteMem string      `json:"totalWasteMem"`
+	Score         string      `json:"score"`
 }
 
 type WasteItem struct {
@@ -204,4 +204,3 @@ func formatResourceBytes(b int64) string {
 	}
 	return fmt.Sprintf("%d KiB", b/1024)
 }
-

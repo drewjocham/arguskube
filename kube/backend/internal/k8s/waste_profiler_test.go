@@ -21,13 +21,14 @@ import (
 // reproduces the bug we just fixed.
 
 func TestIsTransientK8sError(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name      string
 		err       error
 		transient bool
 	}{
 		{"nil", nil, false},
-		{"context cancelled", context.Canceled, false},
+		{"context canceled", context.Canceled, false},
 		{"context deadline", context.DeadlineExceeded, false},
 		{"forbidden", apierrors.NewForbidden(schema.GroupResource{Resource: "deployments"}, "x", errors.New("nope")), false},
 		{"not found", apierrors.NewNotFound(schema.GroupResource{Resource: "deployments"}, "x"), false},
@@ -39,6 +40,7 @@ func TestIsTransientK8sError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := isTransientK8sError(tc.err)
 			if got != tc.transient {
 				t.Fatalf("transient=%v, want %v", got, tc.transient)
@@ -48,6 +50,7 @@ func TestIsTransientK8sError(t *testing.T) {
 }
 
 func TestListDeploymentsWithRetry_RecoversOnTransient(t *testing.T) {
+	t.Parallel()
 	cs := fake.NewSimpleClientset()
 	calls := 0
 	cs.PrependReactor("list", "deployments", func(action clienttesting.Action) (bool, runtime.Object, error) {
@@ -72,6 +75,7 @@ func TestListDeploymentsWithRetry_RecoversOnTransient(t *testing.T) {
 }
 
 func TestListDeploymentsWithRetry_ShortCircuitsOnPermanent(t *testing.T) {
+	t.Parallel()
 	cs := fake.NewSimpleClientset()
 	calls := 0
 	cs.PrependReactor("list", "deployments", func(action clienttesting.Action) (bool, runtime.Object, error) {
@@ -93,6 +97,7 @@ func TestListDeploymentsWithRetry_ShortCircuitsOnPermanent(t *testing.T) {
 }
 
 func TestListDeploymentsWithRetry_GivesUpAfterMaxAttempts(t *testing.T) {
+	t.Parallel()
 	cs := fake.NewSimpleClientset()
 	calls := 0
 	cs.PrependReactor("list", "deployments", func(action clienttesting.Action) (bool, runtime.Object, error) {
@@ -111,6 +116,7 @@ func TestListDeploymentsWithRetry_GivesUpAfterMaxAttempts(t *testing.T) {
 }
 
 func TestFriendlyWasteError(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		err      error
@@ -140,6 +146,7 @@ func TestFriendlyWasteError(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			out := friendlyWasteError("ns-foo", tc.err)
 			if out == nil {
 				t.Fatal("expected error")
@@ -150,4 +157,3 @@ func TestFriendlyWasteError(t *testing.T) {
 		})
 	}
 }
-
