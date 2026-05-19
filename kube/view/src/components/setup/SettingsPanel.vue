@@ -85,10 +85,79 @@ const SECTION_GROUPS = [
 
 const activeSection = ref('')
 
+// Settings search. SECTION_GROUPS holds the canonical (group → sections)
+// tree the left-rail nav renders; a search bar filters that tree by
+// substring match so an SRE looking for "passkey" or "slack" doesn't
+// have to eyeball 15 sections to find the one they want. Pressing
+// Enter jumps to the first matching section.
+const settingsSearch = ref('')
+
+const filteredGroups = computed(() => {
+  const raw = settingsSearch.value.trim().toLowerCase()
+  if (!raw) return SECTION_GROUPS
+  // Build per-section haystack: section label + id + the group label
+  // (so searching the group name shows every section under it).
+  const out = []
+  for (const group of SECTION_GROUPS) {
+    const groupMatch = group.label.toLowerCase().includes(raw)
+    const sections = group.sections.filter((s) => {
+      if (groupMatch) return true
+      const hay = (s.label + ' ' + s.id).toLowerCase()
+      return hay.includes(raw)
+    })
+    if (sections.length > 0) {
+      out.push({ ...group, sections })
+    }
+  }
+  return out
+})
+
+// The total set of section ids that should be visible in the content
+// area when search is active. When the search is empty every section
+// stays visible (no filtering, just standard scroll).
+const visibleSectionIds = computed(() => {
+  if (!settingsSearch.value.trim()) return null // sentinel: "show all"
+  const ids = new Set()
+  for (const g of filteredGroups.value) for (const s of g.sections) ids.add(s.id)
+  return ids
+})
+
+function isSectionVisible(id) {
+  const v = visibleSectionIds.value
+  return v === null || v.has(id)
+}
+
 function scrollToSection(id) {
   const el = document.getElementById(id)
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
+
+// Enter inside the search jumps to the first surviving section.
+function onSearchSubmit() {
+  const groups = filteredGroups.value
+  if (!groups.length) return
+  const first = groups[0].sections[0]
+  if (first) scrollToSection(first.id)
+}
+
+function clearSearch() { settingsSearch.value = '' }
+
+// settingsHideCss is a generated <style> block that hides every
+// section whose id isn't in visibleSectionIds. Done as one CSS string
+// — rather than 15 inline :style bindings — so adding new sections to
+// SECTION_GROUPS doesn't require touching template wrappers.
+const settingsHideCss = computed(() => {
+  const v = visibleSectionIds.value
+  if (v === null) return ''
+  const hidden = []
+  for (const g of SECTION_GROUPS) {
+    for (const s of g.sections) {
+      if (!v.has(s.id)) hidden.push('#' + s.id)
+    }
+  }
+  if (hidden.length === 0) return ''
+  return hidden.join(', ') + ' { display: none !important; }'
+})
 
 const credentialAlerts = useCredentialAlertsStore()
 const esStore = useExternalSecretsStore()
@@ -980,6 +1049,11 @@ onMounted(async () => {
 
 <template>
   <div class="settings-view">
+    <!-- Settings-search scoped CSS. Empty when no search is active.
+         Renders inside the scoped block so it doesn't leak across
+         components, but its ID-selectors hit the global IDs the
+         sections use as scroll anchors. -->
+    <component :is="'style'" v-if="settingsHideCss">{{ settingsHideCss }}</component>
     <div class="header">
       <h1 class="title">Settings</h1>
     </div>
@@ -1005,16 +1079,42 @@ onMounted(async () => {
     </transition>
 
     <nav class="settings-nav">
-      <template v-for="group in SECTION_GROUPS" :key="group.label">
+      <div class="settings-search-row">
+        <input
+          v-model="settingsSearch"
+          type="search"
+          class="settings-search"
+          placeholder="Search settings…"
+          aria-label="Search settings"
+          data-testid="settings-search"
+          @keydown.enter.prevent="onSearchSubmit"
+        />
+        <button
+          v-if="settingsSearch"
+          type="button"
+          class="settings-search-clear"
+          aria-label="Clear search"
+          @click="clearSearch"
+        >×</button>
+      </div>
+      <template v-for="group in filteredGroups" :key="group.label">
         <span class="nav-category">{{ group.label }}</span>
         <button
           v-for="s in group.sections"
           :key="s.id"
           class="nav-item"
           :class="{ active: activeSection === s.id }"
+          :data-testid="`settings-nav-${s.id}`"
           @click="scrollToSection(s.id)"
         >{{ s.label }}</button>
       </template>
+      <div
+        v-if="settingsSearch && filteredGroups.length === 0"
+        class="settings-search-empty"
+        data-testid="settings-search-empty"
+      >
+        No settings match <b>{{ settingsSearch }}</b>.
+      </div>
     </nav>
 
     <div class="scroll" v-if="!loading">
@@ -2346,6 +2446,45 @@ onMounted(async () => {
   overflow-x: auto;
   flex-shrink: 0;
   scrollbar-width: thin;
+}
+
+/* Settings search — sticks at the leading edge of the nav rail. */
+.settings-search-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+.settings-search {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  padding: 4px 24px 4px 10px;
+  border-radius: 4px;
+  width: 180px;
+  outline: none;
+}
+.settings-search:focus { border-color: var(--accent2); }
+.settings-search::-webkit-search-cancel-button { display: none; }
+.settings-search-clear {
+  position: absolute;
+  right: 4px;
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.settings-search-clear:hover { color: var(--text); }
+.settings-search-empty {
+  font-size: 11px;
+  color: var(--text3);
+  padding: 4px 8px;
 }
 
 .settings-nav::-webkit-scrollbar {
