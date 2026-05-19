@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useResources } from '../../composables/useWails'
 import SectionTabs from '../shared/SectionTabs.vue'
+import CloudSecretsTab from './CloudSecretsTab.vue'
 import { parseCertificateValidity, expiryStatus } from '../../lib/x509'
 
 // Secrets is meaningful enough to deserve its own view — separated
@@ -37,6 +38,7 @@ const drafts = ref({})
 
 const SECRETS_TABS = [
   { id: 'browse', label: 'Browse' },
+  { id: 'cloud', label: 'Cloud (AWS/GCP)' },
   { id: 'tls', label: 'TLS Health' },
   { id: 'orphaned', label: 'Orphaned' },
   { id: 'gitops', label: 'GitOps' },
@@ -398,6 +400,11 @@ async function copyToClipboard(text) {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- ====================== CLOUD TAB ====================== -->
+    <div v-else-if="activeTab === 'cloud'" class="tab-pane">
+      <CloudSecretsTab />
     </div>
 
     <!-- ====================== TLS HEALTH TAB ====================== -->
