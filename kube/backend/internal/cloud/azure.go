@@ -17,11 +17,12 @@ import (
 
 // AzureProvider implements Provider against Azure Key Vault. Phase 1
 // uses DefaultAzureCredential, which walks the standard chain:
-//   1. Env vars (AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET)
-//   2. Workload identity (federated tokens in AKS / GH Actions OIDC)
-//   3. Managed identity (on Azure VMs, App Service, etc.)
-//   4. Azure CLI cache (`az login`)
-//   5. Azure Developer CLI (`azd auth login`)
+//  1. Env vars (AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET)
+//  2. Workload identity (federated tokens in AKS / GH Actions OIDC)
+//  3. Managed identity (on Azure VMs, App Service, etc.)
+//  4. Azure CLI cache (`az login`)
+//  5. Azure Developer CLI (`azd auth login`)
+//
 // This matches what `az keyvault secret list` would discover, so an
 // SRE already authenticated via `az login` sees their secrets here
 // with zero further setup.
@@ -64,7 +65,7 @@ const azureSecretsPathMarker = "/secrets/"
 func (AzureProvider) ListSecrets(ctx context.Context, opts ListOpts) ([]SecretItem, error) {
 	vaultURL := normalizeAzureVaultURL(opts.AzureVaultURL)
 	if vaultURL == "" {
-		return nil, errors.New("Azure vault URL required (e.g. https://my-vault.vault.azure.net)")
+		return nil, errors.New("azure vault URL required (e.g. https://my-vault.vault.azure.net)")
 	}
 	cli, err := newAzureSecretsClient(vaultURL)
 	if err != nil {
@@ -262,8 +263,9 @@ func normalizeAzureVaultURL(in string) string {
 
 // splitAzureSecretID splits an Azure Key Vault secret URL into the
 // vault base URL, secret name, and version (version may be empty).
-//   https://my-vault.vault.azure.net/secrets/db-password/abc123
-//   -> "https://my-vault.vault.azure.net", "db-password", "abc123"
+//
+//	https://my-vault.vault.azure.net/secrets/db-password/abc123
+//	-> "https://my-vault.vault.azure.net", "db-password", "abc123"
 func splitAzureSecretID(id string) (vault, name, version string) {
 	i := strings.Index(id, azureSecretsPathMarker)
 	if i < 0 {

@@ -201,11 +201,11 @@ func TestVaultTTLSeconds(t *testing.T) {
 func TestNormalizeAzureVaultURL(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"":                                          "",
-		"  my-vault.vault.azure.net  ":              "https://my-vault.vault.azure.net",
-		"my-vault.vault.azure.net/":                 "https://my-vault.vault.azure.net",
-		"https://my-vault.vault.azure.net":          "https://my-vault.vault.azure.net",
-		"https://my-vault.vault.azure.net/":         "https://my-vault.vault.azure.net",
+		"":                                  "",
+		"  my-vault.vault.azure.net  ":      "https://my-vault.vault.azure.net",
+		"my-vault.vault.azure.net/":         "https://my-vault.vault.azure.net",
+		"https://my-vault.vault.azure.net":  "https://my-vault.vault.azure.net",
+		"https://my-vault.vault.azure.net/": "https://my-vault.vault.azure.net",
 	}
 	for in, want := range cases {
 		t.Run(in, func(t *testing.T) {
