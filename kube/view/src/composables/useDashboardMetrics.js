@@ -283,21 +283,20 @@ export function useDashboardMetrics() {
   function toggleCategoryMetric(categoryId, metricId) {
     const dash = dashboards.value[activeIndex.value]
     if (!dash) return
+    const cat = METRIC_CATEGORIES.find(c => c.id === categoryId)
+    if (!cat) return
     const toggled = dash.categories[categoryId] || []
     const idx = toggled.indexOf(metricId)
     if (idx >= 0) {
-      // Remove it — cycle to next available
+      // Remove it — cycle to the next available metric, *excluding* the
+      // one we just removed. Otherwise find() picks the just-removed id
+      // back up on the next iteration and the toggle has no visible effect.
       toggled.splice(idx, 1)
-      const cat = METRIC_CATEGORIES.find(c => c.id === categoryId)
-      if (cat) {
-        const next = cat.metrics.find(m => !toggled.includes(m.id))
-        if (next) toggled.push(next.id)
-      }
+      const next = cat.metrics.find(m => m.id !== metricId && !toggled.includes(m.id))
+      if (next) toggled.push(next.id)
     }
-    // Always keep exactly 2 toggled
+    // Always keep exactly 2 toggled.
     while (toggled.length < 2) {
-      const cat = METRIC_CATEGORIES.find(c => c.id === categoryId)
-      if (!cat) break
       const next = cat.metrics.find(m => !toggled.includes(m.id))
       if (!next) break
       toggled.push(next.id)
