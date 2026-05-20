@@ -50,6 +50,31 @@ function lintJson() {
 }
 watch(activeTab, () => { lintError.value = '' })
 
+// Auto-pretty-print on paste in the Paste tab. Only kicks in when:
+//   1. The pasted content is, on its own, valid JSON, AND
+//   2. It isn't already pretty-printed (heuristic: no newlines).
+// Plain text and partial edits flow through untouched. The textarea
+// keeps `bytes` as the source of truth via @input, so we only need
+// to massage the value during the actual paste event.
+function onPastePretty(e) {
+  const pasted = e.clipboardData?.getData('text') ?? ''
+  if (!pasted.trim()) return
+  // If the user is pasting INTO an existing buffer (cursor mid-text)
+  // we don't reformat — only when the paste replaces the entire
+  // current value (empty or full-selection).
+  const t = e.target
+  const isFullReplace =
+    !t.value || (t.selectionStart === 0 && t.selectionEnd === t.value.length)
+  if (!isFullReplace) return
+  // Already pretty? Skip.
+  if (pasted.includes('\n')) return
+  let parsed
+  try { parsed = JSON.parse(pasted) }
+  catch { return }
+  e.preventDefault()
+  bytes.value = JSON.stringify(parsed, null, 2)
+}
+
 // ── Upload tab ──────────────────────────────────────────────────────
 function onFileChange(e) {
   const f = e.target.files?.[0]
@@ -160,9 +185,18 @@ const sizeLabel = computed(() => {
       </div>
     </div>
 
-    <!-- Paste -->
+    <!-- Paste — @paste catches the clipboard event before @input so
+         we can pretty-print valid JSON during the paste itself. -->
     <div v-show="activeTab === 'paste'" class="payload-panel">
-      <textarea class="form-textarea" rows="6" placeholder="Paste payload here" :value="bytes" @input="bytes = $event.target.value" @blur="lintJson" />
+      <textarea
+        class="form-textarea"
+        rows="6"
+        placeholder="Paste payload here (valid JSON auto-formats)"
+        :value="bytes"
+        @paste="onPastePretty"
+        @input="bytes = $event.target.value"
+        @blur="lintJson"
+      />
     </div>
 
     <!-- Type -->

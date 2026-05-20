@@ -147,32 +147,77 @@ watch(testType, (t) => {
 })
 
 // ── preset apply ──────────────────────────────────────────────────────
+// Applies every field the preset's RunSpec carries — testName,
+// broker kind + config, destination, payload, count, workers, and
+// the ramp shape. Earlier only the bottom three (count/workers/ramp)
+// were copied, leaving the user to refill destination + payload by
+// hand even after picking a preset.
 function applyPreset(id) {
   selectedPresetId.value = id
   if (!id) return
   const p = store.getPreset(id)
   if (!p?.spec) return
   const s = p.spec
-  if (s.count != null) {
-    const known = COUNT_OPTIONS.find((o) => o.value === s.count)
-    if (known) { customCount.value = false; messageCount.value = s.count }
-    else { customCount.value = true; countInput.value = s.count }
-  }
+
+  if (s.name) testName.value = s.name
+  if (s.destination) destination.value = s.destination
+  applyPresetBroker(s.broker)
+  applyPresetPayload(s.payload)
+  applyPresetCount(s.count)
   if (s.workers) workers.value = s.workers
-  if (s.ramp) {
-    ramp.value = {
-      ...ramp.value,
-      profile: s.ramp.kind ?? s.ramp.profile ?? 'constant',
-      rate: s.ramp.rate ?? ramp.value.rate,
-      // backend may use durationNs for Go-side duration encoding.
-      durationSec: s.ramp.durationNs ? Math.round(s.ramp.durationNs / 1e9) : (s.ramp.durationSec ?? 0),
-      rampTo: s.ramp.rampTo ?? ramp.value.rampTo,
-      stepBy: s.ramp.stepBy ?? ramp.value.stepBy,
-      stepEverySec: s.ramp.stepEveryNs ? Math.round(s.ramp.stepEveryNs / 1e9) : (s.ramp.stepEverySec ?? 10),
-      spikeCount: s.ramp.spikeCount ?? ramp.value.spikeCount,
-      spikeSize: s.ramp.spikeSize ?? ramp.value.spikeSize,
-      spikeIdleSec: s.ramp.spikeIdleNs ? Math.round(s.ramp.spikeIdleNs / 1e9) : (s.ramp.spikeIdleSec ?? 30),
-    }
+  applyPresetRamp(s.ramp)
+}
+
+// Broker — sets the kind first (which triggers the per-kind config
+// defaults via the existing watcher) then layers preset-supplied
+// overrides on top so a preset's auth/host/etc. wins.
+function applyPresetBroker(broker) {
+  if (!broker?.kind) return
+  brokerKind.value = broker.kind
+  if (broker.kind !== 'rest') lastEventBusKind.value = broker.kind
+  // Merge after kind change — defaultBrokerConfig has already run
+  // via the watcher, so this preserves anything the preset cares
+  // about while keeping safe defaults for the rest.
+  brokerConfig.value = { ...defaultBrokerConfig(broker.kind), ...broker }
+}
+
+// Payload — keep the existing source choice if the preset doesn't
+// carry one, otherwise mirror the preset's payload shape so the
+// PayloadEditor renders the right tab + bytes.
+function applyPresetPayload(pp) {
+  if (!pp) return
+  payload.value = {
+    ...payload.value,
+    source: pp.source ?? payload.value.source,
+    bytes: pp.bytes ?? payload.value.bytes,
+    filename: pp.filename ?? payload.value.filename,
+    filePath: pp.filePath ?? payload.value.filePath,
+    fileMode: pp.fileMode ?? payload.value.fileMode,
+    aiPrompt: pp.aiPrompt ?? payload.value.aiPrompt,
+  }
+}
+
+function applyPresetCount(count) {
+  if (count == null) return
+  const known = COUNT_OPTIONS.find((o) => o.value === count)
+  if (known) { customCount.value = false; messageCount.value = count }
+  else { customCount.value = true; countInput.value = count }
+}
+
+function applyPresetRamp(r) {
+  if (!r) return
+  ramp.value = {
+    ...ramp.value,
+    profile: r.kind ?? r.profile ?? 'constant',
+    rate: r.rate ?? ramp.value.rate,
+    // backend may use durationNs for Go-side duration encoding.
+    durationSec: r.durationNs ? Math.round(r.durationNs / 1e9) : (r.durationSec ?? 0),
+    rampTo: r.rampTo ?? ramp.value.rampTo,
+    stepBy: r.stepBy ?? ramp.value.stepBy,
+    stepEverySec: r.stepEveryNs ? Math.round(r.stepEveryNs / 1e9) : (r.stepEverySec ?? 10),
+    spikeCount: r.spikeCount ?? ramp.value.spikeCount,
+    spikeSize: r.spikeSize ?? ramp.value.spikeSize,
+    spikeIdleSec: r.spikeIdleNs ? Math.round(r.spikeIdleNs / 1e9) : (r.spikeIdleSec ?? 30),
   }
 }
 
