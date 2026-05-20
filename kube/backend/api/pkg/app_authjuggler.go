@@ -33,6 +33,13 @@ func (a *App) InjectDebugContainer(namespace, podName, debugImage string) (*k8s.
 	return a.k8s.InjectDebugContainer(a.appCtx(), namespace, podName, debugImage)
 }
 
+// InjectDebugContainerWithOptions is the customizable-strategy entry
+// point used by the new debug popup. The single-image variant above
+// stays for any legacy caller that just wants the default.
+func (a *App) InjectDebugContainerWithOptions(namespace, podName string, opts k8s.DebugOptions) (*k8s.DebugSession, error) {
+	return a.k8s.InjectDebugContainerWithOptions(a.appCtx(), namespace, podName, opts)
+}
+
 func (a *App) CheckCanI(namespace, verb, resource, apiGroup string) (*k8s.CanIResult, error) {
 	return a.k8s.CheckCanI(a.appCtx(), namespace, verb, resource, apiGroup)
 }

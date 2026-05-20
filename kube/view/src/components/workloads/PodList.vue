@@ -4,6 +4,7 @@ import { useResources, usePodLogs, useLogStream, useTimeSeriesMetrics, usePodExe
 import { bus } from '../../lib/bus'
 import { useManifestEdit } from '../../composables/useManifestEdit'
 import ManifestEditPopup from '../common/ManifestEditPopup.vue'
+import DebugStrategyPopup from './DebugStrategyPopup.vue'
 import Select from '../common/Select.vue'
 import { tokenize } from '../../utils/logHighlight'
 
@@ -344,16 +345,35 @@ function logLevel(msg) {
   return 'info'
 }
 
-async function injectDebugger(pod) {
-  notification.value = `Injecting debug container into ${pod.name}...`
-  try {
-    await callGo('InjectDebugContainer', pod.namespace, pod.name, 'nicolaka/netshoot:latest')
-    notification.value = `Debug container injected into ${pod.name}. Use the Shell tab to access it.`
-    setTimeout(() => { notification.value = null }, 8000)
-  } catch (e) {
-    notification.value = `Debug injection failed: ${e?.message || e}`
-    setTimeout(() => { notification.value = null }, 8000)
+// Debug-strategy popup state. The button used to immediately inject
+// a hardcoded netshoot container — now it opens a popup with preset
+// strategies + override fields so the user picks the right image
+// (alpine for apk-install workflows, busybox for minimal, custom for
+// in-house tools) and can override entrypoint / target container per
+// pod. The popup itself calls InjectDebugContainerWithOptions and
+// emits @injected on success.
+const debugPod = ref(null)
+
+function injectDebugger(pod) {
+  // Strip the pod down to just what the popup needs (name, namespace,
+  // container list for the target-container picker) — the full pod
+  // object carries a lot of unrelated fields.
+  debugPod.value = {
+    name: pod.name,
+    namespace: pod.namespace,
+    containers: (pod.containers || []).map((c) => ({ name: c.name })),
   }
+}
+
+function onDebugInjected(session) {
+  notification.value = `Debug container "${session?.containerName || ''}" injected into ${debugPod.value?.name}. Use the Shell tab to access it.`
+  setTimeout(() => { notification.value = null }, 8000)
+  debugPod.value = null
+}
+
+function onDebugError(msg) {
+  notification.value = `Debug injection failed: ${msg}`
+  setTimeout(() => { notification.value = null }, 8000)
 }
 
 async function deletePod(pod) {
@@ -524,7 +544,7 @@ onUnmounted(() => {
             </button>
 
             <div class="tab-actions">
-              <button class="action-btn debug-btn" @click.stop="injectDebugger(p)" title="Inject netshoot debug container">
+              <button class="action-btn debug-btn" @click.stop="injectDebugger(p)" title="Choose a debug strategy and inject a debug container">
                 🐛 Debug
               </button>
               <button class="action-btn" @click.stop="editPod(p)" title="View/Edit YAML">
@@ -746,6 +766,15 @@ onUnmounted(() => {
       @update:content="manifestContent = $event"
       @apply="onPodManifestApplied"
       @close="closeManifest"
+    />
+
+    <DebugStrategyPopup
+      v-if="debugPod"
+      :pod="debugPod"
+      :show="!!debugPod"
+      @close="debugPod = null"
+      @injected="onDebugInjected"
+      @error="onDebugError"
     />
   </div>
 </template>
