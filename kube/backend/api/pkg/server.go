@@ -622,6 +622,19 @@ var httpExposedMethods = map[string]struct{}{
 	// retry semantics as ProfileWaste, scoped to the whole cluster
 	// with bounded concurrency.
 	"ProfileClusterWaste": {},
+	// Argus Alerting (anomaly detection). Only the read-only +
+	// idempotent state-toggle endpoints are exposed via HTTP — rule
+	// creation/deletion (SaveAnomalyRule, DeleteAnomalyRule) stays
+	// desktop-only because the dangerous-op test treats arbitrary
+	// rule definitions as a mutating surface (rule bodies can carry
+	// label selectors / thresholds that drive real-world paging).
+	// Settings is a single blob without that shape, so it stays.
+	"GetAnomalySettings":  {},
+	"SaveAnomalySettings": {},
+	"GetAnomalyRules":     {},
+	"ToggleAnomalyRule":   {},
+	"GetAnomalyJobs":      {},
+	"ConnectToAgent":      {},
 }
 
 func methodAllowedOverHTTP(name string) bool {
