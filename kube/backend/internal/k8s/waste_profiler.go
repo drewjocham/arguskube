@@ -93,6 +93,11 @@ type WasteProfile struct {
 	TotalWasteCPU string      `json:"totalWasteCPU"`
 	TotalWasteMem string      `json:"totalWasteMem"`
 	Score         string      `json:"score"`
+	// Error is non-empty only when ProfileClusterWaste's per-
+	// namespace call failed (forbidden / timeout / etc.). The
+	// frontend renders it inline on the namespace card so a single
+	// bad namespace doesn't blank the whole heatmap.
+	Error string `json:"error,omitempty"`
 }
 
 type WasteItem struct {
@@ -104,6 +109,88 @@ type WasteItem struct {
 	WasteCPU      string `json:"wasteCPU,omitempty"`
 	WasteMem      string `json:"wasteMem,omitempty"`
 	Ratio         string `json:"ratio,omitempty"`
+}
+
+// ProfileClusterWaste runs ProfileWaste against every namespace in
+// the cluster and returns the per-namespace profiles. The frontend
+// renders these as a grid of namespace cards (top-4 deployments per
+// card, click-to-expand for the rest). Concurrency is bounded so a
+// 500-namespace cluster doesn't fan out 500 simultaneous List calls.
+//
+// Per-namespace errors don't fail the whole call — they're recorded
+// on the profile via the Error field so the user can see "this
+// namespace forbidden / timed out" in-line rather than blanking the
+// entire view. The list of namespaces itself is the only hard error.
+func (c *Client) ProfileClusterWaste(ctx context.Context) ([]WasteProfile, error) {
+	namespaces, err := c.ListAllNamespaces(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list namespaces: %w", err)
+	}
+
+	// Bounded fan-out — 8 in flight matches the TLS-health pattern in
+	// SecretsView and keeps a worst-case 500-ns cluster manageable.
+	const concurrency = 8
+	type result struct {
+		ns      string
+		profile *WasteProfile
+		err     error
+	}
+	in := make(chan string, len(namespaces))
+	out := make(chan result, len(namespaces))
+	for w := 0; w < concurrency; w++ {
+		go func() {
+			for ns := range in {
+				p, err := c.ProfileWaste(ctx, ns)
+				out <- result{ns: ns, profile: p, err: err}
+			}
+		}()
+	}
+	for _, ns := range namespaces {
+		in <- ns
+	}
+	close(in)
+
+	profiles := make([]WasteProfile, 0, len(namespaces))
+	for i := 0; i < len(namespaces); i++ {
+		r := <-out
+		if r.err != nil {
+			profiles = append(profiles, WasteProfile{
+				Namespace: r.ns,
+				Score:     "unknown",
+				Error:     r.err.Error(),
+			})
+			continue
+		}
+		if r.profile != nil {
+			profiles = append(profiles, *r.profile)
+		}
+	}
+	// Sort by waste score (critical → high → medium → low → unknown),
+	// then by namespace name within each tier so the rendering is
+	// deterministic and the most-wasteful namespaces sit at the top.
+	sort.Slice(profiles, func(i, j int) bool {
+		oi, oj := wasteScoreOrder(profiles[i].Score), wasteScoreOrder(profiles[j].Score)
+		if oi != oj {
+			return oi < oj
+		}
+		return profiles[i].Namespace < profiles[j].Namespace
+	})
+	return profiles, nil
+}
+
+func wasteScoreOrder(score string) int {
+	switch score {
+	case "critical":
+		return 0
+	case "high":
+		return 1
+	case "medium":
+		return 2
+	case "low":
+		return 3
+	default:
+		return 4
+	}
 }
 
 func (c *Client) ProfileWaste(ctx context.Context, namespace string) (*WasteProfile, error) {
