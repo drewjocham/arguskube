@@ -622,17 +622,17 @@ var httpExposedMethods = map[string]struct{}{
 	// retry semantics as ProfileWaste, scoped to the whole cluster
 	// with bounded concurrency.
 	"ProfileClusterWaste": {},
-	// Argus Alerting (anomaly detection). The settings store + rule
-	// CRUD are user-scoped configuration — they only touch the
-	// per-instance SQLite DB. ConnectToAgent + GetAnomalyJobs are
-	// read-only. None of these methods mutate cluster state, so
-	// SaaS HTTP exposure is safe.
+	// Argus Alerting (anomaly detection). Only the read-only +
+	// idempotent state-toggle endpoints are exposed via HTTP — rule
+	// creation/deletion (SaveAnomalyRule, DeleteAnomalyRule) stays
+	// desktop-only because the dangerous-op test treats arbitrary
+	// rule definitions as a mutating surface (rule bodies can carry
+	// label selectors / thresholds that drive real-world paging).
+	// Settings is a single blob without that shape, so it stays.
 	"GetAnomalySettings":  {},
 	"SaveAnomalySettings": {},
 	"GetAnomalyRules":     {},
-	"SaveAnomalyRule":     {},
 	"ToggleAnomalyRule":   {},
-	"DeleteAnomalyRule":   {},
 	"GetAnomalyJobs":      {},
 	"ConnectToAgent":      {},
 }
