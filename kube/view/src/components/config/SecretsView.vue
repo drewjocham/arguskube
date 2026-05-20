@@ -29,6 +29,11 @@ const collapsedGroups = ref(new Set())
 // navigating away clears it (handled by the watcher below).
 const revealed = ref(new Set())
 
+// Per-key view mode: 'decoded' (default — auto-decoded plaintext, the
+// existing behavior) or 'base64' (raw kubectl-style cGFzc3dvcmQ=
+// view). Stored in a Set so a missing key falls through to decoded.
+const showBase64 = ref(new Set())
+
 // Per-key edit state (Base64 painkiller — see SECRETS_TABS comment).
 // Stored as { 'ns/name/key': 'edited plaintext' } so the user's edits
 // survive a re-render without leaking across keys.
@@ -77,6 +82,7 @@ onMounted(() => refresh())
 watch(activeTab, () => {
   revealed.value = new Set()
   drafts.value = {}
+  showBase64.value = new Set()
   expandedSecret.value = null
 })
 
@@ -145,10 +151,31 @@ function toggleReveal(s, dataKey) {
       delete nextDrafts[k]
       drafts.value = nextDrafts
     }
+    // Also drop the base64-view preference for this key so the next
+    // reveal starts fresh on the decoded view.
+    if (showBase64.value.has(k)) {
+      const sb = new Set(showBase64.value)
+      sb.delete(k)
+      showBase64.value = sb
+    }
   } else {
     next.add(k)
   }
   revealed.value = next
+}
+
+// Per-row toggle between the raw base64 (as Kubernetes stores it,
+// kubectl shows it) and the auto-decoded plaintext. Decoded is the
+// default; switching to base64 disables draft editing because edits
+// only make sense against the plaintext form.
+function isBase64View(s, dataKey) { return showBase64.value.has(valueKey(s, dataKey)) }
+
+function toggleBase64View(s, dataKey) {
+  const k = valueKey(s, dataKey)
+  const next = new Set(showBase64.value)
+  if (next.has(k)) next.delete(k)
+  else next.add(k)
+  showBase64.value = next
 }
 
 function decodeBase64(raw) {
@@ -371,8 +398,18 @@ async function copyToClipboard(text) {
                         <button
                           v-if="isRevealed(s, dataKey)"
                           class="data-btn"
-                          @click="copyToClipboard(decodedValue(s, dataKey, rawValue))"
-                          title="Copy decoded value"
+                          :class="{ active: isBase64View(s, dataKey) }"
+                          :data-testid="`base64-toggle-${s.namespace}-${s.name}-${dataKey}`"
+                          :title="isBase64View(s, dataKey) ? 'Show decoded plaintext' : 'Show raw Base64 (kubectl-style)'"
+                          @click="toggleBase64View(s, dataKey)"
+                        >
+                          {{ isBase64View(s, dataKey) ? 'Decoded' : 'Base64' }}
+                        </button>
+                        <button
+                          v-if="isRevealed(s, dataKey)"
+                          class="data-btn"
+                          :title="isBase64View(s, dataKey) ? 'Copy Base64' : 'Copy decoded value'"
+                          @click="copyToClipboard(isBase64View(s, dataKey) ? String(rawValue) : decodedValue(s, dataKey, rawValue))"
                         >Copy</button>
                       </div>
                     </div>
@@ -380,6 +417,11 @@ async function copyToClipboard(text) {
                       v-if="!isRevealed(s, dataKey)"
                       class="data-val obfuscated font-mono"
                     >•••••••• ({{ String(rawValue).length }} chars b64)</pre>
+                    <pre
+                      v-else-if="isBase64View(s, dataKey)"
+                      class="data-val font-mono"
+                      :data-testid="`value-base64-${s.namespace}-${s.name}-${dataKey}`"
+                    >{{ rawValue }}</pre>
                     <textarea
                       v-else
                       class="data-val font-mono"
@@ -390,8 +432,14 @@ async function copyToClipboard(text) {
                       :data-testid="`value-${s.namespace}-${s.name}-${dataKey}`"
                     ></textarea>
                     <div v-if="isRevealed(s, dataKey)" class="data-hint">
-                      Auto-decoded from Base64. Edits stay local until
-                      you save (write-back wiring lands in a follow-up).
+                      <template v-if="isBase64View(s, dataKey)">
+                        Raw Base64 as Kubernetes stores it. Click
+                        <b>Decoded</b> to see the plaintext.
+                      </template>
+                      <template v-else>
+                        Auto-decoded from Base64. Edits stay local until
+                        you save (write-back wiring lands in a follow-up).
+                      </template>
                     </div>
                   </div>
                 </div>
