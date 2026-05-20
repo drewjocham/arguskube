@@ -622,6 +622,19 @@ var httpExposedMethods = map[string]struct{}{
 	// retry semantics as ProfileWaste, scoped to the whole cluster
 	// with bounded concurrency.
 	"ProfileClusterWaste": {},
+	// Argus Alerting (anomaly detection). The settings store + rule
+	// CRUD are user-scoped configuration — they only touch the
+	// per-instance SQLite DB. ConnectToAgent + GetAnomalyJobs are
+	// read-only. None of these methods mutate cluster state, so
+	// SaaS HTTP exposure is safe.
+	"GetAnomalySettings":  {},
+	"SaveAnomalySettings": {},
+	"GetAnomalyRules":     {},
+	"SaveAnomalyRule":     {},
+	"ToggleAnomalyRule":   {},
+	"DeleteAnomalyRule":   {},
+	"GetAnomalyJobs":      {},
+	"ConnectToAgent":      {},
 }
 
 func methodAllowedOverHTTP(name string) bool {

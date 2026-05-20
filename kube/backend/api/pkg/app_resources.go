@@ -147,6 +147,7 @@ func (a *App) DeleteAnomalyRule(id string) error {
 	return a.anomalySettings.DeleteRule(id)
 }
 
+
 // ListVulnerabilities returns cached scan results (or demo data if no scan has run).
 func (a *App) ListVulnerabilities() ([]vulnscan.ScannedImage, error) {
 	if a.scanner == nil {
