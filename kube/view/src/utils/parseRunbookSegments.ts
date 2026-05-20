@@ -22,9 +22,29 @@
 // content under the same heading still get distinct ids.
 
 const FENCE = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)(?:```|$)/g
-const HEADING_LINE = /^(#{1,6})\s+(.+?)\s*$/m
 
-function slugify(s) {
+export interface TextSegment {
+  type: 'text'
+  text: string
+  section: string
+  sectionId: string
+}
+export interface CodeSegment {
+  type: 'code'
+  code: string
+  language: string
+  section: string
+  sectionId: string
+  codeIndex: number
+}
+export type RunbookSegment = TextSegment | CodeSegment
+
+export interface SectionRef {
+  id: string
+  label: string
+}
+
+function slugify(s: unknown): string {
   return String(s || '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -34,11 +54,11 @@ function slugify(s) {
 
 // Walk the input linearly. Between fence matches we may cross headings; the
 // "current section" tracks whichever heading we last saw.
-export function parseRunbookSegments(input) {
+export function parseRunbookSegments(input: unknown): RunbookSegment[] {
   const text = typeof input === 'string' ? input : String(input ?? '')
   if (!text) return []
 
-  const segments = []
+  const segments: RunbookSegment[] = []
   let codeIndex = 0
   let currentSection = 'Preamble'
   let currentSectionId = 'preamble'
@@ -47,7 +67,7 @@ export function parseRunbookSegments(input) {
   // updateSection scans `chunk` for the LAST heading line and, if found,
   // updates current section. We use the last heading because if a chunk has
   // multiple headings, all subsequent code blocks belong to the most recent.
-  function updateSectionFromChunk(chunk) {
+  function updateSectionFromChunk(chunk: string): void {
     const matches = [...chunk.matchAll(/^(#{1,6})\s+(.+?)\s*$/gm)]
     if (matches.length > 0) {
       const last = matches[matches.length - 1]
@@ -60,7 +80,7 @@ export function parseRunbookSegments(input) {
   let lastIndex = 0
   FENCE.lastIndex = 0
 
-  let match
+  let match: RegExpExecArray | null
   while ((match = FENCE.exec(text)) !== null) {
     const fenceStart = match.index
     if (fenceStart > lastIndex) {
@@ -110,9 +130,9 @@ export function parseRunbookSegments(input) {
 // uniqueSections returns the ordered list of (sectionId, section) pairs that
 // appear in the segments. Used to drive the "select a terminal session"
 // UI — each section maps to one logical session.
-export function uniqueSections(segments) {
-  const seen = new Set()
-  const out = []
+export function uniqueSections(segments: readonly RunbookSegment[]): SectionRef[] {
+  const seen = new Set<string>()
+  const out: SectionRef[] = []
   for (const s of segments) {
     if (!seen.has(s.sectionId)) {
       seen.add(s.sectionId)

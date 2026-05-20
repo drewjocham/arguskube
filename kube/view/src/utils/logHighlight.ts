@@ -19,17 +19,28 @@ const RULES = [
   { pattern: /[a-zA-Z_][\w.]*(?==)/g,        cls: 'hl-key' },
 ]
 
-export function tokenize(msg) {
+export interface HighlightSegment {
+  text: string
+  cls: string
+}
+
+interface Hit {
+  start: number
+  end: number
+  text: string
+  cls: string
+}
+
+export function tokenize(msg: unknown): HighlightSegment[] {
   if (!msg || typeof msg !== 'string') {
     return [{ text: String(msg || ''), cls: '' }]
   }
 
-  var hits = []
-  for (var i = 0; i < RULES.length; i++) {
-    var rule = RULES[i]
-    var re = rule.pattern
+  const hits: Hit[] = []
+  for (const rule of RULES) {
+    const re = rule.pattern
     re.lastIndex = 0
-    var m
+    let m: RegExpExecArray | null
     while ((m = re.exec(msg)) !== null) {
       hits.push({ start: m.index, end: m.index + m[0].length, text: m[0], cls: rule.cls })
     }
@@ -39,21 +50,20 @@ export function tokenize(msg) {
     return [{ text: msg, cls: '' }]
   }
 
-  hits.sort(function (a, b) { return a.start - b.start || b.end - a.end })
+  hits.sort((a, b) => a.start - b.start || b.end - a.end)
 
-  var kept = []
-  var cursor = 0
-  for (var j = 0; j < hits.length; j++) {
-    if (hits[j].start >= cursor) {
-      kept.push(hits[j])
-      cursor = hits[j].end
+  const kept: Hit[] = []
+  let cursor = 0
+  for (const hit of hits) {
+    if (hit.start >= cursor) {
+      kept.push(hit)
+      cursor = hit.end
     }
   }
 
-  var segs = []
-  var pos = 0
-  for (var k = 0; k < kept.length; k++) {
-    var h = kept[k]
+  const segs: HighlightSegment[] = []
+  let pos = 0
+  for (const h of kept) {
     if (h.start > pos) {
       segs.push({ text: msg.slice(pos, h.start), cls: '' })
     }
