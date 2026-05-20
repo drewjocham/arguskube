@@ -53,6 +53,13 @@ func (a *App) ProfileWaste(namespace string) (*k8s.WasteProfile, error) {
 	return a.k8s.ProfileWaste(a.appCtx(), namespace)
 }
 
+// ProfileClusterWaste returns waste profiles for every namespace in
+// the cluster, sorted by score (critical first). Drives the
+// Over-Provisioning Heatmap's grid-of-namespaces view.
+func (a *App) ProfileClusterWaste() ([]k8s.WasteProfile, error) {
+	return a.k8s.ProfileClusterWaste(a.appCtx())
+}
+
 func (a *App) CorrelatePodEvents(namespace, podName string, tailLines int64) (*k8s.CorrelationResult, error) {
 	return a.k8s.CorrelatePodEvents(a.appCtx(), namespace, podName, tailLines)
 }

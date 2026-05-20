@@ -616,6 +616,12 @@ var httpExposedMethods = map[string]struct{}{
 	"CloudIdentities":   {},
 	"CloudListSecrets":  {},
 	"CloudRevealSecret": {},
+	// Over-Provisioning Heatmap (cluster-wide view). Read-only —
+	// lists deployments + their request shapes per namespace and
+	// estimates waste from the request ratio. Same per-namespace
+	// retry semantics as ProfileWaste, scoped to the whole cluster
+	// with bounded concurrency.
+	"ProfileClusterWaste": {},
 }
 
 func methodAllowedOverHTTP(name string) bool {
