@@ -245,7 +245,7 @@ func TestWasteScoreOrder(t *testing.T) {
 		"medium":   2,
 		"low":      3,
 		"unknown":  4,
-		"":        4,
+		"":         4,
 		"garbage":  4,
 	}
 	for in, want := range cases {
