@@ -11,20 +11,24 @@
 // treating everything after the opening fence as code.
 const FENCE = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)(?:```|$)/g
 
-const SHELL_LANGS = new Set([
+const SHELL_LANGS = new Set<string>([
   '', 'sh', 'bash', 'zsh', 'shell', 'console', 'kubectl', 'fish',
 ])
 
-export function isShellLanguage(lang) {
+export type CodeBlockSegment =
+  | { type: 'text'; text: string }
+  | { type: 'code'; language: string; text: string }
+
+export function isShellLanguage(lang: string | null | undefined): boolean {
   if (!lang) return true
   return SHELL_LANGS.has(String(lang).toLowerCase())
 }
 
-export function parseCodeBlocks(input) {
+export function parseCodeBlocks(input: unknown): CodeBlockSegment[] {
   const text = typeof input === 'string' ? input : String(input ?? '')
   if (!text) return []
 
-  const segments = []
+  const segments: CodeBlockSegment[] = []
   let lastIndex = 0
   FENCE.lastIndex = 0
 

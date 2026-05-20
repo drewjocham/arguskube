@@ -16,24 +16,27 @@ marked.setOptions({
 const renderer = new marked.Renderer()
 const linkOpen = renderer.link?.bind(renderer)
 if (linkOpen) {
-  renderer.link = (...args) => {
-    const html = linkOpen(...args)
+  renderer.link = ((...args: unknown[]) => {
+    // marked's renderer link signature shifts between major versions; we
+    // forward whatever it gives us and post-process the resulting HTML
+    // string to inject the safe-external attributes.
+    const html = (linkOpen as (...a: unknown[]) => string)(...args)
     return html.replace(/^<a /, '<a target="_blank" rel="noopener noreferrer" ')
-  }
+  }) as typeof renderer.link
 }
 
 // Render markdown to a sanitized HTML string suitable for v-html in the chat.
 // Falls back to an empty string for nullish/empty input. Sanitization is
 // strict: only basic structural and inline tags are allowed.
-export function renderMarkdown(text) {
+export function renderMarkdown(text: unknown): string {
   if (text === null || text === undefined) return ''
   const str = String(text)
   if (!str.trim()) return ''
 
-  let html
+  let html: string
   try {
-    html = marked.parse(str, { renderer, async: false })
-  } catch (e) {
+    html = marked.parse(str, { renderer, async: false }) as string
+  } catch {
     // If marked itself throws (very rare), fall back to plain text wrapped
     // in a <p> so the message still appears.
     return `<p>${escapeHtml(str)}</p>`
@@ -53,7 +56,7 @@ export function renderMarkdown(text) {
   })
 }
 
-function escapeHtml(s) {
+function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

@@ -16,10 +16,10 @@ describe('parseRunbookSegments', () => {
 
   it('attributes the first code block to "Preamble" when no heading precedes it', () => {
     const out = parseRunbookSegments('intro\n```bash\nls\n```\n')
-    const code = out.find(s => s.type === 'code')
+    const code = out.find((s): s is import('../parseRunbookSegments').CodeSegment => s.type === 'code')
     expect(code).toBeDefined()
-    expect(code.section).toBe('Preamble')
-    expect(code.sectionId).toBe('preamble')
+    expect(code!.section).toBe('Preamble')
+    expect(code!.sectionId).toBe('preamble')
   })
 
   it('groups code blocks by their preceding heading', () => {
@@ -36,7 +36,7 @@ describe('parseRunbookSegments', () => {
     ].join('\n')
 
     const out = parseRunbookSegments(md)
-    const codes = out.filter(s => s.type === 'code')
+    const codes = out.filter((s): s is import('../parseRunbookSegments').CodeSegment => s.type === 'code')
     expect(codes).toHaveLength(2)
     expect(codes[0].section).toBe('Verify pods')
     expect(codes[1].section).toBe('Restart deployment')
@@ -54,7 +54,7 @@ describe('parseRunbookSegments', () => {
       'kubectl get svc -n kube-system',
       '```',
     ].join('\n')
-    const codes = parseRunbookSegments(md).filter(s => s.type === 'code')
+    const codes = parseRunbookSegments(md).filter((s): s is import('../parseRunbookSegments').CodeSegment => s.type === 'code')
     expect(codes).toHaveLength(2)
     expect(codes[0].sectionId).toBe(codes[1].sectionId)
     expect(codes[0].section).toBe('DNS checks')
@@ -62,7 +62,7 @@ describe('parseRunbookSegments', () => {
 
   it('codeIndex is doc-wide and increments per code block', () => {
     const md = '## A\n```\nls\n```\n## B\n```\nps\n```\n## C\n```\nuptime\n```'
-    const codes = parseRunbookSegments(md).filter(s => s.type === 'code')
+    const codes = parseRunbookSegments(md).filter((s): s is import('../parseRunbookSegments').CodeSegment => s.type === 'code')
     expect(codes.map(c => c.codeIndex)).toEqual([0, 1, 2])
   })
 
@@ -76,30 +76,32 @@ describe('parseRunbookSegments', () => {
       'echo hi',
       '```',
     ].join('\n')
-    const code = parseRunbookSegments(md).find(s => s.type === 'code')
-    expect(code.section).toBe('Final')
+    const code = parseRunbookSegments(md).find((s): s is import('../parseRunbookSegments').CodeSegment => s.type === 'code')
+    expect(code!.section).toBe('Final')
   })
 
   it('lowercases the language tag', () => {
-    const code = parseRunbookSegments('```Bash\nls\n```').find(s => s.type === 'code')
-    expect(code.language).toBe('bash')
+    const code = parseRunbookSegments('```Bash\nls\n```').find((s): s is import('../parseRunbookSegments').CodeSegment => s.type === 'code')
+    expect(code!.language).toBe('bash')
   })
 
   it('handles heading levels 1–6 the same way', () => {
     const md = '###### Tiny header\n```\necho hi\n```'
-    const code = parseRunbookSegments(md).find(s => s.type === 'code')
-    expect(code.section).toBe('Tiny header')
+    const code = parseRunbookSegments(md).find((s): s is import('../parseRunbookSegments').CodeSegment => s.type === 'code')
+    expect(code!.section).toBe('Tiny header')
   })
 })
 
 describe('uniqueSections', () => {
   it('returns ordered unique sections with id + label', () => {
+    // Hand-rolled minimal segments — uniqueSections only reads
+    // sectionId + section so the test casts to the public type.
     const segs = [
-      { sectionId: 'a', section: 'A', type: 'text' },
-      { sectionId: 'a', section: 'A', type: 'code' },
-      { sectionId: 'b', section: 'B', type: 'code' },
-      { sectionId: 'a', section: 'A', type: 'code' },
-    ]
+      { sectionId: 'a', section: 'A', type: 'text', text: '' },
+      { sectionId: 'a', section: 'A', type: 'code', code: '', language: '', codeIndex: 0 },
+      { sectionId: 'b', section: 'B', type: 'code', code: '', language: '', codeIndex: 1 },
+      { sectionId: 'a', section: 'A', type: 'code', code: '', language: '', codeIndex: 2 },
+    ] as const satisfies readonly import('../parseRunbookSegments').RunbookSegment[]
     const out = uniqueSections(segs)
     expect(out).toEqual([
       { id: 'a', label: 'A' },

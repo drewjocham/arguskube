@@ -3,10 +3,22 @@
 // testable in isolation. Anything that needs to call into the AI backend
 // belongs alongside but in a separate module.
 
+export interface CuratedSuggestion {
+  label: string
+  query: string
+  description: string
+}
+
+export interface Suggestion extends CuratedSuggestion {
+  kind: 'curated' | 'field-value'
+}
+
+export type FieldMap = Record<string, readonly (string | number)[]>
+
 // Curated list of common queries that show up in the suggestions dropdown.
 // Each entry is { label, query, description } so the dropdown can render a
 // human-readable hint alongside the actual selector.
-export const CURATED_SUGGESTIONS = [
+export const CURATED_SUGGESTIONS: readonly CuratedSuggestion[] = [
   {
     label: 'All errors',
     query: '{level="error"}',
@@ -43,9 +55,9 @@ export const CURATED_SUGGESTIONS = [
 // list of suggestions: matches against curated entries first, then label-
 // based completions, then live field-completion suggestions derived from the
 // `fields` argument (a map of fieldName → known values).
-export function buildSuggestions(query, fields = {}) {
+export function buildSuggestions(query: string | undefined | null, fields: FieldMap = {}): Suggestion[] {
   const q = (query || '').trim().toLowerCase()
-  const out = []
+  const out: Suggestion[] = []
 
   for (const s of CURATED_SUGGESTIONS) {
     if (!q || s.label.toLowerCase().includes(q) || s.query.toLowerCase().includes(q)) {
@@ -85,9 +97,15 @@ export function buildSuggestions(query, fields = {}) {
 //   - normalizes whitespace
 //
 // Returns { fixed, changed, notes[] } so the UI can show what changed.
-export function fixQuerySyntax(input) {
+export interface FixQueryResult {
+  fixed: string
+  changed: boolean
+  notes: string[]
+}
+
+export function fixQuerySyntax(input: unknown): FixQueryResult {
   const original = String(input || '')
-  const notes = []
+  const notes: string[] = []
   let q = original
 
   // 1. Curly / unicode quotes → straight ASCII. Run first so all later
@@ -136,7 +154,7 @@ export function fixQuerySyntax(input) {
     }
 
     // b) Bare values: `field=value` (or `field=~value`) → `field="value"`.
-    inner = inner.replace(/([\w.-]+)\s*(=~?|=)\s*([^"\s,}=][^,}]*)/g, (_, field, op, value) => {
+    inner = inner.replace(/([\w.-]+)\s*(=~?|=)\s*([^"\s,}=][^,}]*)/g, (_match: string, field: string, op: string, value: string) => {
       bareFixed = true
       return `${field}${op}"${value.trim()}"`
     })
