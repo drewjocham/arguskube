@@ -420,6 +420,18 @@ function onDialogClick(e) {
   max-height: 80vh;
   padding: 0;
   color: var(--text, #e8eaec);
+  /* Dead-center the dialog in the viewport. The UA stylesheet for
+     dialog[open] sets margin: 0 with enough specificity to beat a
+     scoped Vue rule, so the canonical `inset:0 + margin:auto`
+     pattern silently fails here. Pinning the position with
+     top/left + translate sidesteps the cascade entirely. */
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  margin: 0;
+  transform: translate(-50%, -50%);
 }
 .modal::backdrop {
   background: rgba(0,0,0,0.6);
