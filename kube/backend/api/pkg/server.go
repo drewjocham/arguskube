@@ -408,7 +408,11 @@ var httpExposedMethods = map[string]struct{}{
 	"GetTier":            {},
 	"GetSettings":        {}, // returns masked tokens; safe to read
 	"GetClusterMetrics":  {},
-	"DetectAlerts":       {},
+	// QueryTimeSeriesMetrics drives the Monitoring Dashboard sparklines.
+	// Read-only: queries the configured metrics provider (Prometheus /
+	// VictoriaMetrics) or falls back to derived data from the core API.
+	"QueryTimeSeriesMetrics": {},
+	"DetectAlerts":           {},
 	"ListResources":      {},
 	"GetResourceDetail":  {},
 	"GetResourceYaml":    {},
