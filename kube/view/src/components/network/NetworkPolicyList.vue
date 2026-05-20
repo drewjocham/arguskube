@@ -1,10 +1,13 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useResources, useChat, useNotebooks } from '../../composables/useWails'
+import { callGo } from '../../composables/useBridge'
 import { useArgusContextStore } from '../../stores/argusContext'
 import { useUIPrefsStore } from '../../stores/uiPrefs'
 import { useNotificationsStore } from '../../stores/notifications'
 import { useDocumentsStore } from '../../stores/documents'
+import ArgusRecommendations from '../common/ArgusRecommendations.vue'
+import CreateNetworkPolicyPopup from './CreateNetworkPolicyPopup.vue'
 
 const props = defineProps({
   type: { type: String, default: 'networkpolicies' }
@@ -57,6 +60,64 @@ function mapItems() {
 async function refresh(force = false) {
   await listResources(resourceType, '', force)
   mapItems()
+  if (resourceType === 'networkpolicies') {
+    refreshRecommendations()
+  }
+}
+
+// ── Argus inline recommendations ──────────────────────────────────
+// Drives the ArgusRecommendations panel below the policy list. Pulls
+// data-grounded suggestions (default-deny gaps, stale selectors,
+// dual-deny foot-guns) via the new RecommendNetworkPolicies App
+// method. Re-fetched on every refresh AND after a successful
+// create/apply so the user sees their fix dismiss its own rec.
+const recommendations = ref([])
+const recsLoading = ref(false)
+const recsError = ref('')
+
+async function refreshRecommendations() {
+  if (resourceType !== 'networkpolicies') return
+  recsLoading.value = true
+  recsError.value = ''
+  try {
+    // "" means cluster-wide — frontend doesn't currently filter NPs
+    // by namespace, so the recs scope matches.
+    const out = await callGo('RecommendNetworkPolicies', '')
+    recommendations.value = Array.isArray(out) ? out : []
+  } catch (e) {
+    recsError.value = e?.message || String(e)
+    recommendations.value = []
+  } finally {
+    recsLoading.value = false
+  }
+}
+
+// ── Create-policy popup ───────────────────────────────────────────
+// The Create button opens this with a blank scaffold; the
+// Recommendations panel can also open it with a pre-populated YAML
+// (the suggestedYAML from a rec card) when the user clicks
+// "Apply suggested fix".
+const createOpen = ref(false)
+const createInitialYaml = ref('')
+
+function openCreate(initialYaml = '') {
+  createInitialYaml.value = initialYaml || ''
+  createOpen.value = true
+}
+
+function onCreated() {
+  createOpen.value = false
+  notification.value = 'NetworkPolicy applied. Refreshing list…'
+  setTimeout(() => { notification.value = null }, 4000)
+  refresh(true)
+}
+
+function onApplyRecommendationFix(rec) {
+  // The card's suggestedYAML drops the user straight into the
+  // create-popup editor with the suggestion pre-filled — they can
+  // still edit before applying. Apply path then refreshes both the
+  // list AND the recs (so the now-fixed rec disappears).
+  openCreate(rec?.suggestedYAML || '')
 }
 
 onMounted(() => refresh())
@@ -223,6 +284,15 @@ async function saveReviewToS3() {
         <div class="np-header-actions">
           <button
             v-if="type === 'networkpolicies'"
+            class="create-btn"
+            @click="openCreate()"
+            title="Author a NetworkPolicy from a scaffold and apply it"
+            data-testid="netpol-create-btn"
+          >
+            + New NetworkPolicy
+          </button>
+          <button
+            v-if="type === 'networkpolicies'"
             class="review-btn"
             @click="reviewPolicies"
             :disabled="!canReview || reviewing"
@@ -250,6 +320,16 @@ async function saveReviewToS3() {
       </div>
       <div class="notif-text">{{ notification }}</div>
     </div>
+
+    <ArgusRecommendations
+      v-if="type === 'networkpolicies'"
+      :recommendations="recommendations"
+      :loading="recsLoading"
+      title="Argus recommendations — NetworkPolicy coverage"
+      class="np-recs"
+      @refresh="refreshRecommendations"
+      @apply-fix="onApplyRecommendationFix"
+    />
 
     <div class="np-scroll-area">
     <div v-if="loading && !items()" class="state-box">Loading…</div>
@@ -329,6 +409,14 @@ async function saveReviewToS3() {
       </template>
     </div>
     </div>
+
+    <CreateNetworkPolicyPopup
+      v-if="type === 'networkpolicies'"
+      :show="createOpen"
+      :initial-yaml="createInitialYaml"
+      @close="createOpen = false"
+      @applied="onCreated"
+    />
   </div>
 </template>
 
@@ -341,6 +429,9 @@ async function saveReviewToS3() {
 .refresh-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #b0b4ba; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
 .refresh-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
 .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.create-btn { background: #6d4ade; border: 1px solid #6d4ade; color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 500; }
+.create-btn:hover { background: #5a3bc7; border-color: #5a3bc7; }
+.np-recs { margin: 0 0 8px; }
 
 .np-header-actions { display: flex; align-items: center; gap: 8px; }
 

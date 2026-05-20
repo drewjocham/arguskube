@@ -219,6 +219,17 @@ func (a *App) DeleteResource(kind, namespace, name string) error {
 	return a.k8s.DeleteResource(a.ctx, kind, namespace, name)
 }
 
+// RecommendNetworkPolicies returns data-grounded suggestions about
+// NetworkPolicy coverage in a namespace. Empty namespace = scan the
+// whole cluster. Drives the inline Argus Recommendations panel on
+// the NetworkPolicy list view.
+func (a *App) RecommendNetworkPolicies(namespace string) ([]k8s.NetpolRecommendation, error) {
+	if a.k8s == nil {
+		return nil, errNoCluster
+	}
+	return a.k8s.RecommendNetworkPolicies(a.ctx, namespace)
+}
+
 // EstimateCosts returns a FinOps cost report based on pod resource requests.
 // provider is one of "aws", "gcp", "azure", "digitalocean". Empty defaults to AWS.
 func (a *App) EstimateCosts(provider string) (*k8s.ClusterCostReport, error) {
