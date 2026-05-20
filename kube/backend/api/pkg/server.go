@@ -408,7 +408,11 @@ var httpExposedMethods = map[string]struct{}{
 	"GetTier":            {},
 	"GetSettings":        {}, // returns masked tokens; safe to read
 	"GetClusterMetrics":  {},
-	"DetectAlerts":       {},
+	// RecommendNetworkPolicies powers the inline Argus Recommendations
+	// panel under the NetworkPolicy list. Pure read-only analysis over
+	// existing cluster state — same permission posture as ListResources.
+	"RecommendNetworkPolicies": {},
+	"DetectAlerts":             {},
 	"ListResources":      {},
 	"GetResourceDetail":  {},
 	"GetResourceYaml":    {},
