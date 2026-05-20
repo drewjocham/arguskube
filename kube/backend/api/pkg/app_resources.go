@@ -230,6 +230,16 @@ func (a *App) RecommendNetworkPolicies(namespace string) ([]k8s.NetpolRecommenda
 	return a.k8s.RecommendNetworkPolicies(a.ctx, namespace)
 }
 
+// RecommendIngresses powers the inline Argus Recommendations panel on
+// the Ingress list view. Same shape as RecommendNetworkPolicies —
+// empty namespace = cluster-wide. Read-only.
+func (a *App) RecommendIngresses(namespace string) ([]k8s.IngressRecommendation, error) {
+	if a.k8s == nil {
+		return nil, errNoCluster
+	}
+	return a.k8s.RecommendIngresses(a.ctx, namespace)
+}
+
 // EstimateCosts returns a FinOps cost report based on pod resource requests.
 // provider is one of "aws", "gcp", "azure", "digitalocean". Empty defaults to AWS.
 func (a *App) EstimateCosts(provider string) (*k8s.ClusterCostReport, error) {

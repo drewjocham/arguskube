@@ -43,6 +43,7 @@ import EndpointTopology from '../network/EndpointTopology.vue'
 import RouteTopologyGraph from '../gateway/RouteTopologyGraph.vue'
 import StatusDashboard from '../gateway/StatusDashboard.vue'
 import IngressMigration from '../gateway/IngressMigration.vue'
+import IngressList from '../gateway/IngressList.vue'
 import TrafficSplitter from '../gateway/TrafficSplitter.vue'
 import ArgusScanReport from './ArgusScanReport.vue'
 import FinOpsView from './FinOpsView.vue'
@@ -379,9 +380,10 @@ const adminTabs = SECTIONS.admin.tabs
       />
       <div class="resource-scroll-area">
         <ServiceList
-          v-if="currentTab === 'services' || currentTab === 'ingresses'"
+          v-if="currentTab === 'services'"
           :type="currentTab"
         />
+        <IngressList v-else-if="currentTab === 'ingresses'" />
         <NetworkPolicyList
           v-else-if="currentTab === 'networkpolicies' || currentTab === 'endpoints'"
           :type="currentTab"

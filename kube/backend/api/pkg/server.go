@@ -412,6 +412,10 @@ var httpExposedMethods = map[string]struct{}{
 	// panel under the NetworkPolicy list. Pure read-only analysis over
 	// existing cluster state — same permission posture as ListResources.
 	"RecommendNetworkPolicies": {},
+	// RecommendIngresses — sibling of RecommendNetworkPolicies. Same
+	// read-only posture (lists Ingresses + Services to compute heuristics);
+	// no mutations.
+	"RecommendIngresses":       {},
 	"DetectAlerts":             {},
 	"ListResources":      {},
 	"GetResourceDetail":  {},
