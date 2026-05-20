@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { callGo } from '../../composables/useBridge'
 
 // Over-Provisioning Heatmap — cluster-wide view. On mount we pull
@@ -17,8 +17,10 @@ const error = ref('')
 const search = ref('')
 
 // Modal state — when set, this namespace's full deployment list
-// renders in a scrollable popup. Null = closed.
+// renders in a scrollable popup driven by the native <dialog>
+// element. Null = closed.
 const expanded = ref(null)
+const dialogRef = ref(null)
 
 async function loadAll() {
   loading.value = true
@@ -65,11 +67,31 @@ function topDeployments(p) {
   return (p.deployments || []).slice(0, 4)
 }
 
-function openExpanded(p) {
+async function openExpanded(p) {
   expanded.value = p
+  // Wait for Vue to render the dialog's content before calling
+  // showModal() — without this, the dialog opens with stale or
+  // missing children on the first open.
+  await nextTick()
+  dialogRef.value?.showModal?.()
 }
+
 function closeExpanded() {
+  // close() is a no-op on an already-closed dialog, so this works
+  // both as the @close handler (Escape / form-method=dialog submit)
+  // AND as the explicit ×-button handler. Always clear `expanded`
+  // last so the v-if doesn't unmount the children before close()
+  // finishes its animation/event chain.
+  if (dialogRef.value?.open) dialogRef.value.close()
   expanded.value = null
+}
+
+// Native <dialog>'s click event fires on the dialog element itself
+// when the user clicks the backdrop (the dialog has a "::backdrop"
+// pseudo-element, but the click event targets the dialog). When the
+// target IS the dialog (not an inner descendant), close.
+function onDialogClick(e) {
+  if (e.target === dialogRef.value) closeExpanded()
 }
 </script>
 
@@ -119,17 +141,15 @@ function closeExpanded() {
     </div>
 
     <div v-else class="ns-grid" data-testid="waste-ns-grid">
-      <div
+      <button
         v-for="p in filteredProfiles"
         :key="p.namespace"
+        type="button"
         class="ns-card"
         :data-score="p.score"
         :data-testid="`waste-ns-card-${p.namespace}`"
-        :tabindex="0"
         :aria-label="`${p.namespace}: ${p.score} waste`"
         @click="openExpanded(p)"
-        @keydown.enter="openExpanded(p)"
-        @keydown.space.prevent="openExpanded(p)"
       >
         <div class="ns-header">
           <span class="ns-name font-mono">{{ p.namespace }}</span>
@@ -156,21 +176,23 @@ function closeExpanded() {
             +{{ (p.deployments || []).length - 4 }} more — click to expand
           </div>
         </template>
-      </div>
+      </button>
     </div>
 
     <!-- Per-namespace popup. Renders every deployment in a scrollable
          list so the user can dig past the top-4 preview. Backdrop
-         click + Escape close it; the card is keyboard-reachable so
-         the whole interaction is operable without a mouse. -->
-    <div
-      v-if="expanded"
-      class="modal-backdrop"
+         click + Escape close it. Uses the native <dialog> element
+         (instead of role="dialog" on a div) so screen readers + the
+         platform escape handling Just Work. -->
+    <dialog
+      ref="dialogRef"
+      class="modal"
       data-testid="waste-modal"
-      @click.self="closeExpanded"
-      @keydown.escape="closeExpanded"
+      :aria-label="expanded ? `${expanded.namespace} waste detail` : ''"
+      @close="closeExpanded"
+      @click="onDialogClick"
     >
-      <div class="modal" role="dialog" aria-modal="true" :aria-label="`${expanded.namespace} waste detail`">
+      <div v-if="expanded" class="modal-inner">
         <div class="modal-header">
           <div>
             <div class="modal-title font-mono">{{ expanded.namespace }}</div>
@@ -217,7 +239,7 @@ function closeExpanded() {
           </div>
         </div>
       </div>
-    </div>
+    </dialog>
   </div>
 </template>
 
@@ -233,11 +255,13 @@ function closeExpanded() {
 }
 .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .header .title { font-size: 20px; font-weight: 500; color: #fff; margin-bottom: 4px; }
-.header .subtitle { font-size: 13px; color: #8b8f96; max-width: 640px; }
+/* Subtitle bumped from #8b8f96 (3.7:1) to var(--text2) (~7:1)
+   to clear WCAG AA on the dark bg. Sonar css:S7924. */
+.header .subtitle { font-size: 13px; color: var(--text2, #b0b4ba); max-width: 640px; }
 .btn-rescan {
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.1);
-  color: #b0b4ba;
+  color: var(--text, #e8eaec);
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 12px;
@@ -370,34 +394,34 @@ function closeExpanded() {
 }
 .dep-name { color: var(--text); word-break: break-all; }
 .dep-waste { font-family: var(--mono); flex-shrink: 0; font-weight: 600; }
-.dep-empty { font-size: 11px; color: var(--text3); font-style: italic; }
+/* dep-empty + more-hint bumped to text2 so they read on the card
+   background (text3 fails AA at 10.5-11px on the dark wash). */
+.dep-empty { font-size: 11px; color: var(--text2, #b0b4ba); font-style: italic; }
 .more-hint {
   font-size: 10.5px;
-  color: var(--text3);
+  color: var(--text2, #b0b4ba);
   font-style: italic;
   text-align: right;
 }
 
-/* ── Modal popup ──────────────────────────────────────────────── */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  z-index: 1000;
-}
+/* ── Modal popup (native <dialog>) ───────────────────────────── */
 .modal {
   background: #1a1c1f;
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 8px;
   max-width: 900px;
-  width: 100%;
+  width: calc(100vw - 48px);
   max-height: 80vh;
+  padding: 0;
+  color: var(--text, #e8eaec);
+}
+.modal::backdrop {
+  background: rgba(0,0,0,0.6);
+}
+.modal-inner {
   display: flex;
   flex-direction: column;
+  max-height: calc(80vh - 2px);
   overflow: hidden;
 }
 .modal-header {
