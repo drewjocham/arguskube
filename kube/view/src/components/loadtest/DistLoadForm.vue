@@ -147,12 +147,48 @@ watch(testType, (t) => {
 })
 
 // ── preset apply ──────────────────────────────────────────────────────
+// Applies every field the preset's RunSpec carries — testName,
+// broker kind + config, destination, payload, count, workers, and
+// the ramp shape. Earlier only the bottom three (count/workers/ramp)
+// were copied, leaving the user to refill destination + payload by
+// hand even after picking a preset.
 function applyPreset(id) {
   selectedPresetId.value = id
   if (!id) return
   const p = store.getPreset(id)
   if (!p?.spec) return
   const s = p.spec
+
+  if (s.name) testName.value = s.name
+  if (s.destination) destination.value = s.destination
+
+  // Broker — sets the kind first (which triggers the per-kind config
+  // defaults via the existing watcher) then layers preset-supplied
+  // overrides on top so a preset's auth/host/etc. wins.
+  if (s.broker?.kind) {
+    brokerKind.value = s.broker.kind
+    if (s.broker.kind !== 'rest') lastEventBusKind.value = s.broker.kind
+    // Merge after kind change — defaultBrokerConfig has already run
+    // via the watcher, so this preserves anything the preset cares
+    // about while keeping safe defaults for the rest.
+    brokerConfig.value = { ...defaultBrokerConfig(s.broker.kind), ...(s.broker || {}) }
+  }
+
+  // Payload — keep the existing source choice if the preset doesn't
+  // carry one, otherwise mirror the preset's payload shape so the
+  // PayloadEditor renders the right tab + bytes.
+  if (s.payload) {
+    payload.value = {
+      ...payload.value,
+      source: s.payload.source ?? payload.value.source,
+      bytes: s.payload.bytes ?? payload.value.bytes,
+      filename: s.payload.filename ?? payload.value.filename,
+      filePath: s.payload.filePath ?? payload.value.filePath,
+      fileMode: s.payload.fileMode ?? payload.value.fileMode,
+      aiPrompt: s.payload.aiPrompt ?? payload.value.aiPrompt,
+    }
+  }
+
   if (s.count != null) {
     const known = COUNT_OPTIONS.find((o) => o.value === s.count)
     if (known) { customCount.value = false; messageCount.value = s.count }

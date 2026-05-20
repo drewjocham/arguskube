@@ -455,10 +455,15 @@ const adminTabs = SECTIONS.admin.tabs
             <div class="tab" :class="{ active: distLoadTab === 'history' }" @click="distLoadTab = 'history'">History</div>
             <div class="tab" :class="{ active: distLoadTab === 'credits' }" @click="distLoadTab = 'credits'">Credits</div>
           </div>
-          <DistLoadForm v-if="distLoadTab === 'form'" />
-          <DistLoadDashboard v-else-if="distLoadTab === 'dashboard'" />
-          <DistLoadHistory v-else-if="distLoadTab === 'history'" />
-          <DistLoadCredits v-else-if="distLoadTab === 'credits'" />
+          <!-- v-show (not v-if) so the form keeps its local state when
+               the user clicks across to History / Active Run / Credits
+               and back. Tearing the form down on every sub-tab click
+               (the previous behavior) lost the user's in-progress
+               test configuration. -->
+          <DistLoadForm v-show="distLoadTab === 'form'" />
+          <DistLoadDashboard v-if="distLoadTab === 'dashboard'" />
+          <DistLoadHistory v-if="distLoadTab === 'history'" />
+          <DistLoadCredits v-if="distLoadTab === 'credits'" />
         </template>
       </div>
     </template>
