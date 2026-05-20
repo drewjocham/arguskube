@@ -181,9 +181,10 @@ function onDialogClick(e) {
 
     <!-- Per-namespace popup. Renders every deployment in a scrollable
          list so the user can dig past the top-4 preview. Backdrop
-         click + Escape close it. Uses the native <dialog> element
-         (instead of role="dialog" on a div) so screen readers + the
-         platform escape handling Just Work. -->
+         click and Escape both close it. The native HTML dialog
+         element gives us a real focus trap and platform Escape
+         handling for free, which a div with a role attribute does
+         not. -->
     <dialog
       ref="dialogRef"
       class="modal"
@@ -259,16 +260,18 @@ function onDialogClick(e) {
    to clear WCAG AA on the dark bg. Sonar css:S7924. */
 .header .subtitle { font-size: 13px; color: var(--text2, #b0b4ba); max-width: 640px; }
 .btn-rescan {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.1);
-  color: var(--text, #e8eaec);
+  /* Solid neutral button bg + white text — translucent variants
+     fail AA against the surrounding wash per Sonar css:S7924. */
+  background: #2a2e35;
+  border: 1px solid #3d424c;
+  color: #fff;
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 12px;
   cursor: pointer;
   flex-shrink: 0;
 }
-.btn-rescan:hover:not(:disabled) { background: rgba(255,255,255,0.1); color: #fff; }
+.btn-rescan:hover:not(:disabled) { background: #3a4049; }
 .btn-rescan:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .summary-bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
@@ -376,10 +379,13 @@ function onDialogClick(e) {
 }
 .ns-totals strong { color: var(--text); font-weight: 600; }
 .ns-error {
+  /* Solid amber fill + white text (PR #129 warn-badge palette)
+     instead of #f5a623 on a faint same-hue wash — the latter
+     sits at the AA threshold per Sonar css:S7924. */
   font-size: 11px;
-  color: #f5a623;
+  color: #fff;
   padding: 4px 6px;
-  background: rgba(245,166,35,0.08);
+  background: #8c5a0c;
   border-radius: 4px;
   word-break: break-all;
 }
