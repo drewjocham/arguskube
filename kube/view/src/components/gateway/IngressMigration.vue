@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { callGo } from '../../composables/useBridge'
+import YamlActionBar from './YamlActionBar.vue'
 
 const ingressYAML = ref('')
 const result = ref(null)
@@ -64,14 +65,14 @@ async function copyToClipboard(text) {
         <div class="output-col">
           <div class="col-header">
             <span class="col-title">Gateway</span>
-            <button class="btn-copy" @click="copyToClipboard(result.gatewayYAML)">Copy</button>
+            <YamlActionBar :yaml="result.gatewayYAML" suggested-name="gateway" />
           </div>
           <pre class="yaml-output">{{ result.gatewayYAML }}</pre>
         </div>
         <div class="output-col">
           <div class="col-header">
             <span class="col-title">HTTPRoute</span>
-            <button class="btn-copy" @click="copyToClipboard(result.httpRouteYAML)">Copy</button>
+            <YamlActionBar :yaml="result.httpRouteYAML" suggested-name="httproute" />
           </div>
           <pre class="yaml-output">{{ result.httpRouteYAML }}</pre>
         </div>

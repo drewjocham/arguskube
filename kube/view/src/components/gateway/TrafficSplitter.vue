@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { callGo } from '../../composables/useBridge'
+import YamlActionBar from './YamlActionBar.vue'
 
 const routeName = ref('')
 const namespace = ref('default')
@@ -129,7 +130,7 @@ async function copyYAML() {
     <div v-if="result" class="result-section">
       <div class="result-header">
         <span class="result-title">Generated HTTPRoute YAML</span>
-        <button class="btn-copy" @click="copyYAML">Copy</button>
+        <YamlActionBar :yaml="result" suggested-name="httproute-traffic-split" />
       </div>
       <pre class="yaml-output">{{ result }}</pre>
     </div>
