@@ -59,6 +59,20 @@ function promptNewDashboard() {
 const widgetCount = computed(() => activeDashboard.value?.widgets?.length || 0)
 const canAddWidget = computed(() => widgetCount.value < 4)
 
+// ── Banner state classifiers ─────────────────────────────────────
+// The error message produced by callGo / fetch carries the HTTP
+// status verbatim ("HTTP error! status: 403"). We pattern-match on
+// that so the banner can tell the user the right next step instead
+// of a generic "isn't reachable".
+const clusterMetricsErrorIs401 = computed(() => {
+  const m = String(clusterMetricsError.value || '')
+  return /status:\s*401\b/i.test(m) || /unauthor/i.test(m)
+})
+const clusterMetricsErrorIs403 = computed(() => {
+  const m = String(clusterMetricsError.value || '')
+  return /status:\s*403\b/i.test(m) || /forbidden|not exposed/i.test(m)
+})
+
 // ── Handle add-widget from popup ─────────────────────────────────
 function onAddWidget(metricId) {
   if (!canAddWidget.value) return
@@ -142,20 +156,44 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <!-- ── Connection banner — surfaces the GetMetrics failure that
-         would otherwise leave every category showing "—" with no
-         explanation of why. Shown only when the first fetch failed
-         AND no cached data is available; once any successful fetch
-         arrives we keep showing whatever we last had. ──────────── -->
+    <!-- ── Connection banner — surfaces the GetClusterMetrics failure
+         that would otherwise leave every category showing "—" with no
+         explanation. Shown only when the first fetch failed AND no
+         cached data is available; once any successful fetch arrives
+         we keep showing whatever we last had.
+
+         The banner copy is shaped by the error's HTTP status so the
+         user gets an actionable next step instead of a generic
+         "isn't reachable":
+           401 → auth required (sign in / unset session)
+           403 → method not exposed (this binary doesn't allowlist it
+                 — bug to file, not a user action)
+           other / network → backend really isn't responding
+         ──────────────────────────────────────────────────────────── -->
     <output
       v-if="clusterMetricsState === 'error'"
       class="dashboard-banner banner-error"
       data-testid="dashboard-disconnected-banner"
     >
-      <strong>No live metrics.</strong>
-      The Argus backend at <code>:8080</code> isn't reachable
-      <span v-if="clusterMetricsError">— <em>{{ clusterMetricsError }}</em></span>.
-      Start the desktop app or sign in to populate this dashboard.
+      <template v-if="clusterMetricsErrorIs401">
+        <strong>Sign-in required.</strong>
+        The backend is up but rejected an unauthenticated request.
+        Sign in via the title-bar Profile menu, or relaunch with
+        <code>make no-auth-run</code> for local dev.
+      </template>
+      <template v-else-if="clusterMetricsErrorIs403">
+        <strong>Backend rejected the call.</strong>
+        The dashboard's RPC method isn't in this build's HTTP allowlist
+        (<em>{{ clusterMetricsError }}</em>). Likely a version mismatch
+        between the frontend and the backend — file a bug.
+      </template>
+      <template v-else>
+        <strong>No live metrics.</strong>
+        Couldn't reach the Argus backend at <code>:8080</code>
+        <span v-if="clusterMetricsError">— <em>{{ clusterMetricsError }}</em></span>.
+        Start the desktop app (<code>make dev</code> or <code>make no-auth-run</code>)
+        to populate this dashboard.
+      </template>
     </output>
     <output
       v-else-if="clusterMetricsState === 'loading'"

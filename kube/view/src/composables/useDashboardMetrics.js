@@ -226,7 +226,11 @@ export function useDashboardMetrics() {
 
   const activeDashboard = computed(() => dashboards.value[activeIndex.value] || dashboards.value[0])
 
-  // Cached cluster metrics (from GetMetrics polling)
+  // Cached cluster metrics (from GetClusterMetrics polling).
+  // Earlier this called GetMetrics which is a method on the K8sHandler,
+  // not on the App reflection surface — the HTTP dispatcher rejected
+  // it with 403 "method not exposed via HTTP API". GetClusterMetrics
+  // is the App-layer method that actually exists + is allowlisted.
   const clusterMetrics = ref(null)
 
   // Connection state surfaces to the UI so the dashboard can render an
@@ -250,7 +254,7 @@ export function useDashboardMetrics() {
   async function fetchClusterMetrics() {
     if (clusterMetrics.value == null) clusterMetricsState.value = 'loading'
     try {
-      const result = await callGo('GetMetrics')
+      const result = await callGo('GetClusterMetrics')
       if (result) {
         clusterMetrics.value = result
         clusterMetricsState.value = 'ok'
@@ -259,7 +263,7 @@ export function useDashboardMetrics() {
     } catch (e) {
       clusterMetricsState.value = 'error'
       clusterMetricsError.value = e?.message ?? String(e)
-      console.warn('[dashboards] GetMetrics failed:', e)
+      console.warn('[dashboards] GetClusterMetrics failed:', e)
     }
   }
 
